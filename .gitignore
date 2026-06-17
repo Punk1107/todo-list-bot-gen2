@@ -1,0 +1,44 @@
+# ──────────────────────────────────────────────────────────────
+# Git ignore rules for To-Do List Bot Gen 2
+# ──────────────────────────────────────────────────────────────
+
+# Environment secrets — NEVER commit
+.env
+
+# Database & backups
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

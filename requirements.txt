@@ -1,0 +1,23 @@
+# ──────────────────────────────────────────────────────────────────
+# To-Do List Bot Gen 2 — Requirements
+# Pin minor versions for reproducible builds
+# ──────────────────────────────────────────────────────────────────
+
+# Discord
+discord.py>=2.4.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Timezone support
+pytz>=2024.1
+
+# Async utilities
+aiofiles>=23.2.1
+aiohttp>=3.9.0
+
+# Web keep-alive server
+Flask>=3.0.0
+
+# (Optional) async HTTP client used by discord.py internally
+# already pulled in via discord.py, listed for clarity

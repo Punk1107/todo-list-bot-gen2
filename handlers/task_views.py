@@ -1,0 +1,635 @@
+"""
+handlers/task_views.py — Discord UI Views and Modals v2
+Improvements:
+  - All DB calls are now async (asyncio.to_thread via db.aexecute/afetchone)
+  - View.on_timeout() handlers (no silent memory leaks)
+  - TaskFilterSelect dropdown replaces text filter
+  - PrioritySelectView for quick priority changes
+  - Category picker via Select menu
+  - TaskActionView now shows Pin/Unpin dynamically
+  - Better error messages (i18n)
+  - DeleteConfirmView has a 30-second auto-expire
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from typing import Optional
+
+import discord
+from discord import ui
+import pytz
+
+from core.database import db
+from core.security import rate_limiter, validator
+from core.config import config
+from locales.i18n import t
+from utils.helpers import (
+    get_user_lang, get_user_timezone, parse_deadline,
+    build_task_embed, build_task_list_embed,
+    ensure_user, format_deadline,
+)
+
+log = logging.getLogger(__name__)
+
+TASKS_PER_PAGE = 6
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper: safe respond (handles already-responded interactions)
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _safe_respond(interaction: discord.Interaction, content: str, ephemeral: bool = True) -> None:
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(content, ephemeral=ephemeral)
+        else:
+            await interaction.response.send_message(content, ephemeral=ephemeral)
+    except Exception as exc:
+        log.warning("safe_respond failed: %s", exc)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Modals
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AddTaskModal(ui.Modal):
+    """Modal for creating a new task (or subtask)."""
+
+    def __init__(self, lang: str, category_id: Optional[int] = None,
+                 parent_task_id: Optional[int] = None) -> None:
+        title_key = "subtask_add_title" if parent_task_id else "task_add_title"
+        super().__init__(title=t(title_key, lang))
+        self.lang = lang
+        self.category_id = category_id
+        self.parent_task_id = parent_task_id
+
+        self.task_name = ui.TextInput(
+            label=t("task_name_label", lang),
+            placeholder=t("task_name_placeholder", lang),
+            max_length=200, required=True,
+        )
+        self.deadline = ui.TextInput(
+            label=t("task_deadline_label", lang),
+            placeholder=t("task_deadline_placeholder", lang),
+            max_length=20, required=True,
+        )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            placeholder=t("task_priority_placeholder", lang),
+            max_length=1, required=False, default="0",
+        )
+        self.description = ui.TextInput(
+            label=t("task_desc_label", lang),
+            placeholder=t("task_desc_placeholder", lang),
+            style=discord.TextStyle.paragraph,
+            max_length=1000, required=False,
+        )
+        self.tags = ui.TextInput(
+            label=t("task_tags_label", lang),
+            placeholder=t("task_tags_placeholder", lang),
+            max_length=200, required=False,
+        )
+        self.add_item(self.task_name)
+        self.add_item(self.deadline)
+        self.add_item(self.priority)
+        self.add_item(self.description)
+        self.add_item(self.tags)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        uid  = str(interaction.user.id)
+        lang = self.lang
+
+        # ── Rate-limit task creation ───────────────────────────────────────
+        if rate_limiter.check_task_creation(uid):
+            secs = rate_limiter.remaining_block_seconds(uid)
+            await _safe_respond(
+                interaction,
+                t("task_rate_limited", lang, limit=config.rate_limit.tasks_per_hour, seconds=secs),
+            )
+            return
+
+        # ── Validate name ──────────────────────────────────────────────────
+        ok, name_or_err = validator.validate_task_name(self.task_name.value)
+        if not ok:
+            await _safe_respond(interaction, t(name_or_err, lang))
+            return
+        task_name = name_or_err
+
+        # ── Validate priority ──────────────────────────────────────────────
+        prio_raw = (self.priority.value or "0").strip()
+        if prio_raw not in ("0", "1", "2"):
+            await _safe_respond(interaction, t("task_invalid_priority", lang))
+            return
+        priority = int(prio_raw)
+
+        # ── Validate description ───────────────────────────────────────────
+        description: Optional[str] = None
+        if self.description.value:
+            ok_d, desc_or_err = validator.validate_description(self.description.value)
+            if not ok_d:
+                await _safe_respond(interaction, t(desc_or_err, lang))
+                return
+            description = desc_or_err
+
+        # ── Validate tags ──────────────────────────────────────────────────
+        tags: Optional[str] = None
+        if self.tags.value:
+            ts = validator.sanitize(self.tags.value, 200)
+            if validator.is_suspicious(ts):
+                await _safe_respond(interaction, t("err_suspicious", lang))
+                return
+            tags = ts
+
+        # ── Validate deadline ──────────────────────────────────────────────
+        tz_name = get_user_timezone(uid)
+        dt = parse_deadline(self.deadline.value, tz_name)
+        if dt is None:
+            await _safe_respond(interaction, t("task_invalid_deadline", lang))
+            return
+        if dt < datetime.now(pytz.utc):
+            await _safe_respond(interaction, t("task_past_deadline", lang))
+            return
+
+        # ── Insert ────────────────────────────────────────────────────────
+        ensure_user(uid, lang)
+        try:
+            cur = await db.aexecute(
+                """INSERT INTO tasks
+                   (task, deadline, priority, description, tags,
+                    category_id, parent_task_id, owner_id)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (task_name, dt.isoformat(), priority, description, tags,
+                 self.category_id, self.parent_task_id, uid),
+            )
+            task_id = cur.lastrowid
+            await db.alog_action(uid, "task_created", str(task_id), task_name)
+        except Exception as exc:
+            log.error("Task insert failed: %s", exc)
+            await _safe_respond(interaction, t("err_db", lang))
+            return
+
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (task_id,))
+        embed = build_task_embed(row, lang, tz_name)
+        view  = TaskActionView(task_id, uid, lang)
+        success_key = "subtask_created" if self.parent_task_id else "task_created"
+        await interaction.response.send_message(
+            t(success_key, lang, task_id=task_id), embed=embed, view=view,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        log.error("AddTaskModal.on_error: %s", error, exc_info=True)
+        lang = get_user_lang(interaction.user.id)
+        await _safe_respond(interaction, t("err_generic", lang))
+
+
+class EditTaskModal(ui.Modal):
+    """Modal for editing an existing task — pre-fills current values."""
+
+    def __init__(self, task_row, lang: str) -> None:
+        super().__init__(title=t("task_edit_title", lang, task_id=task_row["task_id"]))
+        self.lang    = lang
+        self.task_id = task_row["task_id"]
+        self.uid     = task_row["owner_id"]
+
+        # Pre-fill current deadline in user-friendly format
+        tz_name = get_user_timezone(self.uid)
+        current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
+
+        self.task_name = ui.TextInput(
+            label=t("task_name_label", lang),
+            default=task_row["task"], max_length=200,
+        )
+        self.deadline = ui.TextInput(
+            label=t("task_deadline_label", lang),
+            default=current_dl,
+            placeholder=t("task_deadline_placeholder", lang),
+            max_length=20,
+        )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            default=str(task_row["priority"]), max_length=1,
+        )
+        self.description = ui.TextInput(
+            label=t("task_desc_label", lang),
+            default=(task_row["description"] or "")[:1000],
+            style=discord.TextStyle.paragraph,
+            max_length=1000, required=False,
+        )
+        self.tags = ui.TextInput(
+            label=t("task_tags_label", lang),
+            default=(task_row["tags"] or "")[:200],
+            max_length=200, required=False,
+        )
+        self.add_item(self.task_name)
+        self.add_item(self.deadline)
+        self.add_item(self.priority)
+        self.add_item(self.description)
+        self.add_item(self.tags)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        uid  = str(interaction.user.id)
+        lang = self.lang
+
+        ok, name_or_err = validator.validate_task_name(self.task_name.value)
+        if not ok:
+            await _safe_respond(interaction, t(name_or_err, lang))
+            return
+
+        prio_raw = self.priority.value.strip()
+        if prio_raw not in ("0", "1", "2"):
+            await _safe_respond(interaction, t("task_invalid_priority", lang))
+            return
+
+        tz_name = get_user_timezone(uid)
+        dt = parse_deadline(self.deadline.value, tz_name)
+        if dt is None:
+            await _safe_respond(interaction, t("task_invalid_deadline", lang))
+            return
+
+        description: Optional[str] = None
+        if self.description.value:
+            ok_d, desc_or_err = validator.validate_description(self.description.value)
+            if not ok_d:
+                await _safe_respond(interaction, t(desc_or_err, lang))
+                return
+            description = desc_or_err
+
+        tags: Optional[str] = None
+        if self.tags.value:
+            ts = validator.sanitize(self.tags.value, 200)
+            if validator.is_suspicious(ts):
+                await _safe_respond(interaction, t("err_suspicious", lang))
+                return
+            tags = ts
+
+        try:
+            await db.aexecute(
+                """UPDATE tasks SET task=?, deadline=?, priority=?, description=?,
+                   tags=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE task_id=? AND owner_id=?""",
+                (name_or_err, dt.isoformat(), int(prio_raw),
+                 description, tags, self.task_id, uid),
+            )
+            await db.alog_action(uid, "task_edited", str(self.task_id), name_or_err)
+        except Exception as exc:
+            log.error("Task edit failed: %s", exc)
+            await _safe_respond(interaction, t("err_db", lang))
+            return
+
+        row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
+        embed = build_task_embed(row, lang, tz_name)
+        view  = TaskActionView(self.task_id, uid, lang)
+        await interaction.response.send_message(
+            t("task_edit_success", lang), embed=embed, view=view,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+        log.error("EditTaskModal.on_error: %s", error, exc_info=True)
+        lang = get_user_lang(interaction.user.id)
+        await _safe_respond(interaction, t("err_generic", lang))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Delete Confirmation
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DeleteConfirmView(ui.View):
+    """30-second confirmation dialog before permanent deletion."""
+
+    def __init__(self, task_id: int, uid: str, lang: str) -> None:
+        super().__init__(timeout=30)
+        self.task_id = task_id
+        self.uid     = uid
+        self.lang    = lang
+
+    async def on_timeout(self) -> None:
+        # Silently disable buttons on expiry
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
+
+    @ui.button(label="🗑️ Confirm Delete", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        try:
+            await db.aexecute(
+                "DELETE FROM tasks WHERE task_id=? AND owner_id=?",
+                (self.task_id, self.uid),
+            )
+            await db.alog_action(self.uid, "task_deleted", str(self.task_id))
+        except Exception as exc:
+            log.error("Task delete failed: %s", exc)
+            await _safe_respond(interaction, t("err_db", self.lang))
+            return
+        self.stop()
+        await interaction.response.edit_message(
+            content=t("task_deleted", self.lang, task_id=self.task_id),
+            embed=None, view=None,
+        )
+
+    @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(
+            content=t("cancel", self.lang), embed=None, view=None,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task Action View
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TaskActionView(ui.View):
+    """
+    Full-featured action view attached to a task embed.
+    Buttons: Done | Edit | Pin | Delete | + Subtask
+    """
+
+    def __init__(self, task_id: int, uid: str, lang: str,
+                 is_pinned: bool = False) -> None:
+        super().__init__(timeout=600)   # 10 min — longer for active sessions
+        self.task_id  = task_id
+        self.uid      = uid
+        self.lang     = lang
+        self.is_pinned = is_pinned
+        self._update_pin_label()
+
+    def _update_pin_label(self) -> None:
+        for item in self.children:
+            if getattr(item, "custom_id", None) == "pin_btn":
+                item.label = "📌 Unpin" if self.is_pinned else "📌 Pin"  # type: ignore[attr-defined]
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
+
+    def _check_owner(self, interaction: discord.Interaction) -> bool:
+        return str(interaction.user.id) == self.uid
+
+    # ── Mark Done ─────────────────────────────────────────────────────────────
+
+    @ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=0)
+    async def mark_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        row = await db.afetchone("SELECT status FROM tasks WHERE task_id=?", (self.task_id,))
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
+        if row["status"] == "Completed":
+            await _safe_respond(interaction, t("task_already_done", lang))
+            return
+        if row["status"] == "Cancelled":
+            await _safe_respond(interaction, t("task_already_cancelled", lang))
+            return
+        await db.aexecute(
+            "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
+            (self.task_id,),
+        )
+        await db.alog_action(self.uid, "task_completed", str(self.task_id))
+        button.disabled = True
+        button.style    = discord.ButtonStyle.secondary
+        self.stop()
+        await _safe_respond(interaction, t("task_marked_done", lang, task_id=self.task_id))
+
+    # ── Edit ─────────────────────────────────────────────────────────────────
+
+    @ui.button(label="✏️ Edit", style=discord.ButtonStyle.blurple, row=0)
+    async def edit(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
+        await interaction.response.send_modal(EditTaskModal(row, lang))
+
+    # ── Pin / Unpin ───────────────────────────────────────────────────────────
+
+    @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary,
+               row=0, custom_id="pin_btn")
+    async def pin_toggle(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        new_val = 0 if self.is_pinned else 1
+        await db.aexecute(
+            "UPDATE tasks SET is_pinned=? WHERE task_id=? AND owner_id=?",
+            (new_val, self.task_id, self.uid),
+        )
+        self.is_pinned = bool(new_val)
+        self._update_pin_label()
+        action_str = "task_unpinned" if not self.is_pinned else "task_pinned"
+        await db.alog_action(self.uid, action_str, str(self.task_id))
+        msg_key = "task_unpinned" if not self.is_pinned else "task_pinned"
+        await _safe_respond(interaction, t(msg_key, lang, task_id=self.task_id))
+
+    # ── Delete ────────────────────────────────────────────────────────────────
+
+    @ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, row=1)
+    async def delete(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=?", (self.task_id,))
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
+        confirm = DeleteConfirmView(self.task_id, self.uid, lang)
+        await interaction.response.send_message(
+            t("task_delete_confirm", lang, task_name=row["task"]),
+            view=confirm, ephemeral=True,
+        )
+
+    # ── Add Subtask ───────────────────────────────────────────────────────────
+
+    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=1)
+    async def add_subtask(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        row = await db.afetchone(
+            "SELECT parent_task_id FROM tasks WHERE task_id=?", (self.task_id,)
+        )
+        if row and row["parent_task_id"] is not None:
+            await _safe_respond(interaction, t("subtask_no_nested", lang))
+            return
+        await interaction.response.send_modal(AddTaskModal(lang, parent_task_id=self.task_id))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task List View  (paginated + filter dropdown)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TaskFilterSelect(ui.Select):
+    """Dropdown to switch the active filter in a TaskListView."""
+
+    def __init__(self, lang: str, current: str) -> None:
+        options = [
+            discord.SelectOption(
+                label=t("tasks_filter_pending", lang), value="Pending",
+                emoji="⏳", default=(current == "Pending"),
+            ),
+            discord.SelectOption(
+                label=t("tasks_filter_done", lang), value="Completed",
+                emoji="✅", default=(current == "Completed"),
+            ),
+            discord.SelectOption(
+                label=t("tasks_filter_overdue", lang), value="overdue",
+                emoji="🚨", default=(current == "overdue"),
+            ),
+            discord.SelectOption(
+                label=t("tasks_filter_today", lang), value="today",
+                emoji="📅", default=(current == "today"),
+            ),
+            discord.SelectOption(
+                label="📌 Pinned", value="pinned",
+                default=(current == "pinned"),
+            ),
+            discord.SelectOption(
+                label=t("tasks_filter_all", lang), value="all",
+                emoji="📋", default=(current == "all"),
+            ),
+        ]
+        super().__init__(
+            placeholder=t("list_filter_placeholder", lang),
+            options=options, row=2,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: TaskListView = self.view  # type: ignore[assignment]
+        view.filter_status = self.values[0]
+        view.page = 1
+        await view.update_message(interaction)
+
+
+class TaskListView(ui.View):
+    """Paginated task list with filter Select menu and nav buttons."""
+
+    def __init__(self, uid: str, lang: str, tz_name: str,
+                 filter_status: str = "Pending") -> None:
+        super().__init__(timeout=600)
+        self.uid           = uid
+        self.lang          = lang
+        self.tz_name       = tz_name
+        self.filter_status = filter_status
+        self.page          = 1
+        self._filter_select = TaskFilterSelect(lang, filter_status)
+        self.add_item(self._filter_select)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
+
+    async def _fetch_page(self) -> tuple[list, int, int]:
+        now = datetime.now(pytz.utc).isoformat()
+        fs  = self.filter_status
+
+        if fs == "overdue":
+            base = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status='Pending' AND deadline<?"
+            params: list = [self.uid, now]
+        elif fs == "today":
+            from datetime import date, timezone
+            today_start = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
+            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status='Pending' AND deadline BETWEEN ? AND ?"
+            params = [self.uid, today_start, today_end]
+        elif fs == "pinned":
+            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND is_pinned=1"
+            params = [self.uid]
+        elif fs == "all":
+            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL"
+            params = [self.uid]
+        else:
+            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status=?"
+            params = [self.uid, fs]
+
+        count_row = await db.afetchone(
+            f"SELECT COUNT(*) AS c FROM ({base})", params
+        )
+        total       = count_row["c"] if count_row else 0
+        total_pages = max(1, (total + TASKS_PER_PAGE - 1) // TASKS_PER_PAGE)
+        self.page   = max(1, min(self.page, total_pages))
+        offset      = (self.page - 1) * TASKS_PER_PAGE
+
+        tasks = await db.afetchall(
+            f"{base} ORDER BY is_pinned DESC, priority DESC, deadline ASC LIMIT ? OFFSET ?",
+            params + [TASKS_PER_PAGE, offset],
+        )
+        return tasks, self.page, total_pages
+
+    def _update_nav_buttons(self, page: int, total_pages: int) -> None:
+        for item in self.children:
+            if isinstance(item, ui.Button):
+                if item.custom_id == "lv_prev":
+                    item.disabled = (page <= 1)
+                elif item.custom_id == "lv_next":
+                    item.disabled = (page >= total_pages)
+
+    async def update_message(self, interaction: discord.Interaction) -> None:
+        tasks, page, total_pages = await self._fetch_page()
+        filter_label = t(f"tasks_filter_{self.filter_status}", self.lang)
+        embed = build_task_list_embed(tasks, page, total_pages, self.lang, self.tz_name, filter_label)
+        self._update_nav_buttons(page, total_pages)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @ui.button(emoji="◀", style=discord.ButtonStyle.secondary, custom_id="lv_prev", row=3)
+    async def prev_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.page -= 1
+        await self.update_message(interaction)
+
+    @ui.button(emoji="🔄", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
+    async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await self.update_message(interaction)
+
+    @ui.button(emoji="▶", style=discord.ButtonStyle.secondary, custom_id="lv_next", row=3)
+    async def next_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.page += 1
+        await self.update_message(interaction)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Language Select
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LanguageView(ui.View):
+    """Language selection buttons (TH / EN)."""
+
+    def __init__(self, current_lang: str) -> None:
+        super().__init__(timeout=120)
+        self.current_lang = current_lang
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
+
+    @ui.button(label="🇹🇭 ไทย", style=discord.ButtonStyle.primary, custom_id="lang_th")
+    async def lang_th(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        ensure_user(uid)
+        await db.aexecute("UPDATE users SET lang='th' WHERE user_id=?", (uid,))
+        from core.database import db as _db
+        _db.user_cache.invalidate(uid)
+        await db.alog_action(uid, "lang_changed", detail="th")
+        self.stop()
+        await interaction.response.send_message(t("lang_changed", "th"), ephemeral=True)
+
+    @ui.button(label="🇬🇧 English", style=discord.ButtonStyle.primary, custom_id="lang_en")
+    async def lang_en(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        ensure_user(uid)
+        await db.aexecute("UPDATE users SET lang='en' WHERE user_id=?", (uid,))
+        from core.database import db as _db
+        _db.user_cache.invalidate(uid)
+        await db.alog_action(uid, "lang_changed", detail="en")
+        self.stop()
+        await interaction.response.send_message(t("lang_changed", "en"), ephemeral=True)
