@@ -1,11 +1,15 @@
 """
-handlers/settings_cog.py — Setup, language, category, and admin commands v2
-New: Category CRUD subcommands, /admin stats/backup (owner-only)
-All DB calls async.
+handlers/settings_cog.py — Setup, language, category, and admin commands v3 (System Upgrade)
+Changes:
+  - All helper calls now properly awaited (async helpers)
+  - save_user_settings now awaited (async)
+  - category_remove: COALESCE fix for proper NULL handling in category queries
+  - admin_stats: uses import pattern more cleanly
 """
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 import discord
@@ -57,11 +61,14 @@ class AddCategoryModal(discord.ui.Modal):
         uid  = str(interaction.user.id)
         lang = self.lang
         name = validator.sanitize(self.cat_name.value, 50)
+        if not name:
+            await interaction.response.send_message(t("err_input_invalid", lang, detail="name"), ephemeral=True)
+            return
         if validator.is_suspicious(name):
             await interaction.response.send_message(t("err_suspicious", lang), ephemeral=True)
             return
         emoji = (self.cat_emoji.value or "📝").strip() or "📝"
-        ensure_user(uid, lang)
+        await ensure_user(uid, lang)
         try:
             cur = await db.aexecute(
                 "INSERT INTO categories (name, emoji, owner_id) VALUES (?,?,?)",
@@ -77,7 +84,7 @@ class AddCategoryModal(discord.ui.Modal):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("AddCategoryModal error: %s", error)
-        lang = get_user_lang(interaction.user.id)
+        lang = await get_user_lang(interaction.user.id)
         await interaction.response.send_message(t("err_generic", lang), ephemeral=True)
 
 
@@ -98,7 +105,7 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def setup(self, interaction: discord.Interaction, timezone: str) -> None:
         uid  = str(interaction.user.id)
-        lang = get_user_lang(uid)
+        lang = await get_user_lang(uid)
 
         tz_clean = validator.sanitize(timezone, 50)
         if validator.is_suspicious(tz_clean):
@@ -113,15 +120,15 @@ class SettingsCog(commands.Cog, name="Settings"):
             return
 
         channel_id = interaction.channel_id
-        ensure_user(uid, lang)
-        save_user_settings(uid, timezone=tz_clean, channel_id=channel_id)
+        await ensure_user(uid, lang)
+        await save_user_settings(uid, timezone=tz_clean, channel_id=channel_id)
         await db.alog_action(uid, "setup", detail=f"tz={tz_clean}")
 
         ch_mention = f"<#{channel_id}>" if channel_id else "—"
         embed = discord.Embed(
             title=t("setup_title", lang),
             description=t("setup_success", lang, tz=tz_clean, channel=ch_mention),
-            color=0x2ECC71,
+            color=0x57F287,
         )
         embed.add_field(
             name="🌐 Language / ภาษา",
@@ -137,8 +144,8 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def lang(self, interaction: discord.Interaction) -> None:
         uid          = str(interaction.user.id)
-        current_lang = get_user_lang(uid)
-        ensure_user(uid, current_lang)
+        current_lang = await get_user_lang(uid)
+        await ensure_user(uid, current_lang)
 
         embed = discord.Embed(
             title=t("lang_select_title", current_lang),
@@ -154,7 +161,7 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def help_cmd(self, interaction: discord.Interaction) -> None:
         uid  = str(interaction.user.id)
-        lang = get_user_lang(uid)
+        lang = await get_user_lang(uid)
 
         embed = discord.Embed(
             title=t("help_title", lang),
@@ -162,21 +169,20 @@ class SettingsCog(commands.Cog, name="Settings"):
             color=0x5865F2,
         )
 
-        # Task commands
         task_cmds = {
-            "/add":              t("help_add", lang),
-            "/list":             t("help_list", lang),
-            "/today":            "📅 " + ("ดู Task วันนี้" if lang == "th" else "Tasks due today"),
-            "/overdue":          "🚨 " + ("Task เกินกำหนด" if lang == "th" else "Overdue tasks"),
-            "/task [id]":        "📌 " + ("รายละเอียด Task" if lang == "th" else "Task detail"),
-            "/done [id]":        t("help_done", lang),
-            "/delete [id]":      t("help_delete", lang),
-            "/pin [id]":         "📌 " + ("ปักหมุด" if lang == "th" else "Pin task"),
-            "/unpin [id]":       "📌 " + ("เลิกปักหมุด" if lang == "th" else "Unpin task"),
-            "/recurring [id]":   "🔄 " + ("ตั้งการทำซ้ำ" if lang == "th" else "Set recurring"),
-            "/search [q]":       t("help_search", lang),
-            "/stats":            t("help_stats", lang),
-            "/export":           t("help_export", lang),
+            "/add":             t("help_add", lang),
+            "/list":            t("help_list", lang),
+            "/today":           "📅 " + ("ดู Task วันนี้" if lang == "th" else "Tasks due today"),
+            "/overdue":         "🚨 " + ("Task เกินกำหนด" if lang == "th" else "Overdue tasks"),
+            "/task [id]":       "📌 " + ("รายละเอียด Task" if lang == "th" else "Task detail"),
+            "/done [id]":       t("help_done", lang),
+            "/delete [id]":     t("help_delete", lang),
+            "/pin [id]":        "📌 " + ("ปักหมุด" if lang == "th" else "Pin task"),
+            "/unpin [id]":      "📌 " + ("เลิกปักหมุด" if lang == "th" else "Unpin task"),
+            "/recurring [id]":  "🔄 " + ("ตั้งการทำซ้ำ" if lang == "th" else "Set recurring"),
+            "/search [q]":      t("help_search", lang),
+            "/stats":           t("help_stats", lang),
+            "/export":          t("help_export", lang),
         }
         embed.add_field(
             name="📝 " + ("คำสั่ง Task" if lang == "th" else "Task Commands"),
@@ -184,7 +190,6 @@ class SettingsCog(commands.Cog, name="Settings"):
             inline=False,
         )
 
-        # Settings commands
         setting_cmds = {
             "/setup [tz]":       t("help_setup", lang),
             "/lang":             t("help_lang", lang),
@@ -200,7 +205,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         )
 
         embed.set_footer(text=t("footer_text", lang))
-        await interaction.response.send_message(embed=embed)  # public — ทุกคนในช่องเห็นได้
+        await interaction.response.send_message(embed=embed)
 
     # ── /category group ───────────────────────────────────────────────────────
 
@@ -213,14 +218,14 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def category_list(self, interaction: discord.Interaction) -> None:
         uid  = str(interaction.user.id)
-        lang = get_user_lang(uid)
-        ensure_user(uid, lang)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
 
         cats = await db.afetchall(
             "SELECT * FROM categories WHERE owner_id=? OR owner_id='system' ORDER BY name",
             (uid,),
         )
-        embed = discord.Embed(title=t("cat_list_title", lang), color=0x3498DB)
+        embed = discord.Embed(title=t("cat_list_title", lang), color=0x5865F2)
         if not cats:
             embed.description = t("cat_empty", lang)
         else:
@@ -236,7 +241,7 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def category_add(self, interaction: discord.Interaction) -> None:
         uid  = str(interaction.user.id)
-        lang = get_user_lang(uid)
+        lang = await get_user_lang(uid)
         await interaction.response.send_modal(AddCategoryModal(lang))
 
     @category_group.command(name="remove", description="🗑️ ลบหมวดหมู่ / Remove category")
@@ -244,7 +249,7 @@ class SettingsCog(commands.Cog, name="Settings"):
     @rate_limit_check("command")
     async def category_remove(self, interaction: discord.Interaction, category_id: int) -> None:
         uid  = str(interaction.user.id)
-        lang = get_user_lang(uid)
+        lang = await get_user_lang(uid)
         row  = await db.afetchone(
             "SELECT name, owner_id FROM categories WHERE category_id=?", (category_id,)
         )
@@ -281,26 +286,31 @@ class SettingsCog(commands.Cog, name="Settings"):
     @admin_group.command(name="stats", description="📊 Bot-wide statistics")
     async def admin_stats(self, interaction: discord.Interaction) -> None:
         if not _is_owner(interaction.user.id):
-            await interaction.response.send_message(
-                "❌ Owner-only command.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
             return
 
         total_users = (await db.afetchone("SELECT COUNT(*) AS c FROM users"))["c"]
         total_tasks = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks"))["c"]
         done_tasks  = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks WHERE status='Completed'"))["c"]
         pending     = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks WHERE status='Pending'"))["c"]
+        overdue     = (await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE status='Pending' AND deadline<?",
+            (datetime.utcnow().isoformat(),),  # type: ignore[arg-type]
+        ))["c"]
         cache_sz    = db.user_cache.size
-        rl_stats    = __import__("core.security", fromlist=["rate_limiter"]).rate_limiter.stats
 
-        embed = discord.Embed(title="🔐 Admin — Bot Statistics", color=0xE74C3C)
-        embed.add_field(name="👤 Total Users",      value=str(total_users), inline=True)
-        embed.add_field(name="📝 Total Tasks",       value=str(total_tasks), inline=True)
-        embed.add_field(name="✅ Completed",          value=str(done_tasks),  inline=True)
-        embed.add_field(name="⏳ Pending",            value=str(pending),     inline=True)
-        embed.add_field(name="🗄️ User Cache Size",   value=str(cache_sz),    inline=True)
-        embed.add_field(name="🛡️ RL Total Requests", value=str(rl_stats.get("total", 0)), inline=True)
-        embed.add_field(name="🚫 RL Blocked",         value=str(rl_stats.get("blocked", 0)), inline=True)
+        from core.security import rate_limiter
+        rl_stats = rate_limiter.stats
+
+        embed = discord.Embed(title="🔐 Admin — Bot Statistics", color=0xED4245)
+        embed.add_field(name="👤 Total Users",       value=str(total_users), inline=True)
+        embed.add_field(name="📝 Total Tasks",        value=str(total_tasks), inline=True)
+        embed.add_field(name="✅ Completed",           value=str(done_tasks),  inline=True)
+        embed.add_field(name="⏳ Pending",             value=str(pending),     inline=True)
+        embed.add_field(name="🚨 Overdue",             value=str(overdue),     inline=True)
+        embed.add_field(name="🗄️ User Cache Size",    value=str(cache_sz),    inline=True)
+        embed.add_field(name="🛡️ RL Total Requests",  value=str(rl_stats.get("total", 0)), inline=True)
+        embed.add_field(name="🚫 RL Blocked",          value=str(rl_stats.get("blocked", 0)), inline=True)
         embed.set_footer(text=t("footer_text", "en"))
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

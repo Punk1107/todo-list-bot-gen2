@@ -1,12 +1,10 @@
 """
-handlers/reminders_cog.py — Background loops v2
-Improvements:
-  - Smart reminder: only notify users with notify_enabled=1
-  - Daily digest at configured hour (daily_digest=1)
-  - Recurring task renewal is idempotent
-  - Cache purge runs every 10 min (not 15)
-  - All DB calls async
-  - Structured logging with task context
+handlers/reminders_cog.py — Background loops v3 (System Upgrade)
+Changes:
+  - get_user_lang is now awaited (it is async)
+  - Reminder embed improved with richer display
+  - Daily digest now shows priority icons in correct order (high=🔴 first)
+  - All DB calls async, structured logging preserved
 """
 from __future__ import annotations
 
@@ -21,12 +19,15 @@ from core.database import db
 from core.config import config
 from locales.i18n import t
 from utils.helpers import (
-    get_user_lang, format_deadline, time_left_str, calculate_next_deadline,
+    format_deadline, time_left_str, calculate_next_deadline,
 )
 
 log = logging.getLogger(__name__)
 
 UTC = pytz.utc
+
+# Priority icons: index = priority value (0=low, 1=medium, 2=high)
+_PRIO_ICONS = ["🟢", "🟡", "🔴"]
 
 
 class RemindersCog(commands.Cog, name="Reminders"):
@@ -34,7 +35,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self._digest_sent_today: set[str] = set()  # track which users got digest
+        self._digest_sent_today: set[str] = set()
+        self._digest_day: str = ""
 
         # Configure intervals from config
         self.reminder_loop.change_interval(
@@ -72,12 +74,12 @@ class RemindersCog(commands.Cog, name="Reminders"):
     @tasks.loop(minutes=30)
     async def reminder_loop(self) -> None:
         """Send reminders for tasks due soon or overdue (respects notify_enabled)."""
-        now           = datetime.now(UTC)
+        now            = datetime.now(UTC)
         soon_threshold = (now + timedelta(hours=24)).isoformat()
         remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).isoformat()
 
         rows = await db.afetchall(
-            """SELECT t.task_id, t.task, t.deadline, t.is_pinned,
+            """SELECT t.task_id, t.task, t.deadline, t.is_pinned, t.priority,
                       u.user_id, u.channel_id, u.timezone, u.lang, u.notify_enabled
                FROM tasks t
                JOIN users u ON t.owner_id = u.user_id
@@ -108,19 +110,33 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 is_overdue = dt < now
 
                 if is_overdue:
-                    msg = t("reminder_overdue", lang,
-                            task=row["task"], deadline=format_deadline(row["deadline"], tz_name))
-                    color = 0xE74C3C
+                    msg   = t("reminder_overdue", lang,
+                              task=row["task"], deadline=format_deadline(row["deadline"], tz_name))
+                    color = 0xED4245
+                    icon  = "🚨"
                 else:
-                    msg = t("reminder_due_soon", lang,
-                            task=row["task"], time_left=time_left_str(row["deadline"]))
-                    color = 0xF39C12
+                    msg   = t("reminder_due_soon", lang,
+                              task=row["task"], time_left=time_left_str(row["deadline"]))
+                    color = 0xE67E22
+                    icon  = "⏰"
 
                 pin_note = " 📌" if row["is_pinned"] else ""
+                prio_icon = _PRIO_ICONS[row["priority"]] if row["priority"] in (0, 1, 2) else "🟢"
+
                 embed = discord.Embed(
-                    title=f"{t('reminder_title', lang)}{pin_note}",
+                    title=f"{icon} {t('reminder_title', lang)}{pin_note}",
                     description=msg,
                     color=color,
+                )
+                embed.add_field(
+                    name="📅 Deadline",
+                    value=f"`{format_deadline(row['deadline'], tz_name)}`  ({time_left_str(row['deadline'])})",
+                    inline=True,
+                )
+                embed.add_field(
+                    name="⚡ Priority",
+                    value=prio_icon,
+                    inline=True,
                 )
                 embed.set_footer(text=t("footer_text", lang))
 
@@ -144,8 +160,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
     @tasks.loop(minutes=60)
     async def recurring_loop(self) -> None:
         """Renew recurring tasks whose deadline has passed (idempotent check)."""
-        now      = datetime.now(UTC).isoformat()
-        expired  = await db.afetchall(
+        now     = datetime.now(UTC).isoformat()
+        expired = await db.afetchall(
             """SELECT * FROM tasks
                WHERE status='Pending' AND recurring IS NOT NULL AND deadline < ?""",
             (now,),
@@ -166,6 +182,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     (row["task"], nxt, row["priority"], "Pending", row["recurring"],
                      row["category_id"], row["tags"], row["description"], row["owner_id"]),
                 )
+                db.invalidate_stats(row["owner_id"])
                 log.info("Recurring task renewed: id=%d owner=%s next=%s",
                          row["task_id"], row["owner_id"], nxt[:16])
             except Exception as exc:
@@ -191,11 +208,10 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
         # Reset tracking at midnight
         today_key = now.strftime("%Y-%m-%d")
-        if getattr(self, "_digest_day", None) != today_key:
+        if self._digest_day != today_key:
             self._digest_sent_today = set()
             self._digest_day = today_key
 
-        # Fetch users with digest enabled + a notification channel
         users = await db.afetchall(
             """SELECT user_id, channel_id, timezone, lang
                FROM users
@@ -214,7 +230,6 @@ class RemindersCog(commands.Cog, name="Reminders"):
             lang    = user["lang"] or "th"
             tz_name = user["timezone"] or "Asia/Bangkok"
 
-            # Today's window
             try:
                 local_tz   = pytz.timezone(tz_name)
                 local_now  = now.astimezone(local_tz)
@@ -227,21 +242,22 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 """SELECT task_id, task, deadline, priority FROM tasks
                    WHERE owner_id=? AND status='Pending'
                      AND deadline BETWEEN ? AND ?
-                   ORDER BY deadline ASC LIMIT 10""",
+                   ORDER BY priority DESC, deadline ASC LIMIT 10""",
                 (uid, day_start, day_end),
             )
-            overdue_count = (await db.afetchone(
+            overdue_row = await db.afetchone(
                 "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=? AND status='Pending' AND deadline<?",
                 (uid, now.isoformat()),
-            ))["c"]
+            )
+            overdue_count = overdue_row["c"] if overdue_row else 0
 
             embed = discord.Embed(
                 title=f"☀️ {'สรุป Task วันนี้' if lang == 'th' else 'Daily Task Digest'} — {local_now.strftime('%d/%m/%Y')}",
-                color=0x3498DB,
+                color=0x5865F2,
             )
             if today_tasks:
                 lines = [
-                    f"{'🔴🟡🟢'[r['priority']]} `#{r['task_id']}` {r['task'][:50]} — `{format_deadline(r['deadline'], tz_name)}`"
+                    f"{_PRIO_ICONS[r['priority']]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
                     for r in today_tasks
                 ]
                 embed.add_field(
@@ -250,7 +266,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     inline=False,
                 )
             else:
-                embed.description = "✅ " + ("ไม่มี Task วันนี้!" if lang == "th" else "No tasks due today!")
+                embed.description = "> ✅ " + ("ไม่มี Task วันนี้!" if lang == "th" else "No tasks due today!")
 
             if overdue_count > 0:
                 embed.add_field(
