@@ -137,7 +137,8 @@ async def on_app_command_error(
 ) -> None:
     from utils.helpers import get_user_lang
     from locales.i18n import t
-    lang = get_user_lang(interaction.user.id)
+    # get_user_lang is now async
+    lang = await get_user_lang(interaction.user.id)
 
     if isinstance(error, discord.app_commands.CommandOnCooldown):
         msg = t("rate_limited", lang, seconds=error.retry_after)
@@ -145,6 +146,10 @@ async def on_app_command_error(
         msg = t("permission_denied", lang)
     elif isinstance(error, discord.app_commands.BotMissingPermissions):
         msg = "❌ I'm missing required permissions in this channel."
+    elif isinstance(error, discord.app_commands.NoPrivateMessage):
+        msg = "❌ This command cannot be used in DMs."
+    elif isinstance(error, discord.app_commands.CommandNotFound):
+        return   # Silently ignore — can happen during deploy
     else:
         log.error("Unhandled app_command_error: %s", error, exc_info=True)
         msg = t("err_generic", lang)
@@ -154,8 +159,10 @@ async def on_app_command_error(
             await interaction.followup.send(msg, ephemeral=True)
         else:
             await interaction.response.send_message(msg, ephemeral=True)
-    except Exception:
-        pass
+    except discord.InteractionResponded:
+        pass   # interaction already responded — safe to ignore
+    except Exception as exc:
+        log.debug("on_app_command_error: could not reply: %s", exc)
 
 
 @bot.event
