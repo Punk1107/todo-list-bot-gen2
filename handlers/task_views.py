@@ -188,6 +188,7 @@ class AddTaskModal(ui.Modal):
             )
             task_id = cur.lastrowid
             await db.alog_action(uid, "task_created", str(task_id), task_name)
+            db.invalidate_stats(uid)   # keep stats cache fresh
         except Exception as exc:
             log.error("Task insert failed: %s", exc)
             await _safe_respond(interaction, t("err_db", lang))
@@ -359,6 +360,7 @@ class DeleteConfirmView(ui.View):
                 (self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_deleted", str(self.task_id))
+            db.invalidate_stats(self.uid)   # keep stats cache fresh
         except Exception as exc:
             log.error("Task delete failed: %s", exc)
             await _safe_respond(interaction, t("err_db", self.lang))
@@ -439,6 +441,7 @@ class TaskActionView(ui.View):
             (self.task_id,),
         )
         await db.alog_action(self.uid, "task_completed", str(self.task_id))
+        db.invalidate_stats(self.uid)   # keep stats fresh
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         self.stop()
@@ -516,9 +519,55 @@ class TaskActionView(ui.View):
             view=confirm, ephemeral=True,
         )
 
+    # ── Snooze (+1 Day) ────────────────────────────────────────────────────────────────
+
+    @ui.button(label="🛠️ Snooze +1d", style=discord.ButtonStyle.secondary, row=1)
+    async def snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = get_user_lang(interaction.user.id)
+        if not self._check_owner(interaction):
+            await _safe_respond(interaction, t("permission_denied", lang))
+            return
+        row = await db.afetchone(
+            "SELECT deadline, status FROM tasks WHERE task_id=?", (self.task_id,)
+        )
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
+        if row["status"] != "Pending":
+            await _safe_respond(
+                interaction,
+                "⚠️ " + ("เลื่อนได้เฉพาะ Task ที่ยังไม่เสร็จ" if lang == "th" else "Can only snooze Pending tasks"),
+            )
+            return
+        try:
+            from datetime import timedelta
+            import pytz as _pytz
+            dt = datetime.fromisoformat(row["deadline"])
+            if dt.tzinfo is None:
+                dt = _pytz.utc.localize(dt)
+            new_dl = (dt + timedelta(days=1)).isoformat()
+            await db.aexecute(
+                "UPDATE tasks SET deadline=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+                (new_dl, self.task_id, self.uid),
+            )
+            await db.alog_action(self.uid, "task_snoozed", str(self.task_id), "+1d")
+            db.invalidate_stats(self.uid)
+            tz_name = get_user_timezone(self.uid)
+            from utils.helpers import format_deadline
+            new_dl_fmt = format_deadline(new_dl, tz_name)
+            snooze_msg = (
+                f"🛠️ Task **#{self.task_id}** เลื่อนเป็น `{new_dl_fmt}`"
+                if lang == "th" else
+                f"🛠️ Task **#{self.task_id}** snoozed to `{new_dl_fmt}`"
+            )
+            await _safe_respond(interaction, snooze_msg)
+        except Exception as exc:
+            log.error("Snooze failed task_id=%d: %s", self.task_id, exc)
+            await _safe_respond(interaction, t("err_generic", lang))
+
     # ── Add Subtask ───────────────────────────────────────────────────────────
 
-    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=1)
+    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=2)
     async def add_subtask(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -576,6 +625,7 @@ class TaskFilterSelect(ui.Select):
         view: TaskListView = self.view  # type: ignore[assignment]
         view.filter_status = self.values[0]
         view.page = 1
+        await interaction.response.defer()   # prevent 3-second timeout
         await view.update_message(interaction)
 
 
@@ -647,19 +697,22 @@ class TaskListView(ui.View):
         filter_label = t(f"tasks_filter_{self.filter_status}", self.lang)
         embed = build_task_list_embed(tasks, page, total_pages, self.lang, self.tz_name, filter_label)
         self._update_nav_buttons(page, total_pages)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.edit_original_response(embed=embed, view=self)
 
     @ui.button(emoji="◀", style=discord.ButtonStyle.secondary, custom_id="lv_prev", row=3)
     async def prev_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
         self.page -= 1
         await self.update_message(interaction)
 
     @ui.button(emoji="🔄", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
     async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
         await self.update_message(interaction)
 
     @ui.button(emoji="▶", style=discord.ButtonStyle.secondary, custom_id="lv_next", row=3)
     async def next_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
         self.page += 1
         await self.update_message(interaction)
 

@@ -65,7 +65,7 @@ def urgency_color(deadline_str: str, status: str) -> int:
 
 
 def urgency_badge(deadline_str: str, status: str) -> str:
-    """Return a text badge for urgency level."""
+    """Return a compact text badge for urgency level."""
     if status in ("Completed", "Cancelled"):
         return ""
     try:
@@ -325,14 +325,14 @@ def _recurring_label(recurring: Optional[str], lang: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_task_embed(row, lang: str, tz_name: str) -> discord.Embed:
-    """Build a rich, visually hierarchical embed for a single task."""
+    """Build a premium, visually hierarchical embed for a single task."""
     from core.database import db
 
-    task_id  = row["task_id"]
-    status   = row["status"]
-    deadline = row["deadline"]
-    priority = row["priority"]
-    is_pinned = row["is_pinned"] if "is_pinned" in row.keys() else 0
+    task_id   = row["task_id"]
+    status    = row["status"]
+    deadline  = row["deadline"]
+    priority  = row["priority"]
+    is_pinned = bool(row["is_pinned"]) if "is_pinned" in row.keys() else False
 
     # Determine effective status
     try:
@@ -349,20 +349,27 @@ def build_task_embed(row, lang: str, tz_name: str) -> discord.Embed:
     tl     = time_left_str(deadline)
     dl_fmt = format_deadline(deadline, tz_name)
 
+    # Title with pin and urgency badge on same line
     pin_prefix = "📌 " if is_pinned else ""
-
+    badge_suffix = f"  {badge}" if badge else ""
     embed = discord.Embed(
-        title=f"{pin_prefix}#{task_id} — {row['task'][:80]}",
+        title=f"{pin_prefix}#{task_id} — {row['task'][:80]}{badge_suffix}",
         color=color,
     )
 
-    # Row 1: Status | Priority | Badge
-    embed.add_field(name=t("task_detail_status", lang),   value=_status_label(status, lang), inline=True)
-    embed.add_field(name=t("task_detail_priority", lang), value=_prio_label(priority, lang), inline=True)
-    if badge:
-        embed.add_field(name="⚠️ Urgency", value=badge, inline=True)
+    # Row 1: Status | Priority
+    embed.add_field(
+        name=t("task_detail_status", lang),
+        value=_status_label(status, lang),
+        inline=True,
+    )
+    embed.add_field(
+        name=t("task_detail_priority", lang),
+        value=_prio_label(priority, lang),
+        inline=True,
+    )
 
-    # Row 2: Deadline
+    # Row 2: Deadline (full width)
     embed.add_field(
         name=t("task_detail_deadline", lang),
         value=f"📅 `{dl_fmt}`\n⏱️ {tl}",
@@ -422,20 +429,24 @@ def build_task_embed(row, lang: str, tz_name: str) -> discord.Embed:
             )
 
     created = (row["created_at"] or "")[:16]
-    embed.set_footer(text=f"ID #{task_id} | {t('footer_text', lang)} | {created}")
+    embed.set_footer(text=f"🆔 #{task_id}  •  {t('footer_text', lang)}  •  {created}")
     return embed
 
 
 def build_task_list_embed(tasks, page: int, total_pages: int,
                           lang: str, tz_name: str, filter_label: str) -> discord.Embed:
-    """Build a paginated task list embed with urgency indicators."""
+    """Build a premium paginated task list embed with urgency indicators."""
     embed = discord.Embed(
-        title=f"{t('tasks_title', lang)}  —  {filter_label}",
+        title=f"📋 {t('tasks_title', lang)}  ›  {filter_label}",
         color=0x5865F2,
     )
 
     if not tasks:
-        embed.description = t("tasks_empty", lang)
+        embed.description = (
+            "```\n"
+            f"  {t('tasks_empty', lang)}\n"
+            "```"
+        )
     else:
         now = datetime.now(pytz.utc)
         lines: list[str] = []
@@ -443,7 +454,7 @@ def build_task_list_embed(tasks, page: int, total_pages: int,
         for row in tasks:
             tid   = row["task_id"]
             name  = row["task"]
-            name_disp = (name[:52] + "…") if len(name) > 52 else name
+            name_disp = (name[:50] + "…") if len(name) > 50 else name
 
             # Urgency indicator
             try:
@@ -465,40 +476,55 @@ def build_task_list_embed(tasks, page: int, total_pages: int,
             tl       = time_left_str(row["deadline"])
 
             lines.append(
-                f"{status_icon} {prio_icon} `#{tid}`{pin_icon} **{name_disp}**\n"
-                f"  └─ `{dl_str}`  ({tl})"
+                f"{status_icon}{prio_icon}{pin_icon} **#{tid}** {name_disp}\n"
+                f"   ╰ 📅 `{dl_str}`  ·  ⏱️ `{tl}`"
             )
 
         embed.description = "\n".join(lines)
 
-    total_str = t("tasks_page", lang, page=page, total=total_pages)
-    embed.set_footer(text=f"{total_str}  |  {t('footer_text', lang)}")
+    page_str  = f"📄 {page} / {total_pages}"
+    embed.set_footer(text=f"{page_str}  ·  {t('footer_text', lang)}")
     return embed
 
 
 def build_stats_embed(stats: dict[str, int], lang: str, username: str) -> discord.Embed:
-    """Build a rich stats embed with progress bars."""
-    total = stats.get("total", 0)
-    done  = stats.get("completed", 0)
+    """Build a premium stats embed with progress bar and breakdown."""
+    total     = stats.get("total", 0)
+    done      = stats.get("completed", 0)
+    pending   = stats.get("pending", 0)
+    overdue   = stats.get("overdue", 0)
+    pinned    = stats.get("pinned", 0)
+    cancelled = stats.get("cancelled", 0)
+
+    # Choose a colour: green if doing well, orange if overdue exist, grey if nothing
+    if total == 0:
+        color = 0x95A5A6
+    elif overdue > 0:
+        color = 0xE67E22
+    else:
+        color = 0x2ECC71
 
     embed = discord.Embed(
-        title=f"📊 {t('stats_title', lang)} — {username}",
-        color=0x9B59B6,
+        title=f"📊 {t('stats_title', lang)}  ·  {username}",
+        color=color,
     )
-    embed.add_field(name=t("stats_total", lang),     value=f"**{total}**", inline=True)
-    embed.add_field(name=t("stats_completed", lang), value=f"**{done}**",  inline=True)
-    embed.add_field(name=t("stats_pending", lang),   value=f"**{stats.get('pending', 0)}**", inline=True)
-    embed.add_field(name=t("stats_overdue", lang),   value=f"**{stats.get('overdue', 0)}**", inline=True)
-    embed.add_field(name="📌 Pinned",                 value=f"**{stats.get('pinned', 0)}**",  inline=True)
-    embed.add_field(name="❌ Cancelled",               value=f"**{stats.get('cancelled', 0)}**", inline=True)
 
-    # Completion rate with progress bar
+    # Completion progress bar (full width)
     bar = progress_bar(done, total)
     embed.add_field(
         name=t("stats_completion_rate", lang),
         value=bar,
         inline=False,
     )
+
+    # Task breakdown 3-across
+    embed.add_field(name=f"📝 {t('stats_total', lang)}",     value=f"**{total}**",     inline=True)
+    embed.add_field(name=f"✅ {t('stats_completed', lang)}", value=f"**{done}**",      inline=True)
+    embed.add_field(name=f"⏳ {t('stats_pending', lang)}",   value=f"**{pending}**",   inline=True)
+    embed.add_field(name=f"🚨 {t('stats_overdue', lang)}",   value=f"**{overdue}**",   inline=True)
+    embed.add_field(name="📌 Pinned",                        value=f"**{pinned}**",    inline=True)
+    embed.add_field(name="❌ Cancelled",                      value=f"**{cancelled}**", inline=True)
+
     embed.set_footer(text=t("footer_text", lang))
     return embed
 

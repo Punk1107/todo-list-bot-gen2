@@ -3,9 +3,11 @@ core/database.py — Thread-safe SQLite manager v2
 Improvements:
   - async wrappers via asyncio.to_thread (non-blocking event loop)
   - LRU-style UserCache with TTL (eliminates repeated DB round-trips)
+  - StatsCache with short TTL for /stats command (60s)
   - Connection pool with health checking
   - Append-only versioned migrations
   - Audit log + scheduled backup with rotation
+  - Retry mechanism for transient OperationalError (db locked)
 """
 from __future__ import annotations
 
@@ -109,6 +111,48 @@ class UserCache:
     def size(self) -> int:
         with self._lock:
             return len(self._store)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stats Cache  (short-lived per-user stats to avoid repeated heavy queries)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_STATS_CACHE_TTL = 60.0   # seconds
+
+
+@dataclass
+class _CachedStats:
+    data: dict
+    _expires: float = field(default_factory=lambda: time.monotonic() + _STATS_CACHE_TTL)
+
+    @property
+    def expired(self) -> bool:
+        return time.monotonic() > self._expires
+
+
+class StatsCache:
+    """Thread-safe short-lived stats cache to avoid hammering the DB on /stats."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, _CachedStats] = {}
+        self._lock = Lock()
+
+    def get(self, uid: str) -> Optional[dict]:
+        with self._lock:
+            entry = self._store.get(uid)
+            if entry and not entry.expired:
+                return entry.data
+            if entry:
+                del self._store[uid]
+            return None
+
+    def set(self, uid: str, data: dict) -> None:
+        with self._lock:
+            self._store[uid] = _CachedStats(data=data)
+
+    def invalidate(self, uid: str) -> None:
+        with self._lock:
+            self._store.pop(uid, None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,9 +319,13 @@ class DatabaseManager:
     - Connection pool
     - Automatic schema migrations
     - Async wrappers (asyncio.to_thread) — never blocks the event loop
-    - In-process UserCache
+    - In-process UserCache + StatsCache
     - Automatic backups
+    - Retry on transient OperationalError (database locked)
     """
+
+    _MAX_RETRIES = 3
+    _RETRY_DELAY = 0.1   # seconds (doubles each retry)
 
     def __init__(self) -> None:
         db_path = config.db.path
@@ -285,6 +333,7 @@ class DatabaseManager:
         self._db_path = db_path
         self._pool = ConnectionPool(db_path, size=config.db.pool_size)
         self.user_cache = UserCache()
+        self.stats_cache = StatsCache()
         self._migrate()
         log.info("DatabaseManager ready — %s (schema v%d)", db_path, SCHEMA_VERSION)
 
@@ -323,25 +372,50 @@ class DatabaseManager:
     # ── Synchronous core ──────────────────────────────────────────────────────
 
     def execute(self, sql: str, params: Sequence[Any] = ()) -> sqlite3.Cursor:
-        with self._pool.get() as conn:
-            try:
-                cur = conn.execute(sql, params)
-                conn.commit()
-                return cur
-            except sqlite3.Error as exc:
-                conn.rollback()
-                log.error("DB execute error: %s | SQL: %.200s", exc, sql)
-                raise
+        delay = self._RETRY_DELAY
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            with self._pool.get() as conn:
+                try:
+                    cur = conn.execute(sql, params)
+                    conn.commit()
+                    return cur
+                except sqlite3.OperationalError as exc:
+                    conn.rollback()
+                    if "locked" in str(exc).lower() and attempt < self._MAX_RETRIES:
+                        log.warning("DB locked, retry %d/%d in %.1fs", attempt, self._MAX_RETRIES, delay)
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    log.error("DB execute error: %s | SQL: %.200s", exc, sql)
+                    raise
+                except sqlite3.Error as exc:
+                    conn.rollback()
+                    log.error("DB execute error: %s | SQL: %.200s", exc, sql)
+                    raise
+        raise sqlite3.OperationalError("DB execute failed after retries")
 
     def executemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
-        with self._pool.get() as conn:
-            try:
-                conn.executemany(sql, params_list)
-                conn.commit()
-            except sqlite3.Error as exc:
-                conn.rollback()
-                log.error("DB executemany error: %s | SQL: %.200s", exc, sql)
-                raise
+        delay = self._RETRY_DELAY
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            with self._pool.get() as conn:
+                try:
+                    conn.executemany(sql, params_list)
+                    conn.commit()
+                    return
+                except sqlite3.OperationalError as exc:
+                    conn.rollback()
+                    if "locked" in str(exc).lower() and attempt < self._MAX_RETRIES:
+                        log.warning("DB locked (executemany), retry %d/%d", attempt, self._MAX_RETRIES)
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    log.error("DB executemany error: %s | SQL: %.200s", exc, sql)
+                    raise
+                except sqlite3.Error as exc:
+                    conn.rollback()
+                    log.error("DB executemany error: %s | SQL: %.200s", exc, sql)
+                    raise
+        raise sqlite3.OperationalError("DB executemany failed after retries")
 
     def fetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[sqlite3.Row]:
         with self._pool.get() as conn:
@@ -418,9 +492,14 @@ class DatabaseManager:
             oldest.unlink(missing_ok=True)
             log.info("Purged old backup: %s", oldest)
 
-    # ── Stats helper (single query) ───────────────────────────────────────────
+    # ── Stats helper (single query, with 60s cache) ───────────────────────────
 
     async def user_task_stats(self, uid: str) -> dict[str, int]:
+        # Serve from cache if fresh
+        cached = self.stats_cache.get(uid)
+        if cached is not None:
+            return cached
+
         now = datetime.utcnow().isoformat()
         row = await self.afetchone(
             """SELECT
@@ -434,10 +513,17 @@ class DatabaseManager:
             {"now": now, "uid": uid},
         )
         if not row:
-            return {"total": 0, "completed": 0, "pending": 0,
-                    "cancelled": 0, "overdue": 0, "pinned": 0}
-        return {k: int(row[k] or 0) for k in
-                ("total", "completed", "pending", "cancelled", "overdue", "pinned")}
+            result = {"total": 0, "completed": 0, "pending": 0,
+                      "cancelled": 0, "overdue": 0, "pinned": 0}
+        else:
+            result = {k: int(row[k] or 0) for k in
+                      ("total", "completed", "pending", "cancelled", "overdue", "pinned")}
+        self.stats_cache.set(uid, result)
+        return result
+
+    def invalidate_stats(self, uid: str) -> None:
+        """Call this after any task mutation to keep stats fresh."""
+        self.stats_cache.invalidate(uid)
 
     # ── Graceful shutdown ─────────────────────────────────────────────────────
 

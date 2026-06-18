@@ -162,8 +162,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 await db.aexecute(
                     """INSERT INTO tasks (task, deadline, priority, status, recurring,
                        category_id, tags, description, owner_id)
-                       VALUES (?,?,'Pending',?,?,?,?,?,?)""",
-                    (row["task"], nxt, row["priority"], row["recurring"],
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (row["task"], nxt, row["priority"], "Pending", row["recurring"],
                      row["category_id"], row["tags"], row["description"], row["owner_id"]),
                 )
                 log.info("Recurring task renewed: id=%d owner=%s next=%s",
