@@ -80,6 +80,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang    = get_user_lang(uid)
         tz_name = get_user_timezone(uid)
         ensure_user(uid, lang)
+        await interaction.response.defer()   # prevent 3-second timeout
 
         now  = datetime.now(pytz.utc)
         # Day window in UTC
@@ -101,13 +102,22 @@ class TasksCog(commands.Cog, name="Tasks"):
         if not tasks:
             embed.description = t("tasks_empty", lang)
         else:
-            lines = [
-                f"{'🚨' if False else '⏳'} `#{r['task_id']}` **{r['task'][:55]}** — `{format_deadline(r['deadline'], tz_name)}`"
-                for r in tasks
-            ]
+            lines = []
+            for r in tasks:
+                try:
+                    dt = datetime.fromisoformat(r["deadline"])
+                    if dt.tzinfo is None:
+                        dt = pytz.utc.localize(dt)
+                    is_overdue = dt < now
+                except Exception:
+                    is_overdue = False
+                icon = "🚨" if is_overdue else "⏳"
+                lines.append(
+                    f"{icon} `#{r['task_id']}` **{r['task'][:55]}** — `{format_deadline(r['deadline'], tz_name)}`"
+                )
             embed.description = "\n".join(lines)
             embed.set_footer(text=f"{len(tasks)} task(s) today  |  {t('footer_text', lang)}")
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /overdue — all overdue tasks
@@ -120,6 +130,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang    = get_user_lang(uid)
         tz_name = get_user_timezone(uid)
         ensure_user(uid, lang)
+        await interaction.response.defer()   # prevent 3-second timeout
 
         now   = datetime.now(pytz.utc).isoformat()
         tasks = await db.afetchall(
@@ -135,12 +146,12 @@ class TasksCog(commands.Cog, name="Tasks"):
         else:
             lines = [
                 f"🚨 `#{r['task_id']}` **{r['task'][:55]}**\n"
-                f"  └─ {format_deadline(r['deadline'], tz_name)}  ({time_left_str(r['deadline'])})"
+                f"  ╰─ {format_deadline(r['deadline'], tz_name)}  ({time_left_str(r['deadline'])})"
                 for r in tasks
             ]
             embed.description = "\n".join(lines)
             embed.set_footer(text=f"⚠️ {len(tasks)} overdue  |  {t('footer_text', lang)}")
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /task — detail view by ID
@@ -201,6 +212,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             (task_id, uid),
         )
         await db.alog_action(uid, "task_completed", str(task_id))
+        db.invalidate_stats(uid)   # invalidate stats cache
 
         embed = discord.Embed(
             title=t("task_marked_done", lang, task_id=task_id),
@@ -333,6 +345,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         if validator.is_suspicious(q):
             await interaction.response.send_message(t("err_suspicious", lang), ephemeral=True)
             return
+        await interaction.response.defer()   # prevent 3-second timeout
 
         tasks = await db.afetchall(
             """SELECT * FROM tasks
@@ -361,7 +374,7 @@ class TasksCog(commands.Cog, name="Tasks"):
                 lines.append(f"{icon} `#{row['task_id']}`{pin} **{name}**  `{format_deadline(row['deadline'], tz_name)}`")
             embed.description = "\n".join(lines)
         embed.set_footer(text=t("footer_text", lang))
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /stats  (single-query, with progress bar)
