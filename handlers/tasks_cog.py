@@ -26,6 +26,7 @@ from utils.helpers import (
 )
 from handlers.task_views import (
     AddTaskModal, TaskActionView, TaskListView, DeleteConfirmView, TASKS_PER_PAGE,
+    _send_dm,
 )
 
 log = logging.getLogger(__name__)
@@ -207,6 +208,14 @@ class TasksCog(commands.Cog, name="Tasks"):
         )
         embed.set_footer(text=t("footer_text", lang))
         await interaction.response.send_message(embed=embed)
+        # ── DM confirmation ────────────────────────────────────────────────
+        dm_embed = discord.Embed(
+            title="✅ " + ("ทำเครื่องหมาย Task เสร็จแล้ว!" if lang == "th" else "Task Marked Done!"),
+            description=f"Task **#{task_id}** ถูกทำเครื่องหมายว่าเสร็จแล้ว" if lang == "th" else f"Task **#{task_id}** has been marked as completed.",
+            color=0x2ECC71,
+        )
+        dm_embed.set_footer(text=t("footer_text", lang))
+        await _send_dm(interaction.user, embed=dm_embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /delete

@@ -49,6 +49,20 @@ async def _safe_respond(interaction: discord.Interaction, content: str, ephemera
         log.warning("safe_respond failed: %s", exc)
 
 
+async def _send_dm(user: discord.User | discord.Member, content: str = "",
+                   embed: discord.Embed | None = None) -> None:
+    """ส่ง DM ไปหา user โดยเงียบๆ ถ้า DM ปิดอยู่ก็ไม่ crash."""
+    try:
+        if embed:
+            await user.send(content=content or None, embed=embed)
+        else:
+            await user.send(content=content)
+    except discord.Forbidden:
+        log.debug("DM to %s blocked (DMs disabled)", user.id)
+    except Exception as exc:
+        log.warning("_send_dm failed for %s: %s", user.id, exc)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Modals
 # ─────────────────────────────────────────────────────────────────────────────
@@ -112,14 +126,18 @@ class AddTaskModal(ui.Modal):
         # ── Validate name ──────────────────────────────────────────────────
         ok, name_or_err = validator.validate_task_name(self.task_name.value)
         if not ok:
-            await _safe_respond(interaction, t(name_or_err, lang))
+            err_msg = t(name_or_err, lang)
+            await _safe_respond(interaction, err_msg)
+            await _send_dm(interaction.user, f"⚠️ **กรอกข้อมูลผิด / Input Error**\n{err_msg}")
             return
         task_name = name_or_err
 
         # ── Validate priority ──────────────────────────────────────────────
         prio_raw = (self.priority.value or "0").strip()
         if prio_raw not in ("0", "1", "2"):
-            await _safe_respond(interaction, t("task_invalid_priority", lang))
+            err_msg = t("task_invalid_priority", lang)
+            await _safe_respond(interaction, err_msg)
+            await _send_dm(interaction.user, f"⚠️ **กรอกข้อมูลผิด / Input Error**\n{err_msg}\n💡 Priority ต้องเป็น 0 (ต่ำ), 1 (กลาง), หรือ 2 (สูง)")
             return
         priority = int(prio_raw)
 
@@ -128,7 +146,9 @@ class AddTaskModal(ui.Modal):
         if self.description.value:
             ok_d, desc_or_err = validator.validate_description(self.description.value)
             if not ok_d:
-                await _safe_respond(interaction, t(desc_or_err, lang))
+                err_msg = t(desc_or_err, lang)
+                await _safe_respond(interaction, err_msg)
+                await _send_dm(interaction.user, f"⚠️ **กรอกข้อมูลผิด / Input Error**\n{err_msg}")
                 return
             description = desc_or_err
 
@@ -145,10 +165,14 @@ class AddTaskModal(ui.Modal):
         tz_name = get_user_timezone(uid)
         dt = parse_deadline(self.deadline.value, tz_name)
         if dt is None:
-            await _safe_respond(interaction, t("task_invalid_deadline", lang))
+            err_msg = t("task_invalid_deadline", lang)
+            await _safe_respond(interaction, err_msg)
+            await _send_dm(interaction.user, f"⚠️ **กรอกวันที่ผิด / Invalid Deadline**\n{err_msg}\n💡 รูปแบบที่รับได้: `DD/MM/YYYY HH:MM` เช่น `31/12/2026 23:59`")
             return
         if dt < datetime.now(pytz.utc):
-            await _safe_respond(interaction, t("task_past_deadline", lang))
+            err_msg = t("task_past_deadline", lang)
+            await _safe_respond(interaction, err_msg)
+            await _send_dm(interaction.user, f"⚠️ **กำหนดส่งต้องเป็นเวลาในอนาคต / Deadline must be in the future**\n{err_msg}")
             return
 
         # ── Insert ────────────────────────────────────────────────────────
@@ -176,6 +200,14 @@ class AddTaskModal(ui.Modal):
         await interaction.response.send_message(
             t(success_key, lang, task_id=task_id), embed=embed, view=view,
         )
+        # ── DM confirmation to user ────────────────────────────────────────
+        dm_embed = discord.Embed(
+            title="✅ " + ("สร้าง Task สำเร็จ!" if lang == "th" else "Task Created!"),
+            description=f"**#{task_id} — {task_name[:80]}**",
+            color=0x2ECC71,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("AddTaskModal.on_error: %s", error, exc_info=True)
@@ -283,6 +315,14 @@ class EditTaskModal(ui.Modal):
         await interaction.response.send_message(
             t("task_edit_success", lang), embed=embed, view=view,
         )
+        # ── DM confirmation ────────────────────────────────────────────────
+        dm_embed = discord.Embed(
+            title="✏️ " + ("แก้ไข Task สำเร็จ" if lang == "th" else "Task Updated"),
+            description=f"**#{self.task_id} — {name_or_err[:80]}**",
+            color=0x3498DB,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("EditTaskModal.on_error: %s", error, exc_info=True)
@@ -328,6 +368,14 @@ class DeleteConfirmView(ui.View):
             content=t("task_deleted", self.lang, task_id=self.task_id),
             embed=None, view=None,
         )
+        # ── DM confirmation ────────────────────────────────────────────────
+        dm_embed = discord.Embed(
+            title="🗑️ " + ("ลบ Task เรียบร้อย" if self.lang == "th" else "Task Deleted"),
+            description=f"Task **#{self.task_id}** ถูกลบแล้ว" if self.lang == "th" else f"Task **#{self.task_id}** has been permanently deleted.",
+            color=0xE74C3C,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
 
     @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -394,7 +442,16 @@ class TaskActionView(ui.View):
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         self.stop()
-        await _safe_respond(interaction, t("task_marked_done", lang, task_id=self.task_id))
+        success_msg = t("task_marked_done", lang, task_id=self.task_id)
+        await _safe_respond(interaction, success_msg)
+        # ── DM confirmation ────────────────────────────────────────────────
+        dm_embed = discord.Embed(
+            title="✅ " + ("ทำเครื่องหมาย Task เสร็จแล้ว!" if lang == "th" else "Task Marked Done!"),
+            description=f"Task **#{self.task_id}** ถูกทำเครื่องหมายว่าเสร็จแล้ว" if lang == "th" else f"Task **#{self.task_id}** has been marked as completed.",
+            color=0x2ECC71,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
 
     # ── Edit ─────────────────────────────────────────────────────────────────
 
@@ -429,7 +486,17 @@ class TaskActionView(ui.View):
         action_str = "task_unpinned" if not self.is_pinned else "task_pinned"
         await db.alog_action(self.uid, action_str, str(self.task_id))
         msg_key = "task_unpinned" if not self.is_pinned else "task_pinned"
-        await _safe_respond(interaction, t(msg_key, lang, task_id=self.task_id))
+        pin_msg = t(msg_key, lang, task_id=self.task_id)
+        await _safe_respond(interaction, pin_msg)
+        # ── DM confirmation ────────────────────────────────────────────────
+        pin_label = ("📌 ปักหมุด" if self.is_pinned else "📌 เลิกปักหมุด") if lang == "th" else ("📌 Pinned" if self.is_pinned else "📌 Unpinned")
+        dm_embed = discord.Embed(
+            title=pin_label,
+            description=f"Task **#{self.task_id}**",
+            color=0xF39C12,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
 
     # ── Delete ────────────────────────────────────────────────────────────────
 

@@ -200,7 +200,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         )
 
         embed.set_footer(text=t("footer_text", lang))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed)  # public — ทุกคนในช่องเห็นได้
 
     # ── /category group ───────────────────────────────────────────────────────
 
