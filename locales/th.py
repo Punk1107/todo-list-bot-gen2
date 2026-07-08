@@ -43,7 +43,7 @@ STRINGS = {
     "task_name_placeholder": "เช่น: ส่งรายงาน, ประชุมทีม",
     "task_deadline_label": "กำหนดส่ง (วัน/เดือน/ปี ชั่วโมง:นาที)",
     "task_deadline_placeholder": "เช่น: 25/12/2025 18:00",
-    "task_priority_label": "ความสำคัญ (0=ต่ำสุด … 7=วิกฤต)",
+    "task_priority_label": "⚡ ความสำคัญ",
     "task_priority_placeholder": "0–7  (0=ปกติ, 3=สำคัญ, 5=เร่งด่วน, 7=วิกฤต)",
     "task_desc_label": "รายละเอียด (ไม่บังคับ)",
     "task_desc_placeholder": "อธิบายรายละเอียดเพิ่มเติม...",
@@ -131,7 +131,7 @@ STRINGS = {
     "cat_created": "✅ สร้างหมวดหมู่ **{name}** สำเร็จ!",
     "cat_not_found": "❌ ไม่พบหมวดหมู่นี้",
 
-    # ─── Priority Labels ────────────────────────────────────────────────────────
+    # ─── Priority Labels ─────────────────────────────────────────────────
     "priority_0": "⬜ ปกติ",
     "priority_1": "🟦 ต่ำ",
     "priority_2": "🟩 ปานกลาง-ต่ำ",
@@ -140,6 +140,20 @@ STRINGS = {
     "priority_5": "🟥 สำคัญ",
     "priority_6": "🔴 เร่งด่วน",
     "priority_7": "🆘 วิกฤต",
+    # Dropdown descriptions
+    "priority_0_desc": "ไม่เร่ง ทำได้เมื่อไหร่ก็ได้",
+    "priority_1_desc": "รอได้ ไม่ต้องเร่ง",
+    "priority_2_desc": "ควรดำเนินการในสัปดาห์นี้",
+    "priority_3_desc": "ควรทำในสองสามวันได้",
+    "priority_4_desc": "สำคัญ ต้องทำภายในวันนี้หรือพรุ่งนี้",
+    "priority_5_desc": "เร่ง! ควรดำเนินการภายในไม่กี่ชั่วโมง",
+    "priority_6_desc": "ด่วนมาก! ดำเนินการทันที",
+    "priority_7_desc": "วิกฤต! ส่งผลสำคัญ ต้องแก้ไขทันที",
+    # Dropdown UI strings
+    "priority_select_placeholder": "⚡ เลือกระดับความสำคัญ...",
+    "priority_select_title": "⚡ เลือกระดับความสำคัญ",
+    "priority_select_desc": "กรุณาเลือกระดับความสำคัญของ Task ก่อนกรอกข้อมูลเพิ่มเติม",
+    "priority_changed": "✅ เปลี่ยนระดับความสำคัญสำเร็จ! Task **#{task_id}** เป็น **{priority}**",
     # Legacy aliases (kept for backward compat)
     "priority_low": "⬜ ปกติ",
     "priority_medium": "🟨 ปานกลาง",
