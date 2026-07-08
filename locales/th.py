@@ -43,8 +43,8 @@ STRINGS = {
     "task_name_placeholder": "เช่น: ส่งรายงาน, ประชุมทีม",
     "task_deadline_label": "กำหนดส่ง (วัน/เดือน/ปี ชั่วโมง:นาที)",
     "task_deadline_placeholder": "เช่น: 25/12/2025 18:00",
-    "task_priority_label": "ความสำคัญ (0=ปกติ, 1=สำคัญ, 2=ด่วนมาก)",
-    "task_priority_placeholder": "0, 1 หรือ 2",
+    "task_priority_label": "ความสำคัญ (0=ต่ำสุด … 7=วิกฤต)",
+    "task_priority_placeholder": "0–7  (0=ปกติ, 3=สำคัญ, 5=เร่งด่วน, 7=วิกฤต)",
     "task_desc_label": "รายละเอียด (ไม่บังคับ)",
     "task_desc_placeholder": "อธิบายรายละเอียดเพิ่มเติม...",
     "task_tags_label": "แท็ก (ไม่บังคับ)",
@@ -52,7 +52,7 @@ STRINGS = {
     "task_created": "✅ สร้าง Task สำเร็จ! ID: **#{task_id}**",
     "task_invalid_deadline": "❌ รูปแบบวันที่ไม่ถูกต้อง กรุณาใช้: `วว/ดด/ปปปป ชช:นน`\nตัวอย่าง: `25/12/2025 18:00`",
     "task_past_deadline": "❌ กำหนดส่งต้องเป็นเวลาในอนาคต",
-    "task_invalid_priority": "❌ ความสำคัญต้องเป็น 0, 1 หรือ 2 เท่านั้น",
+    "task_invalid_priority": "❌ ความสำคัญต้องเป็นตัวเลข 0–7 เท่านั้น",
     "task_name_too_long": "❌ ชื่อ Task ยาวเกินไป (สูงสุด 200 ตัวอักษร)",
     "task_desc_too_long": "❌ รายละเอียดยาวเกินไป (สูงสุด 1000 ตัวอักษร)",
 
@@ -132,9 +132,18 @@ STRINGS = {
     "cat_not_found": "❌ ไม่พบหมวดหมู่นี้",
 
     # ─── Priority Labels ────────────────────────────────────────────────────────
-    "priority_low": "🟢 ปกติ",
-    "priority_medium": "🟡 สำคัญ",
-    "priority_high": "🔴 ด่วนมาก",
+    "priority_0": "⬜ ปกติ",
+    "priority_1": "🟦 ต่ำ",
+    "priority_2": "🟩 ปานกลาง-ต่ำ",
+    "priority_3": "🟨 ปานกลาง",
+    "priority_4": "🟧 ค่อนข้างสำคัญ",
+    "priority_5": "🟥 สำคัญ",
+    "priority_6": "🔴 เร่งด่วน",
+    "priority_7": "🆘 วิกฤต",
+    # Legacy aliases (kept for backward compat)
+    "priority_low": "⬜ ปกติ",
+    "priority_medium": "🟨 ปานกลาง",
+    "priority_high": "🔴 เร่งด่วน",
 
     # ─── Status Labels ──────────────────────────────────────────────────────────
     "status_pending": "⏳ รอดำเนินการ",

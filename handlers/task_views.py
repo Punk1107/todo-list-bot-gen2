@@ -151,7 +151,7 @@ class AddTaskModal(ui.Modal):
 
         # ── Validate priority ────────────────────────────────────────────────
         prio_raw = (self.priority.value or "0").strip()
-        if prio_raw not in ("0", "1", "2"):
+        if not prio_raw.isdigit() or int(prio_raw) not in range(8):
             err_msg = t("task_invalid_priority", lang)
             await _safe_respond(interaction, err_msg)
             return
@@ -285,7 +285,7 @@ class EditTaskModal(ui.Modal):
             return
 
         prio_raw = self.priority.value.strip()
-        if prio_raw not in ("0", "1", "2"):
+        if not prio_raw.isdigit() or int(prio_raw) not in range(8):
             await _safe_respond(interaction, t("task_invalid_priority", lang))
             return
 
