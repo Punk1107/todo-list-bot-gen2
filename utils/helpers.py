@@ -306,7 +306,16 @@ def calculate_next_deadline(deadline_str: str, recurring: str) -> Optional[str]:
 # Label helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PRIORITY_KEYS = {0: "priority_low", 1: "priority_medium", 2: "priority_high"}
+_PRIORITY_KEYS = {
+    0: "priority_0",
+    1: "priority_1",
+    2: "priority_2",
+    3: "priority_3",
+    4: "priority_4",
+    5: "priority_5",
+    6: "priority_6",
+    7: "priority_7",
+}
 _STATUS_KEYS = {
     "Pending":   "status_pending",
     "Completed": "status_completed",
@@ -321,7 +330,7 @@ _RECURRING_KEYS = {
 
 
 def _prio_label(priority: int, lang: str) -> str:
-    return t(_PRIORITY_KEYS.get(priority, "priority_low"), lang)
+    return t(_PRIORITY_KEYS.get(priority, "priority_0"), lang)
 
 
 def _status_label(status: str, lang: str) -> str:
@@ -475,7 +484,8 @@ def build_task_list_embed(
             except Exception:
                 is_overdue = False
 
-            prio_icon   = ["🟢", "🟡", "🔴"][row["priority"]]
+            _PRIO_ICONS = ["⬜", "🟦", "🟩", "🟨", "🟧", "🟥", "🔴", "🆘"]
+            prio_icon = _PRIO_ICONS[min(row["priority"], 7)]
             if is_overdue:
                 status_icon = "🚨"
             elif row["status"] == "Completed":

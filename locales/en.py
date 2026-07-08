@@ -43,8 +43,8 @@ STRINGS = {
     "task_name_placeholder": "e.g. Submit report, Team meeting",
     "task_deadline_label": "Deadline (DD/MM/YYYY HH:MM)",
     "task_deadline_placeholder": "e.g. 25/12/2025 18:00",
-    "task_priority_label": "Priority (0=Normal, 1=Important, 2=Urgent)",
-    "task_priority_placeholder": "0, 1 or 2",
+    "task_priority_label": "Priority (0=Lowest … 7=Critical)",
+    "task_priority_placeholder": "0–7  (0=Normal, 3=Medium, 5=Important, 7=Critical)",
     "task_desc_label": "Description (optional)",
     "task_desc_placeholder": "Additional details...",
     "task_tags_label": "Tags (optional)",
@@ -52,7 +52,7 @@ STRINGS = {
     "task_created": "✅ Task created successfully! ID: **#{task_id}**",
     "task_invalid_deadline": "❌ Invalid date format. Please use: `DD/MM/YYYY HH:MM`\nExample: `25/12/2025 18:00`",
     "task_past_deadline": "❌ Deadline must be in the future.",
-    "task_invalid_priority": "❌ Priority must be 0, 1 or 2.",
+    "task_invalid_priority": "❌ Priority must be a number between 0 and 7.",
     "task_name_too_long": "❌ Task name is too long (max 200 characters).",
     "task_desc_too_long": "❌ Description is too long (max 1000 characters).",
 
@@ -132,8 +132,17 @@ STRINGS = {
     "cat_not_found": "❌ Category not found.",
 
     # ─── Priority Labels ────────────────────────────────────────────────────────
-    "priority_low": "🟢 Normal",
-    "priority_medium": "🟡 Important",
+    "priority_0": "⬜ Normal",
+    "priority_1": "🟦 Low",
+    "priority_2": "🟩 Medium-Low",
+    "priority_3": "🟨 Medium",
+    "priority_4": "🟧 Medium-High",
+    "priority_5": "🟥 Important",
+    "priority_6": "🔴 Urgent",
+    "priority_7": "🆘 Critical",
+    # Legacy aliases (kept for backward compat)
+    "priority_low": "⬜ Normal",
+    "priority_medium": "🟨 Medium",
     "priority_high": "🔴 Urgent",
 
     # ─── Status Labels ──────────────────────────────────────────────────────────
