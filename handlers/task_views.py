@@ -481,6 +481,8 @@ class _PriorityForAddSelect(ui.Select):
                          category_id=self.category_id,
                          parent_task_id=self.parent_task_id)
         )
+        # Stop the view so it doesn't trigger on_timeout and overwrite the message later!
+        self.view.stop()
 
 
 class PrioritySelectView(ui.View):
