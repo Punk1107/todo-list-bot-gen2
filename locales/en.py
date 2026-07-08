@@ -43,7 +43,7 @@ STRINGS = {
     "task_name_placeholder": "e.g. Submit report, Team meeting",
     "task_deadline_label": "Deadline (DD/MM/YYYY HH:MM)",
     "task_deadline_placeholder": "e.g. 25/12/2025 18:00",
-    "task_priority_label": "Priority (0=Lowest … 7=Critical)",
+    "task_priority_label": "⚡ Priority",
     "task_priority_placeholder": "0–7  (0=Normal, 3=Medium, 5=Important, 7=Critical)",
     "task_desc_label": "Description (optional)",
     "task_desc_placeholder": "Additional details...",
@@ -131,7 +131,7 @@ STRINGS = {
     "cat_created": "✅ Category **{name}** created!",
     "cat_not_found": "❌ Category not found.",
 
-    # ─── Priority Labels ────────────────────────────────────────────────────────
+    # ─── Priority Labels ─────────────────────────────────────────────────
     "priority_0": "⬜ Normal",
     "priority_1": "🟦 Low",
     "priority_2": "🟩 Medium-Low",
@@ -140,6 +140,20 @@ STRINGS = {
     "priority_5": "🟥 Important",
     "priority_6": "🔴 Urgent",
     "priority_7": "🆘 Critical",
+    # Dropdown descriptions
+    "priority_0_desc": "Not time-sensitive, do whenever",
+    "priority_1_desc": "Low urgency, can wait",
+    "priority_2_desc": "Handle within this week",
+    "priority_3_desc": "Do within the next couple of days",
+    "priority_4_desc": "Important, must do today or tomorrow",
+    "priority_5_desc": "Urgent! Act within a few hours",
+    "priority_6_desc": "Very urgent! Act immediately",
+    "priority_7_desc": "Critical! Major impact, fix right now",
+    # Dropdown UI strings
+    "priority_select_placeholder": "⚡ Select priority level...",
+    "priority_select_title": "⚡ Select Priority",
+    "priority_select_desc": "Choose the priority level before filling in task details.",
+    "priority_changed": "✅ Priority updated! Task **#{task_id}** is now **{priority}**",
     # Legacy aliases (kept for backward compat)
     "priority_low": "⬜ Normal",
     "priority_medium": "🟨 Medium",

@@ -30,6 +30,7 @@ from utils.helpers import (
 )
 from handlers.task_views import (
     AddTaskModal, TaskActionView, TaskListView, DeleteConfirmView,
+    PrioritySelectView,
     TASKS_PER_PAGE, _send_dm,
 )
 
@@ -75,7 +76,15 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         await ensure_user(uid, lang)
-        await interaction.response.send_modal(AddTaskModal(lang))
+        # Step 1: priority dropdown — opens AddTaskModal after selection
+        view  = PrioritySelectView(lang)
+        embed = discord.Embed(
+            title=t("priority_select_title", lang),
+            description=t("priority_select_desc", lang),
+            color=0x5865F2,
+        )
+        embed.set_footer(text="To-Do List Bot Gen 2")
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /list
@@ -215,6 +224,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
             categories=list(categories),
             current_cat_id=row["category_id"],
+            current_priority=row["priority"] if "priority" in row.keys() else 0,
         )
         await interaction.followup.send(embed=embed, view=view)
 
