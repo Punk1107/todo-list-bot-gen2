@@ -81,23 +81,18 @@ def _disable_all(view: ui.View) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class AddTaskModal(ui.Modal):
-    """Modal for creating a new task (or subtask).
-    Priority is chosen via PrioritySelectView BEFORE this modal opens,
-    so there is no priority TextInput here.
-    """
+    """Modal for creating a new task (or subtask)."""
 
     def __init__(
         self,
         lang: str,
-        priority: int = 0,
         category_id: Optional[int] = None,
         parent_task_id: Optional[int] = None,
     ) -> None:
         title_key = "subtask_add_title" if parent_task_id else "task_add_title"
         super().__init__(title=t(title_key, lang))
-        self.lang           = lang
-        self.priority       = priority
-        self.category_id    = category_id
+        self.lang = lang
+        self.category_id = category_id
         self.parent_task_id = parent_task_id
 
         self.task_name = ui.TextInput(
@@ -109,6 +104,11 @@ class AddTaskModal(ui.Modal):
             label=t("task_deadline_label", lang),
             placeholder=t("task_deadline_placeholder", lang),
             max_length=20, required=True,
+        )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            placeholder=t("task_priority_placeholder", lang),
+            max_length=1, required=False, default="0",
         )
         self.description = ui.TextInput(
             label=t("task_desc_label", lang),
@@ -123,6 +123,7 @@ class AddTaskModal(ui.Modal):
         )
         self.add_item(self.task_name)
         self.add_item(self.deadline)
+        self.add_item(self.priority)
         self.add_item(self.description)
         self.add_item(self.tags)
 
@@ -148,8 +149,13 @@ class AddTaskModal(ui.Modal):
             return
         task_name = name_or_err
 
-        # ── Validate priority (already set from PrioritySelectView) ────────────
-        priority = self.priority   # int, not TextInput
+        # ── Validate priority ────────────────────────────────────────────────
+        prio_raw = (self.priority.value or "0").strip()
+        if not prio_raw.isdigit() or int(prio_raw) not in range(8):
+            err_msg = t("task_invalid_priority", lang)
+            await _safe_respond(interaction, err_msg)
+            return
+        priority = int(prio_raw)
 
         # ── Validate description ─────────────────────────────────────────────
         description: Optional[str] = None
@@ -207,7 +213,7 @@ class AddTaskModal(ui.Modal):
         row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (task_id,))
         embed = build_task_embed(row, lang, tz_name)
         view  = TaskActionView(task_id, uid, lang,
-                               current_priority=self.priority)
+                               current_priority=priority)
         success_key = "subtask_created" if self.parent_task_id else "task_created"
         await interaction.response.send_message(
             t(success_key, lang, task_id=task_id), embed=embed, view=view,
@@ -250,6 +256,10 @@ class EditTaskModal(ui.Modal):
             placeholder=t("task_deadline_placeholder", lang),
             max_length=20,
         )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            default=str(task_row["priority"]), max_length=1,
+        )
         self.description = ui.TextInput(
             label=t("task_desc_label", lang),
             default=(task_row["description"] or "")[:1000],
@@ -263,6 +273,7 @@ class EditTaskModal(ui.Modal):
         )
         self.add_item(self.task_name)
         self.add_item(self.deadline)
+        self.add_item(self.priority)
         self.add_item(self.description)
         self.add_item(self.tags)
 
@@ -275,9 +286,11 @@ class EditTaskModal(ui.Modal):
             await _safe_respond(interaction, t(name_or_err, lang))
             return
 
-        # Priority is now changed via PriorityEditSelect in TaskActionView;
-        # EditTaskModal keeps the existing value stored in self._current_priority.
-        prio_val = self._current_priority
+        prio_raw = self.priority.value.strip()
+        if not prio_raw.isdigit() or int(prio_raw) not in range(8):
+            await _safe_respond(interaction, t("task_invalid_priority", lang))
+            return
+        prio_val = int(prio_raw)
 
         tz_name = await get_user_timezone(uid)
         dt = parse_deadline(self.deadline.value, tz_name)
@@ -319,7 +332,7 @@ class EditTaskModal(ui.Modal):
         row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
         embed = build_task_embed(row, lang, tz_name)
         view  = TaskActionView(self.task_id, uid, lang,
-                               current_priority=self._current_priority)
+                               current_priority=prio_val)
         await interaction.response.send_message(
             t("task_edit_success", lang), embed=embed, view=view,
         )
@@ -433,52 +446,6 @@ def _build_priority_options(lang: str, current: int = -1) -> list[discord.Select
         )
         for v, emoji, _ in _PRIORITY_OPTIONS
     ]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PrioritySelectView  (shown BEFORE AddTaskModal — step 1 of /add flow)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class _PriorityForAddSelect(ui.Select):
-    """Priority dropdown used in PrioritySelectView (step 1 of /add)."""
-
-    def __init__(self, lang: str, category_id: Optional[int], parent_task_id: Optional[int]) -> None:
-        super().__init__(
-            placeholder=t("priority_select_placeholder", lang),
-            options=_build_priority_options(lang, current=0),
-            min_values=1,
-            max_values=1,
-            row=0,
-        )
-        self.lang           = lang
-        self.category_id    = category_id
-        self.parent_task_id = parent_task_id
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        priority = int(self.values[0])
-        # Open AddTaskModal with the chosen priority
-        await interaction.response.send_modal(
-            AddTaskModal(self.lang, priority=priority,
-                         category_id=self.category_id,
-                         parent_task_id=self.parent_task_id)
-        )
-
-
-class PrioritySelectView(ui.View):
-    """
-    Step 1 of the /add flow: show a rich Priority dropdown.
-    After the user selects a priority, AddTaskModal opens automatically.
-    """
-
-    def __init__(self, lang: str,
-                 category_id: Optional[int] = None,
-                 parent_task_id: Optional[int] = None) -> None:
-        super().__init__(timeout=120)
-        self.lang = lang
-        self.add_item(_PriorityForAddSelect(lang, category_id, parent_task_id))
-
-    async def on_timeout(self) -> None:
-        _disable_all(self)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -794,14 +761,7 @@ class TaskActionView(ui.View):
         if row and row["parent_task_id"] is not None:
             await _safe_respond(interaction, t("subtask_no_nested", lang))
             return
-        # Open priority selector first, then modal
-        view = PrioritySelectView(lang, parent_task_id=self.task_id)
-        embed = discord.Embed(
-            title=t("priority_select_title", lang),
-            description=t("priority_select_desc", lang),
-            color=0x5865F2,
-        )
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_modal(AddTaskModal(lang, parent_task_id=self.task_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
