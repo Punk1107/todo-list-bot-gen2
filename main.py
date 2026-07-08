@@ -1,11 +1,12 @@
 """
-main.py — Entry point for To-Do List Bot Gen 2 v2
-Improvements:
-  - Graceful shutdown (SIGINT/SIGTERM)
-  - Startup banner with version info
-  - Guild-specific sync in debug mode, global sync in production
-  - on_error handler for unexpected exceptions
-  - Proper log rotation via RotatingFileHandler
+main.py — Entry point for To-Do List Bot Gen 2 v3
+Changes over v2:
+  - uvloop guard: uses uvloop on Linux/macOS for 2-4x faster event loop
+  - BulkWriter started in setup_hook (requires running event loop)
+  - Webserver upgraded to aiohttp async — started via create_task
+  - last_active update via on_interaction hook (background, non-blocking)
+  - Graceful shutdown: BulkWriter flushed before DB close
+  - Startup banner extended with pool/cache config summary
 """
 from __future__ import annotations
 
@@ -24,6 +25,14 @@ from discord.ext import commands
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# ── uvloop: opt-in faster event loop (Linux/macOS only) ──────────────────────
+try:
+    import uvloop  # type: ignore
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    _UVLOOP = True
+except ImportError:
+    _UVLOOP = False   # Windows or package not installed — silently fall back
 
 # ── Config (validates .env — exits if DISCORD_TOKEN missing) ──────────────────
 from core.config import config
@@ -50,8 +59,11 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handle
 
 log = logging.getLogger("main")
 
+if _UVLOOP:
+    log.info("uvloop active — using high-performance event loop")
+
 # Suppress noisy third-party loggers
-for _name in ("discord", "discord.http", "discord.gateway", "werkzeug"):
+for _name in ("discord", "discord.http", "discord.gateway", "aiohttp.access"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
 # ── Bot setup ─────────────────────────────────────────────────────────────────
@@ -66,6 +78,10 @@ class TodoBot(commands.Bot):
     setup_hook() runs after login (application_id is known) but before
     on_ready, making it the correct place for one-time async setup.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._webserver_runner = None  # hold reference for graceful shutdown
 
     async def setup_hook(self) -> None:  # noqa: D102
         # Load cogs here so they are registered before sync
@@ -82,6 +98,14 @@ class TodoBot(commands.Bot):
             log.critical("All cogs failed to load — aborting")
             return
 
+        # Start BulkWriter (requires a running event loop)
+        from core.database import db
+        db.start_bulk_writer()
+
+        # Start async webserver (no daemon thread — pure coroutine)
+        from utils.webserver import start_async
+        self._webserver_runner = await start_async()
+
         # Sync slash commands — application_id is available here
         debug_guild_id = os.getenv("DEBUG_GUILD_ID")
         try:
@@ -95,6 +119,18 @@ class TodoBot(commands.Bot):
                 log.info("Synced %d commands globally", len(synced))
         except Exception as exc:
             log.error("Slash command sync failed: %s", exc)
+
+    async def close(self) -> None:
+        """Graceful shutdown: flush BulkWriter, stop webserver, then close."""
+        from core.database import db
+        log.info("Flushing BulkWriter before shutdown...")
+        await db.bulk_writer.stop()
+
+        if self._webserver_runner:
+            await self._webserver_runner.cleanup()
+            log.info("Webserver stopped")
+
+        await super().close()
 
 
 bot = TodoBot(
@@ -115,11 +151,17 @@ COGS = [
 
 @bot.event
 async def on_ready() -> None:
+    from core.database import db
     log.info("━" * 60)
-    log.info("  To-Do List Bot Gen 2 — Online")
-    log.info("  User   : %s (ID: %s)", bot.user, bot.user.id)
-    log.info("  Guilds : %d", len(bot.guilds))
-    log.info("  Latency: %.1f ms", bot.latency * 1000)
+    log.info("  To-Do List Bot Gen 2 v3 — Online")
+    log.info("  User     : %s (ID: %s)", bot.user, bot.user.id)
+    log.info("  Guilds   : %d", len(bot.guilds))
+    log.info("  Latency  : %.1f ms", bot.latency * 1000)
+    log.info("  DB pool  : %d conns | schema v%d",
+             config.db.pool_size, db.metrics["schema_version"])
+    log.info("  QCache   : TTL %.0fs | max %d entries",
+             config.db.query_cache_ttl, 2048)
+    log.info("  uvloop   : %s", "✓ active" if _UVLOOP else "✗ not available")
     log.info("━" * 60)
 
     await bot.change_presence(
@@ -127,6 +169,17 @@ async def on_ready() -> None:
             type=discord.ActivityType.watching,
             name="📝 /help | To-Do Bot Gen 2",
         )
+    )
+
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction) -> None:
+    """Update last_active timestamp non-blocking via BulkWriter."""
+    from core.database import db
+    uid = str(interaction.user.id)
+    db.bulk_writer.enqueue(
+        "UPDATE users SET last_active=CURRENT_TIMESTAMP WHERE user_id=?",
+        (uid,),
     )
 
 
@@ -174,11 +227,7 @@ async def on_error(event: str, *args, **kwargs) -> None:
 
 async def main() -> None:
     async with bot:
-        # setup_hook() handles cog loading and slash command sync automatically.
-        # Start keep-alive webserver (daemon thread)
-        from utils.webserver import start as start_webserver
-        start_webserver()
-
+        # setup_hook() handles everything: cogs, BulkWriter, webserver, slash sync
         await bot.start(config.bot.token)
 
 

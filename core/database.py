@@ -1,33 +1,40 @@
 """
-core/database.py — Thread-safe SQLite manager v2
-Improvements:
-  - async wrappers via asyncio.to_thread (non-blocking event loop)
-  - LRU-style UserCache with TTL (eliminates repeated DB round-trips)
-  - StatsCache with short TTL for /stats command (60s)
-  - Connection pool with health checking
-  - Append-only versioned migrations
-  - Audit log + scheduled backup with rotation
-  - Retry mechanism for transient OperationalError (db locked)
+core/database.py — High-performance SQLite manager v3
+Improvements over v2:
+  - PRAGMA tuning: cache 64 MB, mmap 1 GB, busy_timeout 10 s
+  - Connection pool default 10 (was 5), max retries 5 (was 3)
+  - QueryCache (L1 read cache, TTL-based) — eliminates repeated read round-trips
+  - execute_batch() / aexecute_batch() — true batched writes in one transaction
+  - BulkWriter — async write queue that flushes on interval (reduces txn overhead)
+  - Exponential backoff with jitter on DB locked retries
+  - Migration v6: new columns for users/tasks, task_comments, user_achievements,
+    compound indexes for high-traffic queries
+  - WAL checkpoint helper for reminders_cog
+  - Metrics property for webserver /metrics endpoint
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import random
 import sqlite3
 import time
+from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Lock
+from threading import Lock, Thread
 from typing import Any, Generator, List, Optional, Sequence
 
 from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 5   # bump when adding migrations below
+SCHEMA_VERSION = 6   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -37,13 +44,17 @@ SCHEMA_VERSION = 5   # bump when adding migrations below
 def _make_conn(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, check_same_thread=False, timeout=config.db.timeout)
     conn.row_factory = sqlite3.Row
+    # ── Performance PRAGMAs ──────────────────────────────────────────────────
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA cache_size = -16000")   # 16 MB page cache
+    conn.execute("PRAGMA cache_size = -65536")    # 64 MB page cache (was 16 MB)
     conn.execute("PRAGMA temp_store = MEMORY")
-    conn.execute("PRAGMA mmap_size = 268435456")  # 256 MB
-    conn.execute("PRAGMA busy_timeout = 5000")    # 5 s wait on lock
+    conn.execute("PRAGMA mmap_size = 1073741824")  # 1 GB memory-mapped I/O (was 256 MB)
+    conn.execute("PRAGMA busy_timeout = 10000")    # 10 s wait on lock (was 5 s)
+    conn.execute("PRAGMA page_size = 4096")        # optimal for most workloads
+    conn.execute("PRAGMA auto_vacuum = INCREMENTAL")  # keep file size compact
+    conn.execute("PRAGMA threads = 4")             # allow SQLite to use up to 4 OS threads
     return conn
 
 
@@ -156,37 +167,145 @@ class StatsCache:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# QueryCache  (L1 read cache — deduplicates hot fetchone/fetchall calls)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class _CachedQuery:
+    result: Any
+    _expires: float
+
+    @property
+    def expired(self) -> bool:
+        return time.monotonic() > self._expires
+
+
+class QueryCache:
+    """
+    Thread-safe TTL cache for read queries.
+    Key = stable hash of (sql, params). Invalidated explicitly on writes.
+
+    Usage: only fetchone/fetchall results are cached.
+    Any execute() (write) call on the same table should call invalidate_prefix().
+    """
+
+    def __init__(self, ttl: float = 30.0, max_size: int = 2048) -> None:
+        self._ttl = ttl
+        self._max_size = max_size
+        self._store: dict[str, _CachedQuery] = {}
+        self._lock = Lock()
+        # Track hits/misses for /metrics
+        self._hits = 0
+        self._misses = 0
+
+    @staticmethod
+    def _key(sql: str, params: Any) -> str:
+        raw = json.dumps([sql, list(params) if params else []], sort_keys=True, default=str)
+        return hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
+
+    def get(self, sql: str, params: Any) -> Any:
+        k = self._key(sql, params)
+        with self._lock:
+            entry = self._store.get(k)
+            if entry and not entry.expired:
+                self._hits += 1
+                return entry.result
+            if entry:
+                del self._store[k]
+            self._misses += 1
+            return _MISS
+
+    def set(self, sql: str, params: Any, result: Any) -> None:
+        k = self._key(sql, params)
+        expires = time.monotonic() + self._ttl
+        with self._lock:
+            # Evict oldest entries if at capacity (simple FIFO eviction)
+            if len(self._store) >= self._max_size:
+                oldest_key = next(iter(self._store))
+                del self._store[oldest_key]
+            self._store[k] = _CachedQuery(result=result, _expires=expires)
+
+    def invalidate_all(self) -> None:
+        with self._lock:
+            self._store.clear()
+
+    def purge_expired(self) -> int:
+        now = time.monotonic()
+        with self._lock:
+            stale = [k for k, v in self._store.items() if now > v._expires]
+            for k in stale:
+                del self._store[k]
+        return len(stale)
+
+    @property
+    def stats(self) -> dict:
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = self._hits / total if total > 0 else 0.0
+            return {
+                "size": len(self._store),
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": round(hit_rate, 4),
+                "ttl": self._ttl,
+                "max_size": self._max_size,
+            }
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._store)
+
+
+# Sentinel value for cache miss
+class _MissType:
+    pass
+_MISS = _MissType()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Connection Pool
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ConnectionPool:
-    def __init__(self, db_path: str, size: int = 5) -> None:
+    def __init__(self, db_path: str, size: int = 10) -> None:
         self._db_path = db_path
         self._pool: Queue[sqlite3.Connection] = Queue(maxsize=size)
+        self._size = size
         for _ in range(size):
             self._pool.put(_make_conn(db_path))
+        # Track metrics
+        self._total_acquired = 0
+        self._overflow_count = 0
+        self._lock = Lock()
 
     @contextmanager
     def get(self) -> Generator[sqlite3.Connection, None, None]:
         conn: Optional[sqlite3.Connection] = None
+        _overflow = False
         try:
             try:
                 conn = self._pool.get(timeout=config.db.timeout)
                 # Health-check: ping with a cheap query
                 conn.execute("SELECT 1")
             except (Empty, sqlite3.OperationalError):
-                log.warning("Pool exhausted or conn dead — creating temp connection")
+                log.warning("Pool exhausted or conn dead — creating overflow connection")
                 conn = _make_conn(self._db_path)
-                yield conn
-                conn.close()
-                return
+                _overflow = True
+            with self._lock:
+                self._total_acquired += 1
+                if _overflow:
+                    self._overflow_count += 1
             yield conn
         finally:
             if conn is not None:
-                try:
-                    self._pool.put_nowait(conn)
-                except Exception:
+                if _overflow:
                     conn.close()
+                else:
+                    try:
+                        self._pool.put_nowait(conn)
+                    except Exception:
+                        conn.close()
 
     def close_all(self) -> None:
         while not self._pool.empty():
@@ -194,6 +313,98 @@ class ConnectionPool:
                 self._pool.get_nowait().close()
             except Exception:
                 pass
+
+    @property
+    def metrics(self) -> dict:
+        with self._lock:
+            return {
+                "pool_size": self._size,
+                "available": self._pool.qsize(),
+                "total_acquired": self._total_acquired,
+                "overflow_count": self._overflow_count,
+            }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BulkWriter — async write-batching queue
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BulkWriter:
+    """
+    Accumulates (sql, params) pairs and flushes them as a single transaction
+    on a configurable interval. Reduces per-row transaction overhead for
+    high-volume write paths (audit_log, last_reminder updates, etc.).
+
+    Call start() after the event loop is running; call stop() on shutdown.
+    """
+
+    def __init__(self, pool: ConnectionPool, interval_ms: int = 500) -> None:
+        self._pool = pool
+        self._interval = interval_ms / 1000.0
+        self._queue: deque[tuple[str, tuple]] = deque()
+        self._lock = Lock()
+        self._task: Optional[asyncio.Task] = None
+        self._flushed_count = 0
+        self._batch_count = 0
+
+    def enqueue(self, sql: str, params: tuple = ()) -> None:
+        with self._lock:
+            self._queue.append((sql, params))
+
+    async def flush(self) -> int:
+        """Drain queue and commit in one transaction. Returns rows written."""
+        with self._lock:
+            if not self._queue:
+                return 0
+            batch = list(self._queue)
+            self._queue.clear()
+
+        def _commit(batch: list) -> int:
+            with self._pool.get() as conn:
+                conn.execute("BEGIN")
+                for sql, params in batch:
+                    conn.execute(sql, params)
+                conn.execute("COMMIT")
+            return len(batch)
+
+        try:
+            written = await asyncio.to_thread(_commit, batch)
+            with self._lock:
+                self._flushed_count += written
+                self._batch_count += 1
+            return written
+        except Exception as exc:
+            log.error("BulkWriter flush failed (%d rows lost): %s", len(batch), exc)
+            return 0
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self._interval)
+            await self.flush()
+
+    def start(self) -> None:
+        loop = asyncio.get_event_loop()
+        self._task = loop.create_task(self._run(), name="bulk_writer")
+        log.info("BulkWriter started (interval=%.0f ms)", self._interval * 1000)
+
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        await self.flush()  # drain remaining
+
+    @property
+    def metrics(self) -> dict:
+        with self._lock:
+            return {
+                "queued": len(self._queue),
+                "flushed_rows": self._flushed_count,
+                "batch_count": self._batch_count,
+                "interval_ms": int(self._interval * 1000),
+            }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +444,7 @@ MIGRATIONS: list[tuple[int, str]] = [
         task            TEXT    NOT NULL,
         deadline        TEXT    NOT NULL,
         priority        INTEGER NOT NULL DEFAULT 0
-                                CHECK(priority IN (0,1,2)),
+                                CHECK(priority IN (0,1,2,3,4,5,6,7)),
         status          TEXT    NOT NULL DEFAULT 'Pending'
                                 CHECK(status IN ('Pending','Completed','Cancelled')),
         recurring       TEXT    CHECK(recurring IN ('daily','weekly','monthly')),
@@ -306,6 +517,58 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_tasks_reminder ON tasks(custom_reminder);
     INSERT OR REPLACE INTO schema_version VALUES (5);
     """),
+
+    # ── v6: expanded schema — more user/task fields, new tables, better indexes
+    (6, """
+    -- users: lifecycle + personalisation + gamification
+    ALTER TABLE users ADD COLUMN max_tasks   INTEGER NOT NULL DEFAULT 500;
+    ALTER TABLE users ADD COLUMN streak_days INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN last_active TIMESTAMP;
+    ALTER TABLE users ADD COLUMN theme       TEXT    NOT NULL DEFAULT 'default';
+    ALTER TABLE users ADD COLUMN premium     INTEGER NOT NULL DEFAULT 0;
+
+    -- tasks: time-tracking + progress + rich metadata
+    ALTER TABLE tasks ADD COLUMN estimated_hours REAL;
+    ALTER TABLE tasks ADD COLUMN actual_hours    REAL;
+    ALTER TABLE tasks ADD COLUMN attachments     TEXT;
+    ALTER TABLE tasks ADD COLUMN note            TEXT;
+    ALTER TABLE tasks ADD COLUMN completed_at    TIMESTAMP;
+    ALTER TABLE tasks ADD COLUMN progress_pct    INTEGER NOT NULL DEFAULT 0
+                                                 CHECK(progress_pct BETWEEN 0 AND 100);
+
+    -- Compound indexes for high-traffic query patterns
+    CREATE INDEX IF NOT EXISTS idx_tasks_compound_status_dl
+        ON tasks(owner_id, status, deadline);
+    CREATE INDEX IF NOT EXISTS idx_tasks_pinned_pending
+        ON tasks(owner_id, is_pinned, status);
+    CREATE INDEX IF NOT EXISTS idx_audit_action
+        ON audit_log(action, created_at);
+    CREATE INDEX IF NOT EXISTS idx_users_active
+        ON users(last_active);
+
+    -- task_comments: per-task discussion / notes from collaborators
+    CREATE TABLE IF NOT EXISTS task_comments (
+        comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id    INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        user_id    TEXT    NOT NULL REFERENCES users(user_id),
+        content    TEXT    NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id);
+    CREATE INDEX IF NOT EXISTS idx_comments_user ON task_comments(user_id);
+
+    -- user_achievements: badge / milestone tracking
+    CREATE TABLE IF NOT EXISTS user_achievements (
+        achievement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id        TEXT    NOT NULL REFERENCES users(user_id),
+        type           TEXT    NOT NULL,
+        awarded_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_achievements_user ON user_achievements(user_id);
+
+    INSERT OR REPLACE INTO schema_version VALUES (6);
+    """),
 ]
 
 
@@ -315,27 +578,46 @@ MIGRATIONS: list[tuple[int, str]] = [
 
 class DatabaseManager:
     """
-    Thread-safe SQLite manager with:
-    - Connection pool
-    - Automatic schema migrations
+    High-performance SQLite manager v3:
+    - Connection pool (default 10)
+    - Automatic schema migrations (v1→v6)
     - Async wrappers (asyncio.to_thread) — never blocks the event loop
-    - In-process UserCache + StatsCache
-    - Automatic backups
-    - Retry on transient OperationalError (database locked)
+    - UserCache + StatsCache + QueryCache (L1 read cache)
+    - execute_batch() for true multi-row batched writes
+    - BulkWriter for async queued writes (audit log, reminder timestamps)
+    - Exponential backoff with jitter on DB locked retries
+    - Automatic WAL checkpointing
+    - Automatic backups with rotation
+    - /metrics data exposed via .metrics property
     """
 
-    _MAX_RETRIES = 3
-    _RETRY_DELAY = 0.1   # seconds (doubles each retry)
+    _MAX_RETRIES = 5
+    _RETRY_BASE  = 0.05   # seconds (exponential, with jitter)
 
     def __init__(self) -> None:
         db_path = config.db.path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
         self._pool = ConnectionPool(db_path, size=config.db.pool_size)
-        self.user_cache = UserCache()
+        self.user_cache  = UserCache()
         self.stats_cache = StatsCache()
+        self.query_cache = QueryCache(
+            ttl=config.db.query_cache_ttl,
+            max_size=2048,
+        )
+        self.bulk_writer = BulkWriter(
+            self._pool,
+            interval_ms=config.db.bulk_write_interval_ms,
+        )
         self._migrate()
-        log.info("DatabaseManager ready — %s (schema v%d)", db_path, SCHEMA_VERSION)
+        log.info("DatabaseManager ready — %s (schema v%d, pool=%d)",
+                 db_path, SCHEMA_VERSION, config.db.pool_size)
+
+    # ── BulkWriter lifecycle ──────────────────────────────────────────────────
+
+    def start_bulk_writer(self) -> None:
+        """Call once the asyncio event loop is running (e.g. in setup_hook)."""
+        self.bulk_writer.start()
 
     # ── Migrations ────────────────────────────────────────────────────────────
 
@@ -354,25 +636,38 @@ class DatabaseManager:
             for version, sql in MIGRATIONS:
                 if version > current:
                     log.info("Applying DB migration v%d", version)
-                    try:
-                        conn.executescript(sql)
-                        conn.commit()
-                    except sqlite3.OperationalError as exc:
-                        # Column already exists — safe to ignore on re-run
-                        if "duplicate column" in str(exc).lower():
-                            log.debug("Migration v%d: skipping duplicate column: %s", version, exc)
-                            conn.execute(
-                                "INSERT OR REPLACE INTO schema_version VALUES (?)", (version,)
-                            )
-                            conn.commit()
-                        else:
-                            raise
-            log.info("Schema up-to-date (v%d)", SCHEMA_VERSION)
+                    # Split multi-statement SQL and execute one-by-one so we can
+                    # handle "duplicate column" gracefully without skipping the
+                    # entire migration block.
+                    statements = [s.strip() for s in sql.split(";") if s.strip()]
+                    for stmt in statements:
+                        try:
+                            conn.execute(stmt)
+                        except sqlite3.OperationalError as exc:
+                            errmsg = str(exc).lower()
+                            if "duplicate column" in errmsg or "already exists" in errmsg:
+                                log.debug("Migration v%d: skip existing: %s", version, exc)
+                            else:
+                                conn.rollback()
+                                raise
+                    conn.execute(
+                        "INSERT OR REPLACE INTO schema_version VALUES (?)", (version,)
+                    )
+                    conn.commit()
+        log.info("Schema up-to-date (v%d)", SCHEMA_VERSION)
+
+    # ── Retry helper ──────────────────────────────────────────────────────────
+
+    def _retry_delay(self, attempt: int) -> float:
+        """Exponential backoff with full jitter: delay = rand(0, base * 2^attempt)."""
+        cap = self._RETRY_BASE * (2 ** attempt)
+        return random.uniform(0, min(cap, 2.0))
 
     # ── Synchronous core ──────────────────────────────────────────────────────
 
     def execute(self, sql: str, params: Sequence[Any] = ()) -> sqlite3.Cursor:
-        delay = self._RETRY_DELAY
+        # Any write invalidates query cache
+        self.query_cache.invalidate_all()
         for attempt in range(1, self._MAX_RETRIES + 1):
             with self._pool.get() as conn:
                 try:
@@ -382,9 +677,10 @@ class DatabaseManager:
                 except sqlite3.OperationalError as exc:
                     conn.rollback()
                     if "locked" in str(exc).lower() and attempt < self._MAX_RETRIES:
-                        log.warning("DB locked, retry %d/%d in %.1fs", attempt, self._MAX_RETRIES, delay)
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB locked, retry %d/%d in %.3fs",
+                                    attempt, self._MAX_RETRIES, delay)
                         time.sleep(delay)
-                        delay *= 2
                         continue
                     log.error("DB execute error: %s | SQL: %.200s", exc, sql)
                     raise
@@ -395,7 +691,7 @@ class DatabaseManager:
         raise sqlite3.OperationalError("DB execute failed after retries")
 
     def executemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
-        delay = self._RETRY_DELAY
+        self.query_cache.invalidate_all()
         for attempt in range(1, self._MAX_RETRIES + 1):
             with self._pool.get() as conn:
                 try:
@@ -405,9 +701,10 @@ class DatabaseManager:
                 except sqlite3.OperationalError as exc:
                     conn.rollback()
                     if "locked" in str(exc).lower() and attempt < self._MAX_RETRIES:
-                        log.warning("DB locked (executemany), retry %d/%d", attempt, self._MAX_RETRIES)
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB locked (executemany), retry %d/%d in %.3fs",
+                                    attempt, self._MAX_RETRIES, delay)
                         time.sleep(delay)
-                        delay *= 2
                         continue
                     log.error("DB executemany error: %s | SQL: %.200s", exc, sql)
                     raise
@@ -417,18 +714,63 @@ class DatabaseManager:
                     raise
         raise sqlite3.OperationalError("DB executemany failed after retries")
 
+    def execute_batch(self, statements: list[tuple[str, Sequence[Any]]]) -> None:
+        """
+        Execute multiple (sql, params) pairs in a single explicit transaction.
+        Far more efficient than calling execute() N times for bulk operations.
+        """
+        self.query_cache.invalidate_all()
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            with self._pool.get() as conn:
+                try:
+                    conn.execute("BEGIN")
+                    for sql, params in statements:
+                        conn.execute(sql, params)
+                    conn.execute("COMMIT")
+                    return
+                except sqlite3.OperationalError as exc:
+                    conn.execute("ROLLBACK")
+                    if "locked" in str(exc).lower() and attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB locked (batch), retry %d/%d in %.3fs",
+                                    attempt, self._MAX_RETRIES, delay)
+                        time.sleep(delay)
+                        continue
+                    log.error("DB execute_batch error: %s", exc)
+                    raise
+                except sqlite3.Error as exc:
+                    try:
+                        conn.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    log.error("DB execute_batch error: %s", exc)
+                    raise
+        raise sqlite3.OperationalError("DB execute_batch failed after retries")
+
     def fetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[sqlite3.Row]:
+        # Try L1 cache first
+        cached = self.query_cache.get(sql, params)
+        if not isinstance(cached, _MissType):
+            return cached
         with self._pool.get() as conn:
             try:
-                return conn.execute(sql, params).fetchone()
+                result = conn.execute(sql, params).fetchone()
+                self.query_cache.set(sql, params, result)
+                return result
             except sqlite3.Error as exc:
                 log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
                 return None
 
     def fetchall(self, sql: str, params: Sequence[Any] = ()) -> List[sqlite3.Row]:
+        # Try L1 cache first
+        cached = self.query_cache.get(sql, params)
+        if not isinstance(cached, _MissType):
+            return cached
         with self._pool.get() as conn:
             try:
-                return conn.execute(sql, params).fetchall()
+                result = conn.execute(sql, params).fetchall()
+                self.query_cache.set(sql, params, result)
+                return result
             except sqlite3.Error as exc:
                 log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
                 return []
@@ -447,21 +789,46 @@ class DatabaseManager:
     async def aexecutemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
         return await asyncio.to_thread(self.executemany, sql, params_list)
 
+    async def aexecute_batch(self, statements: list[tuple[str, Sequence[Any]]]) -> None:
+        """Async version of execute_batch — runs in thread pool to avoid blocking."""
+        return await asyncio.to_thread(self.execute_batch, statements)
+
     # ── Audit log ─────────────────────────────────────────────────────────────
 
     def log_action(self, user_id: str, action: str,
                    target_id: Optional[str] = None, detail: Optional[str] = None) -> None:
+        """Enqueue into BulkWriter (non-blocking) or fall back to direct write."""
+        sql = "INSERT INTO audit_log (user_id, action, target_id, detail) VALUES (?,?,?,?)"
+        params = (str(user_id), action, str(target_id) if target_id else None, detail)
         try:
-            self.execute(
-                "INSERT INTO audit_log (user_id, action, target_id, detail) VALUES (?,?,?,?)",
-                (str(user_id), action, str(target_id) if target_id else None, detail),
-            )
+            self.bulk_writer.enqueue(sql, params)
         except Exception as exc:
-            log.warning("Audit log write failed: %s", exc)
+            log.warning("Audit log enqueue failed, writing directly: %s", exc)
+            try:
+                self.execute(sql, params)
+            except Exception as exc2:
+                log.warning("Audit log write failed: %s", exc2)
 
     async def alog_action(self, user_id: str, action: str,
                           target_id: Optional[str] = None, detail: Optional[str] = None) -> None:
         await asyncio.to_thread(self.log_action, user_id, action, target_id, detail)
+
+    # ── WAL checkpoint ────────────────────────────────────────────────────────
+
+    def wal_checkpoint(self) -> None:
+        """
+        Run a TRUNCATE WAL checkpoint to keep the WAL file from growing unbounded.
+        Should be called periodically (every few hours) via reminders_cog.
+        """
+        try:
+            with self._pool.get() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            log.info("WAL checkpoint completed")
+        except Exception as exc:
+            log.warning("WAL checkpoint failed: %s", exc)
+
+    async def awa_checkpoint(self) -> None:
+        await asyncio.to_thread(self.wal_checkpoint)
 
     # ── Backup ────────────────────────────────────────────────────────────────
 
@@ -524,6 +891,28 @@ class DatabaseManager:
     def invalidate_stats(self, uid: str) -> None:
         """Call this after any task mutation to keep stats fresh."""
         self.stats_cache.invalidate(uid)
+        self.query_cache.invalidate_all()  # also bust L1 query cache
+
+    # ── Cache maintenance ─────────────────────────────────────────────────────
+
+    def purge_all_caches(self) -> dict[str, int]:
+        """Purge expired entries from all caches. Returns counts removed."""
+        return {
+            "user_cache": self.user_cache.purge_expired(),
+            "query_cache": self.query_cache.purge_expired(),
+        }
+
+    # ── Metrics (for /metrics endpoint) ──────────────────────────────────────
+
+    @property
+    def metrics(self) -> dict:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "pool": self._pool.metrics,
+            "user_cache_size": self.user_cache.size,
+            "query_cache": self.query_cache.stats,
+            "bulk_writer": self.bulk_writer.metrics,
+        }
 
     # ── Graceful shutdown ─────────────────────────────────────────────────────
 

@@ -1,9 +1,10 @@
 """
-handlers/reminders_cog.py — Background loops v3 (System Upgrade)
-Changes:
-  - get_user_lang is now awaited (it is async)
-  - Reminder embed improved with richer display
-  - Daily digest now shows priority icons in correct order (high=🔴 first)
+handlers/reminders_cog.py — Background loops v4 (DB & Transport Upgrade)
+Changes over v3:
+  - reminder_loop: LIMIT 50 → 100, uses compound index idx_tasks_compound_status_dl
+  - cleanup_loop: also purges query_cache expired entries
+  - New: db_wal_checkpoint_loop — runs PRAGMA wal_checkpoint(TRUNCATE) every N hours
+    to keep WAL file size bounded under sustained write load
   - All DB calls async, structured logging preserved
 """
 from __future__ import annotations
@@ -26,12 +27,12 @@ log = logging.getLogger(__name__)
 
 UTC = pytz.utc
 
-# Priority icons: index = priority value (0=low, 1=medium, 2=high)
-_PRIO_ICONS = ["🟢", "🟡", "🔴"]
+# Priority icons: index = priority value (0=lowest → 7=highest)
+_PRIO_ICONS = ["⬜", "🟦", "🟩", "🟨", "🟧", "🟥", "🔴", "🆘"]
 
 
 class RemindersCog(commands.Cog, name="Reminders"):
-    """Background task loops: reminders, recurring, backup, cache, digest."""
+    """Background task loops: reminders, recurring, backup, cache, digest, WAL."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -48,18 +49,23 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.backup_loop.change_interval(
             hours=config.db.backup_interval_hours
         )
+        self.db_wal_checkpoint_loop.change_interval(
+            hours=config.db.wal_checkpoint_interval_hours
+        )
 
         self.reminder_loop.start()
         self.recurring_loop.start()
         self.backup_loop.start()
         self.cleanup_loop.start()
         self.daily_digest_loop.start()
+        self.db_wal_checkpoint_loop.start()
 
         log.info(
-            "RemindersCog started — reminder=%dmin recurring=%dmin backup=%dh",
+            "RemindersCog started — reminder=%dmin recurring=%dmin backup=%dh wal_checkpoint=%dh",
             config.notifications.reminder_interval_minutes,
             config.notifications.recurring_check_interval_minutes,
             config.db.backup_interval_hours,
+            config.db.wal_checkpoint_interval_hours,
         )
 
     def cog_unload(self) -> None:
@@ -68,12 +74,16 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.backup_loop.cancel()
         self.cleanup_loop.cancel()
         self.daily_digest_loop.cancel()
+        self.db_wal_checkpoint_loop.cancel()
 
     # ── Reminder loop ─────────────────────────────────────────────────────────
 
     @tasks.loop(minutes=30)
     async def reminder_loop(self) -> None:
-        """Send reminders for tasks due soon or overdue (respects notify_enabled)."""
+        """Send reminders for tasks due soon or overdue (respects notify_enabled).
+        Uses compound index idx_tasks_compound_status_dl for fast filtering.
+        Processes up to 100 tasks per run (was 50).
+        """
         now            = datetime.now(UTC)
         soon_threshold = (now + timedelta(hours=24)).isoformat()
         remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).isoformat()
@@ -90,9 +100,12 @@ class RemindersCog(commands.Cog, name="Reminders"):
                  AND u.channel_id IS NOT NULL
                  AND (t.last_reminder IS NULL OR t.last_reminder < ?)
                ORDER BY t.deadline ASC
-               LIMIT 50""",
+               LIMIT 100""",
             (soon_threshold, (now - timedelta(days=30)).isoformat(), remind_cutoff),
         )
+
+        # Batch-update last_reminder timestamps to reduce individual execute() calls
+        reminder_updates: list[tuple[str, tuple]] = []
 
         for row in rows:
             channel = self.bot.get_channel(row["channel_id"])
@@ -120,8 +133,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     color = 0xE67E22
                     icon  = "⏰"
 
-                pin_note = " 📌" if row["is_pinned"] else ""
-                prio_icon = _PRIO_ICONS[row["priority"]] if row["priority"] in (0, 1, 2) else "🟢"
+                pin_note  = " 📌" if row["is_pinned"] else ""
+                prio_icon = _PRIO_ICONS[min(row["priority"], 7)]
 
                 embed = discord.Embed(
                     title=f"{icon} {t('reminder_title', lang)}{pin_note}",
@@ -141,15 +154,24 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 embed.set_footer(text=t("footer_text", lang))
 
                 await channel.send(f"<@{row['user_id']}>", embed=embed)
-                await db.aexecute(
+
+                # Queue last_reminder update into BulkWriter instead of individual execute()
+                reminder_updates.append((
                     "UPDATE tasks SET last_reminder=CURRENT_TIMESTAMP WHERE task_id=?",
                     (tid,),
-                )
+                ))
                 log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
             except discord.Forbidden:
                 log.warning("No permission to send reminder in channel %s", row["channel_id"])
             except Exception as exc:
                 log.error("Reminder error task_id=%d: %s", tid, exc)
+
+        # Flush all last_reminder updates as a batch
+        if reminder_updates:
+            try:
+                await db.aexecute_batch(reminder_updates)
+            except Exception as exc:
+                log.error("Batch reminder update failed: %s", exc)
 
     @reminder_loop.before_loop
     async def before_reminder(self) -> None:
@@ -171,17 +193,20 @@ class RemindersCog(commands.Cog, name="Reminders"):
             if not nxt:
                 continue
             try:
-                await db.aexecute(
-                    "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
-                    (row["task_id"],),
-                )
-                await db.aexecute(
-                    """INSERT INTO tasks (task, deadline, priority, status, recurring,
-                       category_id, tags, description, owner_id)
-                       VALUES (?,?,?,?,?,?,?,?,?)""",
-                    (row["task"], nxt, row["priority"], "Pending", row["recurring"],
-                     row["category_id"], row["tags"], row["description"], row["owner_id"]),
-                )
+                # Batch both the complete + new insert in one transaction
+                await db.aexecute_batch([
+                    (
+                        "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
+                        (row["task_id"],),
+                    ),
+                    (
+                        """INSERT INTO tasks (task, deadline, priority, status, recurring,
+                           category_id, tags, description, owner_id)
+                           VALUES (?,?,?,?,?,?,?,?,?)""",
+                        (row["task"], nxt, row["priority"], "Pending", row["recurring"],
+                         row["category_id"], row["tags"], row["description"], row["owner_id"]),
+                    ),
+                ])
                 db.invalidate_stats(row["owner_id"])
                 log.info("Recurring task renewed: id=%d owner=%s next=%s",
                          row["task_id"], row["owner_id"], nxt[:16])
@@ -257,7 +282,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
             )
             if today_tasks:
                 lines = [
-                    f"{_PRIO_ICONS[r['priority']]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
+                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
                     for r in today_tasks
                 ]
                 embed.add_field(
@@ -299,15 +324,30 @@ class RemindersCog(commands.Cog, name="Reminders"):
     async def before_backup(self) -> None:
         await self.bot.wait_until_ready()
 
+    # ── WAL checkpoint ────────────────────────────────────────────────────────
+
+    @tasks.loop(hours=6)
+    async def db_wal_checkpoint_loop(self) -> None:
+        """
+        Truncate the WAL file periodically to keep disk usage bounded.
+        Interval is configurable via DB_WAL_CHECKPOINT_HOURS (default 6h).
+        """
+        await db.awa_checkpoint()
+
+    @db_wal_checkpoint_loop.before_loop
+    async def before_wal(self) -> None:
+        await self.bot.wait_until_ready()
+
     # ── Cache + rate-limiter cleanup ──────────────────────────────────────────
 
     @tasks.loop(minutes=10)
     async def cleanup_loop(self) -> None:
         from core.security import rate_limiter
         rate_limiter.cleanup()
-        removed = db.user_cache.purge_expired()
-        if removed:
-            log.debug("Cache cleanup: removed %d expired entries", removed)
+        counts = db.purge_all_caches()
+        total_removed = sum(counts.values())
+        if total_removed:
+            log.debug("Cache cleanup: %s", counts)
 
     @cleanup_loop.before_loop
     async def before_cleanup(self) -> None:
