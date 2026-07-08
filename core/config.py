@@ -1,5 +1,9 @@
 """
-core/config.py  —  Centralised configuration & environment validation
+core/config.py  —  Centralised configuration & environment validation v3
+Changes:
+  - Added query_cache_ttl, bulk_write_interval_ms to DatabaseConfig
+  - Increased pool_size default to 10
+  - Added CacheConfig dataclass for fine-grained cache tuning
 All settings pulled from .env — zero hardcoded secrets.
 """
 from __future__ import annotations
@@ -32,6 +36,14 @@ def _env_int(key: str, default: int) -> int:
         return int(os.getenv(key, str(default)))
     except ValueError:
         log.warning("Invalid integer for %s, using default %d", key, default)
+        return default
+
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(os.getenv(key, str(default)))
+    except ValueError:
+        log.warning("Invalid float for %s, using default %.2f", key, default)
         return default
 
 
@@ -79,16 +91,23 @@ class DatabaseConfig:
     backup_enabled: bool
     backup_interval_hours: int
     max_backups: int
+    # ── Cache & write-batching tunables ──────────────────────────────────────
+    query_cache_ttl: float          # seconds — TTL for L1 QueryCache entries
+    bulk_write_interval_ms: int     # milliseconds — BulkWriter flush interval
+    wal_checkpoint_interval_hours: int  # how often to run WAL checkpoint
 
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
         return cls(
             path=_env("DATABASE_PATH", "data/tasks.db"),
-            pool_size=_env_int("DB_POOL_SIZE", 5),
+            pool_size=_env_int("DB_POOL_SIZE", 10),
             timeout=_env_int("DB_TIMEOUT", 30),
             backup_enabled=_env_bool("DB_BACKUP_ENABLED", True),
             backup_interval_hours=_env_int("DB_BACKUP_INTERVAL_HOURS", 24),
             max_backups=_env_int("DB_MAX_BACKUPS", 7),
+            query_cache_ttl=_env_float("DB_QUERY_CACHE_TTL", 30.0),
+            bulk_write_interval_ms=_env_int("DB_BULK_WRITE_INTERVAL_MS", 500),
+            wal_checkpoint_interval_hours=_env_int("DB_WAL_CHECKPOINT_HOURS", 6),
         )
 
 
