@@ -81,18 +81,22 @@ def _disable_all(view: ui.View) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class AddTaskModal(ui.Modal):
-    """Modal for creating a new task (or subtask)."""
+    """Modal for creating a new task (or subtask).
+    Priority is chosen via PrioritySelectView BEFORE this modal opens.
+    """
 
     def __init__(
         self,
         lang: str,
+        priority: int = 0,
         category_id: Optional[int] = None,
         parent_task_id: Optional[int] = None,
     ) -> None:
         title_key = "subtask_add_title" if parent_task_id else "task_add_title"
         super().__init__(title=t(title_key, lang))
-        self.lang = lang
-        self.category_id = category_id
+        self.lang           = lang
+        self.priority       = priority
+        self.category_id    = category_id
         self.parent_task_id = parent_task_id
 
         self.task_name = ui.TextInput(
@@ -104,11 +108,6 @@ class AddTaskModal(ui.Modal):
             label=t("task_deadline_label", lang),
             placeholder=t("task_deadline_placeholder", lang),
             max_length=20, required=True,
-        )
-        self.priority = ui.TextInput(
-            label=t("task_priority_label", lang),
-            placeholder=t("task_priority_placeholder", lang),
-            max_length=1, required=False, default="0",
         )
         self.description = ui.TextInput(
             label=t("task_desc_label", lang),
@@ -123,7 +122,6 @@ class AddTaskModal(ui.Modal):
         )
         self.add_item(self.task_name)
         self.add_item(self.deadline)
-        self.add_item(self.priority)
         self.add_item(self.description)
         self.add_item(self.tags)
 
@@ -149,13 +147,8 @@ class AddTaskModal(ui.Modal):
             return
         task_name = name_or_err
 
-        # ── Validate priority ────────────────────────────────────────────────
-        prio_raw = (self.priority.value or "0").strip()
-        if not prio_raw.isdigit() or int(prio_raw) not in range(8):
-            err_msg = t("task_invalid_priority", lang)
-            await _safe_respond(interaction, err_msg)
-            return
-        priority = int(prio_raw)
+        # ── Priority already validated in Select View ──────────────
+        priority = self.priority
 
         # ── Validate description ─────────────────────────────────────────────
         description: Optional[str] = None
@@ -215,9 +208,17 @@ class AddTaskModal(ui.Modal):
         view  = TaskActionView(task_id, uid, lang,
                                current_priority=priority)
         success_key = "subtask_created" if self.parent_task_id else "task_created"
-        await interaction.response.send_message(
-            t(success_key, lang, task_id=task_id), embed=embed, view=view,
-        )
+        success_msg = t(success_key, lang, task_id=task_id)
+
+        if interaction.message:
+            # Replaces the public Dropdown message with the Task Details!
+            await interaction.response.edit_message(
+                content=success_msg, embed=embed, view=view,
+            )
+        else:
+            await interaction.response.send_message(
+                success_msg, embed=embed, view=view,
+            )
         dm_embed = discord.Embed(
             title="✅ " + ("สร้าง Task สำเร็จ!" if lang == "th" else "Task Created!"),
             description=f"**#{task_id} — {task_name[:80]}**",
@@ -446,6 +447,68 @@ def _build_priority_options(lang: str, current: int = -1) -> list[discord.Select
         )
         for v, emoji, _ in _PRIORITY_OPTIONS
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PrioritySelectView  (shown BEFORE AddTaskModal — step 1 of /add flow)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _PriorityForAddSelect(ui.Select):
+    """Priority dropdown used in PrioritySelectView (step 1 of /add)."""
+
+    def __init__(self, author_id: str, lang: str, category_id: Optional[int], parent_task_id: Optional[int]) -> None:
+        super().__init__(
+            placeholder=t("priority_select_placeholder", lang),
+            options=_build_priority_options(lang, current=0),
+            min_values=1,
+            max_values=1,
+            row=0,
+        )
+        self.author_id      = author_id
+        self.lang           = lang
+        self.category_id    = category_id
+        self.parent_task_id = parent_task_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.author_id:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+
+        priority = int(self.values[0])
+        # Open AddTaskModal with the chosen priority
+        await interaction.response.send_modal(
+            AddTaskModal(self.lang, priority=priority,
+                         category_id=self.category_id,
+                         parent_task_id=self.parent_task_id)
+        )
+
+
+class PrioritySelectView(ui.View):
+    """
+    Step 1 of the /add flow: show a rich Priority dropdown.
+    After the user selects a priority, AddTaskModal opens automatically.
+    """
+
+    def __init__(self, author_id: str, lang: str,
+                 category_id: Optional[int] = None,
+                 parent_task_id: Optional[int] = None) -> None:
+        super().__init__(timeout=120)
+        self.lang = lang
+        self.author_id = author_id
+        self.add_item(_PriorityForAddSelect(author_id, lang, category_id, parent_task_id))
+
+    async def on_timeout(self) -> None:
+        # Edit the message to say it timed out instead of leaving the dropdown
+        for child in self.children:
+            child.disabled = True
+        # Note: on_timeout in a View can't directly edit the message without storing it,
+        # but since we want to keep it simple, we just disable the view.
+        # It's better to store `self.message` when sending.
+        if hasattr(self, "message") and self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -761,7 +824,16 @@ class TaskActionView(ui.View):
         if row and row["parent_task_id"] is not None:
             await _safe_respond(interaction, t("subtask_no_nested", lang))
             return
-        await interaction.response.send_modal(AddTaskModal(lang, parent_task_id=self.task_id))
+            
+        uid = str(interaction.user.id)
+        # Open priority selector first, then modal
+        view = PrioritySelectView(uid, lang, parent_task_id=self.task_id)
+        embed = discord.Embed(
+            title=t("priority_select_title", lang),
+            description=t("priority_select_desc", lang),
+            color=0x5865F2,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

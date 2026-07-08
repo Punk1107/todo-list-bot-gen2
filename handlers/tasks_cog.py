@@ -30,6 +30,7 @@ from utils.helpers import (
 )
 from handlers.task_views import (
     AddTaskModal, TaskActionView, TaskListView, DeleteConfirmView,
+    PrioritySelectView,
     TASKS_PER_PAGE, _send_dm,
 )
 
@@ -75,7 +76,19 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         await ensure_user(uid, lang)
-        await interaction.response.send_modal(AddTaskModal(lang))
+
+        # Step 1: priority dropdown — opens AddTaskModal after selection
+        view  = PrioritySelectView(uid, lang)
+        embed = discord.Embed(
+            title=t("priority_select_title", lang),
+            description=t("priority_select_desc", lang),
+            color=0x5865F2,
+        )
+        embed.set_footer(text="To-Do List Bot Gen 2")
+        # Send a public message (so everyone sees 'User used /add')
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        # Store message in view so it can edit out the dropdown on timeout (optional, see on_timeout)
+        view.message = await interaction.original_response()
 
     # ─────────────────────────────────────────────────────────────────────────
     # /list
