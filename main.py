@@ -102,6 +102,11 @@ class TodoBot(commands.Bot):
         from core.database import db
         db.start_bulk_writer()
 
+        # Re-register persistent task views so buttons on old messages stay interactive
+        # after a bot restart. Must run after BulkWriter start and DB is ready.
+        from handlers.task_views import register_all_persistent_views
+        await register_all_persistent_views(self)
+
         # Start async webserver (no daemon thread — pure coroutine)
         from utils.webserver import start_async
         self._webserver_runner = await start_async()
