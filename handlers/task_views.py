@@ -524,8 +524,9 @@ class PriorityEditSelect(ui.Select):
     Shown on row 3 (below the Subtask button).
     """
 
-    def __init__(self, current_priority: int, lang: str) -> None:
+    def __init__(self, task_id: int, current_priority: int, lang: str) -> None:
         super().__init__(
+            custom_id=f"task_{task_id}_psel",
             placeholder=t("priority_select_placeholder", lang),
             options=_build_priority_options(lang, current=current_priority),
             min_values=1,
@@ -569,7 +570,7 @@ class PriorityEditSelect(ui.Select):
 class CategorySelect(ui.Select):
     """Dropdown to quickly reassign a task's category."""
 
-    def __init__(self, categories: list, current_cat_id: Optional[int], lang: str) -> None:
+    def __init__(self, task_id: int, categories: list, current_cat_id: Optional[int], lang: str) -> None:
         options = [
             discord.SelectOption(
                 label="— " + ("ไม่มีหมวดหมู่" if lang == "th" else "No Category"),
@@ -586,7 +587,11 @@ class CategorySelect(ui.Select):
                 )
             )
         placeholder = "🏷️ เปลี่ยนหมวดหมู่..." if lang == "th" else "🏷️ Change category..."
-        super().__init__(placeholder=placeholder, options=options, row=2, min_values=1, max_values=1)
+        super().__init__(
+            custom_id=f"task_{task_id}_csel",
+            placeholder=placeholder, options=options,
+            row=2, min_values=1, max_values=1,
+        )
         self.lang = lang
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -636,35 +641,43 @@ class TaskActionView(ui.View):
         current_cat_id: Optional[int] = None,
         current_priority: int = 0,
     ) -> None:
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)  # Persistent — buttons never expire
         self.task_id   = task_id
         self.uid       = uid
         self.lang      = lang
         self.is_pinned = is_pinned
+
+        # Encode task_id into every button's custom_id so interactions survive bot restarts.
+        # Buttons defined via @ui.button get short ids ("done", "edit", …) which we prefix here.
+        for child in self.children:
+            if hasattr(child, "custom_id") and child.custom_id:
+                child.custom_id = f"task_{task_id}_{child.custom_id}"
+
         self._update_pin_label()
 
         # Priority edit dropdown — always shown on row 3
-        self.add_item(PriorityEditSelect(current_priority, lang))
+        self.add_item(PriorityEditSelect(task_id, current_priority, lang))
 
         # Category select on row 2 — only when categories provided
         if categories is not None:
-            self.add_item(CategorySelect(categories, current_cat_id, lang))
+            self.add_item(CategorySelect(task_id, categories, current_cat_id, lang))
 
 
     def _update_pin_label(self) -> None:
+        pin_cid = f"task_{self.task_id}_pin"
         for item in self.children:
-            if getattr(item, "custom_id", None) == "pin_btn":
+            if getattr(item, "custom_id", None) == pin_cid:
                 item.label = "📌 Unpin" if self.is_pinned else "📌 Pin"  # type: ignore[attr-defined]
 
     async def on_timeout(self) -> None:
-        _disable_all(self)
+        pass  # timeout=None — persistent views never expire; kept as no-op for safety
 
     def _check_owner(self, interaction: discord.Interaction) -> bool:
         return str(interaction.user.id) == self.uid
 
     # ── Mark Done ─────────────────────────────────────────────────────────────
 
-    @ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=0)
+    @ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=0, custom_id="done")
     async def mark_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -704,7 +717,7 @@ class TaskActionView(ui.View):
 
     # ── Edit ──────────────────────────────────────────────────────────────────
 
-    @ui.button(label="✏️ Edit", style=discord.ButtonStyle.blurple, row=0)
+    @ui.button(label="✏️ Edit", style=discord.ButtonStyle.blurple, row=0, custom_id="edit")
     async def edit(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -718,19 +731,26 @@ class TaskActionView(ui.View):
 
     # ── Pin / Unpin ───────────────────────────────────────────────────────────
 
-    @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary,
-               row=0, custom_id="pin_btn")
+    @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary, row=0, custom_id="pin")
     async def pin_toggle(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
             await _safe_respond(interaction, t("permission_denied", lang))
             return
-        new_val = 0 if self.is_pinned else 1
+        # Re-fetch current pin state from DB — self.is_pinned can be stale after bot restart
+        pin_row = await db.afetchone(
+            "SELECT is_pinned FROM tasks WHERE task_id=? AND owner_id=?",
+            (self.task_id, self.uid),
+        )
+        if not pin_row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
+        current_pinned = bool(pin_row["is_pinned"])
+        new_val = 0 if current_pinned else 1
         await db.aexecute(
             "UPDATE tasks SET is_pinned=? WHERE task_id=? AND owner_id=?",
             (new_val, self.task_id, self.uid),
         )
-        # Update state FIRST, then log with the correct new state
         self.is_pinned = bool(new_val)
         action_str = "task_pinned" if self.is_pinned else "task_unpinned"
         await db.alog_action(self.uid, action_str, str(self.task_id))
@@ -752,7 +772,7 @@ class TaskActionView(ui.View):
 
     # ── Delete ────────────────────────────────────────────────────────────────
 
-    @ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, row=1)
+    @ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, row=1, custom_id="del")
     async def delete(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -770,7 +790,7 @@ class TaskActionView(ui.View):
 
     # ── Snooze (+1 Day) ───────────────────────────────────────────────────────
 
-    @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary, row=1)
+    @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
     async def snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -814,7 +834,7 @@ class TaskActionView(ui.View):
 
     # ── Add Subtask ───────────────────────────────────────────────────────────
 
-    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=4)
+    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=4, custom_id="sub")
     async def add_subtask(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -1039,3 +1059,48 @@ class LanguageView(ui.View):
         await db.alog_action(uid, "lang_changed", detail="en")
         self.stop()
         await interaction.response.send_message(t("lang_changed", "en"), ephemeral=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Startup: Re-register all persistent task views
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def register_all_persistent_views(bot: discord.Client) -> None:
+    """
+    Re-register a TaskActionView for every task in the DB so that buttons on
+    old Discord messages continue to work after a bot restart.
+
+    How it works:
+      - Each button's custom_id encodes the task_id (e.g. "task_42_done").
+      - bot.add_view(view) without message_id tells discord.py to match ANY
+        incoming component interaction whose custom_id equals one of the
+        view children's custom_ids.
+      - Result: every task's buttons stay interactive indefinitely.
+
+    Call this once from setup_hook() — before the bot is marked as ready.
+    """
+    from core.database import db as _db
+
+    rows = await _db.afetchall(
+        """SELECT t.task_id, t.owner_id, t.priority, t.is_pinned,
+                  COALESCE(u.lang, 'th') AS lang
+           FROM tasks t
+           LEFT JOIN users u ON t.owner_id = u.user_id
+           ORDER BY t.task_id DESC
+           LIMIT 5000""",
+    )
+    count = 0
+    for row in rows:
+        try:
+            view = TaskActionView(
+                task_id=row["task_id"],
+                uid=row["owner_id"],
+                lang=row["lang"],
+                is_pinned=bool(row["is_pinned"]) if row["is_pinned"] is not None else False,
+                current_priority=row["priority"] if row["priority"] is not None else 0,
+            )
+            bot.add_view(view)
+            count += 1
+        except Exception as exc:
+            log.warning("Persistent view registration failed task_id=%s: %s", row["task_id"], exc)
+    log.info("✓ Registered %d persistent task views (post-restart button coverage)", count)
