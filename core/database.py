@@ -34,7 +34,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 6   # bump when adding migrations below
+SCHEMA_VERSION = 7   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -569,6 +569,14 @@ MIGRATIONS: list[tuple[int, str]] = [
 
     INSERT OR REPLACE INTO schema_version VALUES (6);
     """),
+
+    # ── v7: dm_reminded bitmask for deadline DM notifications ─────────────────
+    (7, """
+    ALTER TABLE tasks ADD COLUMN dm_reminded INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX IF NOT EXISTS idx_tasks_dm_reminded
+        ON tasks(owner_id, status, deadline, dm_reminded);
+    INSERT OR REPLACE INTO schema_version VALUES (7);
+    """),
 ]
 
 
@@ -580,7 +588,7 @@ class DatabaseManager:
     """
     High-performance SQLite manager v3:
     - Connection pool (default 10)
-    - Automatic schema migrations (v1→v6)
+    - Automatic schema migrations (v1→v7)
     - Async wrappers (asyncio.to_thread) — never blocks the event loop
     - UserCache + StatsCache + QueryCache (L1 read cache)
     - execute_batch() for true multi-row batched writes

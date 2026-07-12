@@ -171,11 +171,18 @@ STRINGS = {
     "recurring_monthly": "🔄 ทุกเดือน",
     "recurring_none": "—",
 
-    # ─── Reminders ──────────────────────────────────────────────────────────────
+    # ─── Reminders ─────────────────────────────────────────────────────────────────
     "reminder_title": "⏰ แจ้งเตือน Task",
     "reminder_overdue": "🚨 **Task เกินกำหนด!**\n`{task}` ครบกำหนดเมื่อ {deadline}",
     "reminder_due_soon": "⚡ **Task ใกล้ครบกำหนด!**\n`{task}` ครบกำหนดในอีก {time_left}",
     "reminder_due_today": "📅 **Task ครบกำหนดวันนี้!**\n`{task}` ครบกำหนดเวลา {time}",
+
+    # DM deadline reminders
+    "dm_reminder_title": "⏰ แจ้งเตือน Deadline (DM)",
+    "dm_reminder_24h": "📅 **Task ของคุณใกล้ Deadline แล้ว!**\n`{task}` เหลือเวลาอีก **{time_left}** เท่านั้นแล้วนะ!",
+    "dm_reminder_3h": "🟠 **Task ใกล้ Deadline มากขึ้นแล้ว!**\n`{task}` เหลือ**ไม่ถึง 3 ชั่วโมง** ({time_left}) รีบดำเนินการด้วยนะ!",
+    "dm_reminder_1h": "🚨 **เหลือเวลาอีกไม่ถึง 1 ชั่วโมง!**\n`{task}` กำลังจะ Deadline แล้ว! เหลือ **{time_left}** เท่านั้น!",
+    "dm_reminder_footer": "ถ้าเสร็จแล้ว ใช้ `/done {task_id}` หรือกด ✅ Done ที่ Task เพื่อหยุดการแจ้งเตือน",
 
     # ─── Export ─────────────────────────────────────────────────────────────────
     "export_success": "📤 ส่งออกข้อมูลสำเร็จ! ไฟล์: `{filename}`",

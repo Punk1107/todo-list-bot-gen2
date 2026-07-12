@@ -177,6 +177,13 @@ STRINGS = {
     "reminder_due_soon": "⚡ **Task Due Soon!**\n`{task}` is due in {time_left}",
     "reminder_due_today": "📅 **Task Due Today!**\n`{task}` is due at {time}",
 
+    # DM deadline reminders
+    "dm_reminder_title": "⏰ Deadline Reminder (DM)",
+    "dm_reminder_24h": "📅 **Your task is approaching its deadline!**\n`{task}` has only **{time_left}** remaining.",
+    "dm_reminder_3h": "🟠 **Less than 3 hours left!**\n`{task}` deadline is coming up fast! Only **{time_left}** to go.",
+    "dm_reminder_1h": "🚨 **Under 1 hour remaining!**\n`{task}` is almost at its deadline! Only **{time_left}** left!",
+    "dm_reminder_footer": "Done already? Use `/done {task_id}` or press ✅ Done on the task to stop reminders.",
+
     # ─── Export ─────────────────────────────────────────────────────────────────
     "export_success": "📤 Export complete! File: `{filename}`",
     "export_empty": "📭 No data to export.",
