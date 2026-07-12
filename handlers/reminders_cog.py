@@ -1,11 +1,10 @@
 """
-handlers/reminders_cog.py — Background loops v4 (DB & Transport Upgrade)
-Changes over v3:
-  - reminder_loop: LIMIT 50 → 100, uses compound index idx_tasks_compound_status_dl
-  - cleanup_loop: also purges query_cache expired entries
-  - New: db_wal_checkpoint_loop — runs PRAGMA wal_checkpoint(TRUNCATE) every N hours
-    to keep WAL file size bounded under sustained write load
-  - All DB calls async, structured logging preserved
+handlers/reminders_cog.py — Background loops v5 (Deadline DM Reminders)
+Changes over v4:
+  - New: deadline_dm_loop — sends DM directly to user when task is
+    24 h / 3 h / 1 h away from deadline (bitmask-based dedup via dm_reminded)
+  - dm_reminder_interval_minutes config key added
+  - Existing loops unchanged
 """
 from __future__ import annotations
 
@@ -52,6 +51,9 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.db_wal_checkpoint_loop.change_interval(
             hours=config.db.wal_checkpoint_interval_hours
         )
+        self.deadline_dm_loop.change_interval(
+            minutes=config.notifications.dm_reminder_interval_minutes
+        )
 
         self.reminder_loop.start()
         self.recurring_loop.start()
@@ -59,13 +61,15 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.cleanup_loop.start()
         self.daily_digest_loop.start()
         self.db_wal_checkpoint_loop.start()
+        self.deadline_dm_loop.start()
 
         log.info(
-            "RemindersCog started — reminder=%dmin recurring=%dmin backup=%dh wal_checkpoint=%dh",
+            "RemindersCog started — reminder=%dmin recurring=%dmin backup=%dh wal_checkpoint=%dh dm_reminder=%dmin",
             config.notifications.reminder_interval_minutes,
             config.notifications.recurring_check_interval_minutes,
             config.db.backup_interval_hours,
             config.db.wal_checkpoint_interval_hours,
+            config.notifications.dm_reminder_interval_minutes,
         )
 
     def cog_unload(self) -> None:
@@ -75,6 +79,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.cleanup_loop.cancel()
         self.daily_digest_loop.cancel()
         self.db_wal_checkpoint_loop.cancel()
+        self.deadline_dm_loop.cancel()
 
     # ── Reminder loop ─────────────────────────────────────────────────────────
 
@@ -351,6 +356,132 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     @cleanup_loop.before_loop
     async def before_cleanup(self) -> None:
+        await self.bot.wait_until_ready()
+
+    # ── Deadline DM Reminder loop ────────────────────────────────────────────
+
+    # Bitmask constants for dm_reminded column
+    _DM_BIT_24H = 1  # bit 0
+    _DM_BIT_3H  = 2  # bit 1
+    _DM_BIT_1H  = 4  # bit 2
+
+    @tasks.loop(minutes=15)
+    async def deadline_dm_loop(self) -> None:
+        """
+        Send a DM directly to the task owner at 3 thresholds before deadline:
+          24 h  (window: 20 h – 26 h before deadline)
+           3 h  (window:  2.5 h – 3.5 h before deadline)
+           1 h  (window: 45 min – 75 min before deadline)
+
+        Uses dm_reminded bitmask to guarantee each threshold fires exactly once.
+        Works even if the user has not configured a notification channel.
+        """
+        now = datetime.now(UTC)
+
+        # Define (bit, label_key, lower_mins, upper_mins, color)
+        thresholds = [
+            (self._DM_BIT_24H, "dm_reminder_24h",  20 * 60,  26 * 60, 0x5865F2),  # blurple
+            (self._DM_BIT_3H,  "dm_reminder_3h",   150,      210,     0xE67E22),  # orange
+            (self._DM_BIT_1H,  "dm_reminder_1h",    45,       75,     0xED4245),  # red
+        ]
+
+        for bit, label_key, lower_mins, upper_mins, color in thresholds:
+            lower_dt = (now + timedelta(minutes=lower_mins)).isoformat()
+            upper_dt = (now + timedelta(minutes=upper_mins)).isoformat()
+
+            rows = await db.afetchall(
+                """SELECT t.task_id, t.task, t.deadline, t.dm_reminded,
+                          u.user_id, u.timezone, u.lang, u.notify_enabled
+                   FROM tasks t
+                   JOIN users u ON t.owner_id = u.user_id
+                   WHERE t.status = 'Pending'
+                     AND t.deadline BETWEEN ? AND ?
+                     AND (t.dm_reminded & ?) = 0
+                     AND u.notify_enabled = 1
+                   LIMIT 200""",
+                (lower_dt, upper_dt, bit),
+            )
+
+            if not rows:
+                continue
+
+            dm_updates: list[tuple[str, tuple]] = []
+
+            for row in rows:
+                uid     = row["user_id"]
+                lang    = row["lang"] or "th"
+                tz_name = row["timezone"] or "Asia/Bangkok"
+                tid     = row["task_id"]
+
+                # Fetch the Discord user object — try cache first, then API
+                user = self.bot.get_user(int(uid))
+                if user is None:
+                    try:
+                        user = await self.bot.fetch_user(int(uid))
+                    except Exception:
+                        log.debug("deadline_dm_loop: could not fetch user %s", uid)
+                        continue
+
+                try:
+                    tl = time_left_str(row["deadline"])
+                    dl_fmt = format_deadline(row["deadline"], tz_name)
+
+                    body = t(label_key, lang, task=row["task"][:80], time_left=tl)
+                    footer = t("dm_reminder_footer", lang, task_id=tid)
+
+                    embed = discord.Embed(
+                        title=t("dm_reminder_title", lang),
+                        description=body,
+                        color=color,
+                    )
+                    embed.add_field(
+                        name="📅 Deadline",
+                        value=f"`{dl_fmt}`",
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name="⏱️ เวลาที่เหลือ" if lang == "th" else "⏱️ Time Left",
+                        value=f"`{tl}`",
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name="🆔 Task ID",
+                        value=f"`#{tid}`",
+                        inline=True,
+                    )
+                    embed.set_footer(text=footer)
+
+                    await user.send(embed=embed)
+                    log.debug(
+                        "DM reminder (%s) sent: task_id=%d user=%s", label_key, tid, uid
+                    )
+
+                    # Mark this bit as sent
+                    new_mask = row["dm_reminded"] | bit
+                    dm_updates.append((
+                        "UPDATE tasks SET dm_reminded=? WHERE task_id=?",
+                        (new_mask, tid),
+                    ))
+
+                except discord.Forbidden:
+                    log.debug("DM blocked for user %s (DMs disabled)", uid)
+                    # Still mark as sent so we don't keep retrying for closed DMs
+                    new_mask = row["dm_reminded"] | bit
+                    dm_updates.append((
+                        "UPDATE tasks SET dm_reminded=? WHERE task_id=?",
+                        (new_mask, tid),
+                    ))
+                except Exception as exc:
+                    log.error("deadline_dm_loop error task_id=%d: %s", tid, exc)
+
+            if dm_updates:
+                try:
+                    await db.aexecute_batch(dm_updates)
+                except Exception as exc:
+                    log.error("deadline_dm_loop batch update failed: %s", exc)
+
+    @deadline_dm_loop.before_loop
+    async def before_deadline_dm(self) -> None:
         await self.bot.wait_until_ready()
 
 

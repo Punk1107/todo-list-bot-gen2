@@ -143,6 +143,7 @@ class NotificationConfig:
     overdue_remind_hours: int    # how often (hrs) to re-remind on overdue tasks
     daily_summary_enabled: bool
     daily_summary_hour: int      # 0-23
+    dm_reminder_interval_minutes: int  # how often to check for deadline DM reminders
 
     @classmethod
     def from_env(cls) -> "NotificationConfig":
@@ -152,6 +153,7 @@ class NotificationConfig:
             overdue_remind_hours=_env_int("OVERDUE_REMIND_HOURS", 6),
             daily_summary_enabled=_env_bool("DAILY_SUMMARY_ENABLED", True),
             daily_summary_hour=_env_int("DAILY_SUMMARY_HOUR", 8),
+            dm_reminder_interval_minutes=_env_int("DM_REMINDER_INTERVAL_MIN", 15),
         )
 
 

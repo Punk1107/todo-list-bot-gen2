@@ -318,7 +318,7 @@ class EditTaskModal(ui.Modal):
         try:
             await db.aexecute(
                 """UPDATE tasks SET task=?, deadline=?, priority=?, description=?,
-                   tags=?, updated_at=CURRENT_TIMESTAMP
+                   tags=?, dm_reminded=0, updated_at=CURRENT_TIMESTAMP
                    WHERE task_id=? AND owner_id=?""",
                 (name_or_err, dt.isoformat(), prio_val,
                  description, tags, self.task_id, uid),
@@ -815,7 +815,7 @@ class TaskActionView(ui.View):
                 dt = pytz.utc.localize(dt)
             new_dl = (dt + timedelta(days=1)).isoformat()
             await db.aexecute(
-                "UPDATE tasks SET deadline=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+                "UPDATE tasks SET deadline=?, dm_reminded=0, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
                 (new_dl, self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_snoozed", str(self.task_id), "+1d")
