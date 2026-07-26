@@ -383,7 +383,7 @@ class BulkWriter:
             await self.flush()
 
     def start(self) -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         self._task = loop.create_task(self._run(), name="bulk_writer")
         log.info("BulkWriter started (interval=%.0f ms)", self._interval * 1000)
 

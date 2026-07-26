@@ -244,7 +244,8 @@ class EditTaskModal(ui.Modal):
         self._current_priority = task_row["priority"]  # kept from DB; changed via PriorityEditSelect
 
         # Pre-fill in user-friendly format (sync is fine here — it's pure string ops)
-        tz_name = "Asia/Bangkok"   # fallback; we'll properly fetch in on_submit
+        # tz_name is passed from the caller which already fetched it from DB/cache
+        tz_name = getattr(self, '_prefill_tz', "Asia/Bangkok")
         current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
 
         self.task_name = ui.TextInput(
@@ -378,8 +379,10 @@ class DeleteConfirmView(ui.View):
 
     @ui.button(label="🗑️ Confirm Delete", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Defer immediately — DB delete + DM send can exceed 3-second window
+        await interaction.response.defer(ephemeral=True)
         if str(interaction.user.id) != self.uid:
-            await _safe_respond(interaction, t("permission_denied", self.lang))
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
         try:
             await db.aexecute(
@@ -390,13 +393,19 @@ class DeleteConfirmView(ui.View):
             db.invalidate_stats(self.uid)
         except Exception as exc:
             log.error("Task delete failed: %s", exc)
-            await _safe_respond(interaction, t("err_db", self.lang))
+            await interaction.followup.send(t("err_db", self.lang), ephemeral=True)
             return
         self.stop()
-        await interaction.response.edit_message(
-            content=t("task_deleted", self.lang, task_id=self.task_id),
-            embed=None, view=None,
-        )
+        # Edit the original confirm message via followup since we already deferred
+        try:
+            await interaction.edit_original_response(
+                content=t("task_deleted", self.lang, task_id=self.task_id),
+                embed=None, view=None,
+            )
+        except Exception:
+            await interaction.followup.send(
+                t("task_deleted", self.lang, task_id=self.task_id), ephemeral=True
+            )
         dm_embed = discord.Embed(
             title="🗑️ " + ("ลบ Task เรียบร้อย" if self.lang == "th" else "Task Deleted"),
             description=(
@@ -415,6 +424,16 @@ class DeleteConfirmView(ui.View):
         await interaction.response.edit_message(
             content=t("cancel", self.lang), embed=None, view=None,
         )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
+        log.error("DeleteConfirmView error (task_id=%s): %s", self.task_id, error, exc_info=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
+            else:
+                await interaction.response.send_message(t("err_generic", self.lang), ephemeral=True)
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -500,17 +519,25 @@ class PrioritySelectView(ui.View):
         self.add_item(_PriorityForAddSelect(author_id, lang, category_id, parent_task_id))
 
     async def on_timeout(self) -> None:
-        # Edit the message to say it timed out instead of leaving the dropdown
+        # Disable all items and edit the message to indicate timeout
         for child in self.children:
             child.disabled = True
-        # Note: on_timeout in a View can't directly edit the message without storing it,
-        # but since we want to keep it simple, we just disable the view.
-        # It's better to store `self.message` when sending.
         if hasattr(self, "message") and self.message:
             try:
                 await self.message.edit(view=self)
             except Exception:
                 pass
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
+        log.error("PrioritySelectView error: %s", error, exc_info=True)
+        lang = self.lang
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(t("err_generic", lang), ephemeral=True)
+            else:
+                await interaction.response.send_message(t("err_generic", lang), ephemeral=True)
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -536,10 +563,12 @@ class PriorityEditSelect(ui.Select):
         self.lang = lang
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        # Defer immediately — DB write must not race against 3-second window
+        await interaction.response.defer(ephemeral=True)
         view: TaskActionView = self.view  # type: ignore[assignment]
         lang = self.lang
         if str(interaction.user.id) != view.uid:
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
 
         new_priority = int(self.values[0])
@@ -553,13 +582,13 @@ class PriorityEditSelect(ui.Select):
             db.invalidate_stats(view.uid)
         except Exception as exc:
             log.error("Priority update failed task_id=%d: %s", view.task_id, exc)
-            await _safe_respond(interaction, t("err_db", lang))
+            await interaction.followup.send(t("err_db", lang), ephemeral=True)
             return
 
         prio_label = t(f"priority_{new_priority}", lang)
-        await _safe_respond(
-            interaction,
+        await interaction.followup.send(
             t("priority_changed", lang, task_id=view.task_id, priority=prio_label),
+            ephemeral=True,
         )
 
 
@@ -595,10 +624,12 @@ class CategorySelect(ui.Select):
         self.lang = lang
 
     async def callback(self, interaction: discord.Interaction) -> None:
+        # Defer immediately — DB write must not race against 3-second window
+        await interaction.response.defer(ephemeral=True)
         view: TaskActionView = self.view  # type: ignore[assignment]
         lang = self.lang
         if str(interaction.user.id) != view.uid:
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         new_cat = int(self.values[0])
         cat_val: Optional[int] = None if new_cat == 0 else new_cat
@@ -610,13 +641,13 @@ class CategorySelect(ui.Select):
             await db.alog_action(view.uid, "task_category_changed", str(view.task_id), str(cat_val))
         except Exception as exc:
             log.error("Category update failed: %s", exc)
-            await _safe_respond(interaction, t("err_db", lang))
+            await interaction.followup.send(t("err_db", lang), ephemeral=True)
             return
         msg = (
-            f"🏷️ เปลี่ยนหมวดหมู่สำเร็จ!" if lang == "th"
+            "🏷️ เปลี่ยนหมวดหมู่สำเร็จ!" if lang == "th"
             else "🏷️ Category updated!"
         )
-        await _safe_respond(interaction, msg)
+        await interaction.followup.send(msg, ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -671,6 +702,19 @@ class TaskActionView(ui.View):
 
     async def on_timeout(self) -> None:
         pass  # timeout=None — persistent views never expire; kept as no-op for safety
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
+        """Catch unhandled exceptions in button/select callbacks and reply gracefully."""
+        log.error("TaskActionView error (task_id=%s item=%s): %s",
+                  self.task_id, getattr(item, 'custom_id', '?'), error, exc_info=True)
+        lang = self.lang
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(t("err_generic", lang), ephemeral=True)
+            else:
+                await interaction.response.send_message(t("err_generic", lang), ephemeral=True)
+        except Exception:
+            pass
 
     def _check_owner(self, interaction: discord.Interaction) -> bool:
         return str(interaction.user.id) == self.uid
@@ -1099,14 +1143,33 @@ async def register_all_persistent_views(bot: discord.Client) -> None:
            ORDER BY t.task_id DESC
            LIMIT 5000""",
     )
+
+    # Pre-fetch all categories once (system + per-user) to avoid N+1 queries
+    all_categories = await _db.afetchall(
+        "SELECT * FROM categories ORDER BY owner_id, name"
+    )
+    # Group by owner_id for quick lookup: {owner_id: [cat_rows], 'system': [cat_rows]}
+    from collections import defaultdict
+    cats_by_owner: dict = defaultdict(list)
+    system_cats: list = []
+    for cat in all_categories:
+        if cat["owner_id"] == "system":
+            system_cats.append(cat)
+        else:
+            cats_by_owner[cat["owner_id"]].append(cat)
+
     count = 0
     for row in rows:
         try:
+            uid = row["owner_id"]
+            # Merge system categories + user's own categories
+            user_cats = system_cats + cats_by_owner.get(uid, [])
             view = TaskActionView(
                 task_id=row["task_id"],
-                uid=row["owner_id"],
+                uid=uid,
                 lang=row["lang"],
                 is_pinned=bool(row["is_pinned"]) if row["is_pinned"] is not None else False,
+                categories=user_cats if user_cats else None,
                 current_priority=row["priority"] if row["priority"] is not None else 0,
             )
             bot.add_view(view)

@@ -179,9 +179,16 @@ async def on_ready() -> None:
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction) -> None:
-    """Update last_active timestamp non-blocking via BulkWriter."""
+    """Update last_active timestamp non-blocking via BulkWriter.
+    Also ensures the user row exists (INSERT OR IGNORE) so the UPDATE never silently drops.
+    """
     from core.database import db
     uid = str(interaction.user.id)
+    # Ensure user row exists before updating last_active
+    db.bulk_writer.enqueue(
+        "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+        (uid,),
+    )
     db.bulk_writer.enqueue(
         "UPDATE users SET last_active=CURRENT_TIMESTAMP WHERE user_id=?",
         (uid,),
