@@ -242,21 +242,22 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def done(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True)
 
         row = await db.afetchone("SELECT status, owner_id FROM tasks WHERE task_id=?", (task_id,))
         if not row:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
         if row["owner_id"] != uid:
-            await interaction.response.send_message(t("task_not_owned", lang), ephemeral=True)
+            await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
             return
         if row["status"] == "Completed":
-            await interaction.response.send_message(t("task_already_done", lang), ephemeral=True)
+            await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
             return
         if row["status"] == "Cancelled":
-            await interaction.response.send_message(t("task_already_cancelled", lang), ephemeral=True)
+            await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
 
         await db.aexecute(
@@ -271,7 +272,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             color=0x57F287,
         )
         embed.set_footer(text=t("footer_text", lang))
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         dm_embed = discord.Embed(
             title="✅ " + ("Task เสร็จแล้ว!" if lang == "th" else "Task Completed!"),
             description=(
@@ -294,7 +295,7 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def delete(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-
+        # Fetch task name BEFORE responding (send_message with view must be first response)
         row = await db.afetchone("SELECT task, owner_id FROM tasks WHERE task_id=?", (task_id,))
         if not row:
             await interaction.response.send_message(

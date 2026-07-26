@@ -8,6 +8,7 @@ Changes over v4:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -166,6 +167,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     (tid,),
                 ))
                 log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
+                # Throttle: avoid Discord rate-limit when many reminders fire at once
+                await asyncio.sleep(0.3)
             except discord.Forbidden:
                 log.warning("No permission to send reminder in channel %s", row["channel_id"])
             except Exception as exc:
@@ -269,17 +272,26 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 continue
 
             today_tasks = await db.afetchall(
-                """SELECT task_id, task, deadline, priority FROM tasks
-                   WHERE owner_id=? AND status='Pending'
-                     AND deadline BETWEEN ? AND ?
+                """SELECT task_id, task, deadline, priority,
+                          (SELECT COUNT(*) FROM tasks t2
+                           WHERE t2.owner_id=tasks.owner_id
+                             AND t2.status='Pending'
+                             AND t2.deadline < :now) AS overdue_count
+                   FROM tasks
+                   WHERE owner_id=:uid AND status='Pending'
+                     AND deadline BETWEEN :day_start AND :day_end
                    ORDER BY priority DESC, deadline ASC LIMIT 10""",
-                (uid, day_start, day_end),
+                {"uid": uid, "day_start": day_start, "day_end": day_end, "now": now.isoformat()},
             )
-            overdue_row = await db.afetchone(
-                "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=? AND status='Pending' AND deadline<?",
-                (uid, now.isoformat()),
-            )
-            overdue_count = overdue_row["c"] if overdue_row else 0
+            # Overdue count is embedded in each row via subquery (same for all rows)
+            overdue_count = today_tasks[0]["overdue_count"] if today_tasks else 0
+            # If no today_tasks, do a single lightweight count query
+            if not today_tasks:
+                overdue_row = await db.afetchone(
+                    "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=? AND status='Pending' AND deadline<?",
+                    (uid, now.isoformat()),
+                )
+                overdue_count = overdue_row["c"] if overdue_row else 0
 
             embed = discord.Embed(
                 title=f"☀️ {'สรุป Task วันนี้' if lang == 'th' else 'Daily Task Digest'} — {local_now.strftime('%d/%m/%Y')}",
