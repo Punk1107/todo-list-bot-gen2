@@ -679,19 +679,21 @@ class TaskActionView(ui.View):
 
     @ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=0, custom_id="done")
     async def mark_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Defer immediately so Discord doesn't time out while we query the DB
+        await interaction.response.defer(ephemeral=True)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone("SELECT status FROM tasks WHERE task_id=?", (self.task_id,))
         if not row:
-            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         if row["status"] == "Completed":
-            await _safe_respond(interaction, t("task_already_done", lang))
+            await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
             return
         if row["status"] == "Cancelled":
-            await _safe_respond(interaction, t("task_already_cancelled", lang))
+            await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
         await db.aexecute(
             "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
@@ -702,7 +704,7 @@ class TaskActionView(ui.View):
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         self.stop()
-        await _safe_respond(interaction, t("task_marked_done", lang, task_id=self.task_id))
+        await interaction.followup.send(t("task_marked_done", lang, task_id=self.task_id), ephemeral=True)
         dm_embed = discord.Embed(
             title="✅ " + ("Task เสร็จแล้ว!" if lang == "th" else "Task Completed!"),
             description=(
@@ -719,13 +721,14 @@ class TaskActionView(ui.View):
 
     @ui.button(label="✏️ Edit", style=discord.ButtonStyle.blurple, row=0, custom_id="edit")
     async def edit(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Fetch data BEFORE responding — send_modal must be the first response
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
         if not row:
-            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         await interaction.response.send_modal(EditTaskModal(row, lang))
 
@@ -733,9 +736,11 @@ class TaskActionView(ui.View):
 
     @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary, row=0, custom_id="pin")
     async def pin_toggle(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Defer immediately so Discord doesn't time out while we query the DB
+        await interaction.response.defer(ephemeral=True)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         # Re-fetch current pin state from DB — self.is_pinned can be stale after bot restart
         pin_row = await db.afetchone(
@@ -743,7 +748,7 @@ class TaskActionView(ui.View):
             (self.task_id, self.uid),
         )
         if not pin_row:
-            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         current_pinned = bool(pin_row["is_pinned"])
         new_val = 0 if current_pinned else 1
@@ -756,7 +761,7 @@ class TaskActionView(ui.View):
         await db.alog_action(self.uid, action_str, str(self.task_id))
         self._update_pin_label()
         msg_key = "task_pinned" if self.is_pinned else "task_unpinned"
-        await _safe_respond(interaction, t(msg_key, lang, task_id=self.task_id))
+        await interaction.followup.send(t(msg_key, lang, task_id=self.task_id), ephemeral=True)
         pin_label = (
             ("📌 ปักหมุดแล้ว" if self.is_pinned else "📌 เลิกปักหมุดแล้ว")
             if lang == "th"
@@ -774,13 +779,14 @@ class TaskActionView(ui.View):
 
     @ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, row=1, custom_id="del")
     async def delete(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Fetch task name BEFORE responding (send_message must be the first response)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone("SELECT task FROM tasks WHERE task_id=?", (self.task_id,))
         if not row:
-            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         confirm = DeleteConfirmView(self.task_id, self.uid, lang)
         await interaction.response.send_message(
@@ -792,20 +798,23 @@ class TaskActionView(ui.View):
 
     @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
     async def snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Defer immediately so Discord doesn't time out while we query the DB
+        await interaction.response.defer(ephemeral=True)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone(
+        row = await db.afetchall(
             "SELECT deadline, status FROM tasks WHERE task_id=?", (self.task_id,)
         )
+        row = row[0] if row else None
         if not row:
-            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         if row["status"] != "Pending":
-            await _safe_respond(
-                interaction,
+            await interaction.followup.send(
                 "⚠️ " + ("เลื่อนได้เฉพาะ Task ที่ยังค้างอยู่" if lang == "th" else "Can only snooze Pending tasks"),
+                ephemeral=True,
             )
             return
         try:
@@ -827,26 +836,27 @@ class TaskActionView(ui.View):
                 if lang == "th"
                 else f"⏰ Task **#{self.task_id}** snoozed to `{new_dl_fmt}`"
             )
-            await _safe_respond(interaction, snooze_msg)
+            await interaction.followup.send(snooze_msg, ephemeral=True)
         except Exception as exc:
             log.error("Snooze failed task_id=%d: %s", self.task_id, exc)
-            await _safe_respond(interaction, t("err_generic", lang))
+            await interaction.followup.send(t("err_generic", lang), ephemeral=True)
 
     # ── Add Subtask ───────────────────────────────────────────────────────────
 
     @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=4, custom_id="sub")
     async def add_subtask(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # Fetch data BEFORE responding (send_message must be the first response)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
-            await _safe_respond(interaction, t("permission_denied", lang))
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
             "SELECT parent_task_id FROM tasks WHERE task_id=?", (self.task_id,)
         )
         if row and row["parent_task_id"] is not None:
-            await _safe_respond(interaction, t("subtask_no_nested", lang))
+            await interaction.response.send_message(t("subtask_no_nested", lang), ephemeral=True)
             return
-            
+
         uid = str(interaction.user.id)
         # Open priority selector first, then modal
         view = PrioritySelectView(uid, lang, parent_task_id=self.task_id)
