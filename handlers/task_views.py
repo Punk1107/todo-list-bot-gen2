@@ -459,7 +459,7 @@ class _PriorityForAddSelect(ui.Select):
     def __init__(self, author_id: str, lang: str, category_id: Optional[int], parent_task_id: Optional[int]) -> None:
         super().__init__(
             placeholder=t("priority_select_placeholder", lang),
-            options=_build_priority_options(lang, current=0),
+            options=_build_priority_options(lang, current=-1),
             min_values=1,
             max_values=1,
             row=0,
