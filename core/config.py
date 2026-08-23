@@ -85,29 +85,29 @@ class BotConfig:
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    path: str
+    host: str
+    port: int
+    database: str
+    user: str
+    password: str
     pool_size: int
     timeout: int
-    backup_enabled: bool
-    backup_interval_hours: int
-    max_backups: int
     # ── Cache & write-batching tunables ──────────────────────────────────────
     query_cache_ttl: float          # seconds — TTL for L1 QueryCache entries
     bulk_write_interval_ms: int     # milliseconds — BulkWriter flush interval
-    wal_checkpoint_interval_hours: int  # how often to run WAL checkpoint
 
     @classmethod
     def from_env(cls) -> "DatabaseConfig":
         return cls(
-            path=_env("DATABASE_PATH", "data/tasks.db"),
+            host=_env("SUPABASE_HOST", required=True),
+            port=_env_int("SUPABASE_PORT", 5432),
+            database=_env("SUPABASE_DB", "postgres"),
+            user=_env("SUPABASE_USER", required=True),
+            password=_env("SUPABASE_PASSWORD", required=True),
             pool_size=_env_int("DB_POOL_SIZE", 10),
             timeout=_env_int("DB_TIMEOUT", 30),
-            backup_enabled=_env_bool("DB_BACKUP_ENABLED", True),
-            backup_interval_hours=_env_int("DB_BACKUP_INTERVAL_HOURS", 24),
-            max_backups=_env_int("DB_MAX_BACKUPS", 7),
             query_cache_ttl=_env_float("DB_QUERY_CACHE_TTL", 30.0),
             bulk_write_interval_ms=_env_int("DB_BULK_WRITE_INTERVAL_MS", 500),
-            wal_checkpoint_interval_hours=_env_int("DB_WAL_CHECKPOINT_HOURS", 6),
         )
 
 

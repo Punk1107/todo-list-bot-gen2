@@ -1,12 +1,9 @@
 """
-handlers/tasks_cog.py — Slash commands for task management v3 (System Upgrade)
-Changes:
-  - All helper calls now properly awaited (async helpers)
-  - /search: fixed SQL NULL handling with COALESCE to prevent missed matches
-  - build_task_embed: now pre-fetches subtasks/categories asynchronously
-  - /list: filter label lookup correctly maps all filter keys
-  - /task: passes pre-fetched category + subtasks to build_task_embed
-  - Error messages more consistent and user-friendly
+handlers/tasks_cog.py — Slash commands for task management v4 (PostgreSQL)
+Changes over v3:
+  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
+  - CURRENT_TIMESTAMP → NOW()
+  - _async_build_task_embed: uses $1, $2 placeholders
 """
 from __future__ import annotations
 
@@ -43,7 +40,7 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
 
     # Fetch subtasks (non-cancelled only)
     subtasks = await db.afetchall(
-        "SELECT status FROM tasks WHERE parent_task_id=? AND status != 'Cancelled'",
+        "SELECT status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled'",
         (task_id,),
     )
 
@@ -51,7 +48,7 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
     category = None
     if row["category_id"]:
         category = await db.afetchone(
-            "SELECT name, emoji FROM categories WHERE category_id=?",
+            "SELECT name, emoji FROM categories WHERE category_id=$1",
             (row["category_id"],),
         )
 
@@ -128,8 +125,8 @@ class TasksCog(commands.Cog, name="Tasks"):
 
         tasks = await db.afetchall(
             """SELECT * FROM tasks
-               WHERE owner_id=? AND status='Pending'
-                 AND deadline BETWEEN ? AND ?
+               WHERE owner_id=$1 AND status='Pending'
+                 AND deadline BETWEEN $2 AND $3
                ORDER BY deadline ASC""",
             (uid, start, end),
         )
@@ -175,7 +172,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         now   = datetime.now(pytz.utc).isoformat()
         tasks = await db.afetchall(
             """SELECT * FROM tasks
-               WHERE owner_id=? AND status='Pending' AND deadline<?
+               WHERE owner_id=$1 AND status='Pending' AND deadline<$2
                ORDER BY deadline ASC""",
             (uid, now),
         )
@@ -206,7 +203,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await interaction.response.defer()
 
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -218,7 +215,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
         # Fetch categories for the Category Select dropdown
         categories = await db.afetchall(
-            "SELECT * FROM categories WHERE owner_id=? OR owner_id='system' ORDER BY name",
+            "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
             (uid,),
         )
 
@@ -244,7 +241,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True)
 
-        row = await db.afetchone("SELECT status, owner_id FROM tasks WHERE task_id=?", (task_id,))
+        row = await db.afetchone("SELECT status, owner_id FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -261,7 +258,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
 
         await db.aexecute(
-            "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+            "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1 AND owner_id=$2",
             (task_id, uid),
         )
         await db.alog_action(uid, "task_completed", str(task_id))
@@ -296,7 +293,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         # Fetch task name BEFORE responding (send_message with view must be first response)
-        row = await db.afetchone("SELECT task, owner_id FROM tasks WHERE task_id=?", (task_id,))
+        row = await db.afetchone("SELECT task, owner_id FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -322,13 +319,13 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def pin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id, is_pinned FROM tasks WHERE task_id=?", (task_id,))
+        row  = await db.afetchone("SELECT owner_id, is_pinned FROM tasks WHERE task_id=$1", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
-        await db.aexecute("UPDATE tasks SET is_pinned=1 WHERE task_id=?", (task_id,))
+        await db.aexecute("UPDATE tasks SET is_pinned=1 WHERE task_id=$1", (task_id,))
         await db.alog_action(uid, "task_pinned", str(task_id))
         await interaction.response.send_message(
             t("task_pinned", lang, task_id=task_id), ephemeral=True
@@ -340,13 +337,13 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def unpin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=?", (task_id,))
+        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=$1", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
-        await db.aexecute("UPDATE tasks SET is_pinned=0 WHERE task_id=?", (task_id,))
+        await db.aexecute("UPDATE tasks SET is_pinned=0 WHERE task_id=$1", (task_id,))
         await db.alog_action(uid, "task_unpinned", str(task_id))
         await interaction.response.send_message(
             t("task_unpinned", lang, task_id=task_id), ephemeral=True
@@ -370,7 +367,7 @@ class TasksCog(commands.Cog, name="Tasks"):
     ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=?", (task_id,))
+        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=$1", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -379,7 +376,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
         new_val: Optional[str] = None if interval == "none" else interval
         await db.aexecute(
-            "UPDATE tasks SET recurring=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
+            "UPDATE tasks SET recurring=$1, updated_at=NOW() WHERE task_id=$2",
             (new_val, task_id),
         )
         await db.alog_action(uid, "task_recurring_set", str(task_id), interval)
@@ -409,12 +406,12 @@ class TasksCog(commands.Cog, name="Tasks"):
         # FIX: COALESCE ensures NULL columns don't prevent matches
         tasks = await db.afetchall(
             """SELECT * FROM tasks
-               WHERE owner_id=?
-                 AND (task LIKE ?
-                      OR COALESCE(tags, '') LIKE ?
-                      OR COALESCE(description, '') LIKE ?)
+               WHERE owner_id=$1
+                 AND (task LIKE $2
+                      OR COALESCE(tags, '') LIKE $2
+                      OR COALESCE(description, '') LIKE $2)
                ORDER BY is_pinned DESC, priority DESC, deadline ASC LIMIT 20""",
-            (uid, f"%{q}%", f"%{q}%", f"%{q}%"),
+            (uid, f"%{q}%"),
         )
 
         embed = discord.Embed(title=t("search_title", lang, query=q), color=0x5865F2)
@@ -477,7 +474,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
 
         tasks = await db.afetchall(
-            "SELECT * FROM tasks WHERE owner_id=? ORDER BY created_at DESC", (uid,)
+            "SELECT * FROM tasks WHERE owner_id=$1 ORDER BY created_at DESC", (uid,)
         )
         if not tasks:
             await interaction.response.send_message(t("export_empty", lang), ephemeral=True)

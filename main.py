@@ -98,8 +98,11 @@ class TodoBot(commands.Bot):
             log.critical("All cogs failed to load — aborting")
             return
 
-        # Start BulkWriter (requires a running event loop)
+        # Initialize database (async — creates asyncpg pool and runs migrations)
         from core.database import db
+        await db.initialize()
+
+        # Start BulkWriter (requires a running event loop)
         db.start_bulk_writer()
 
         # Re-register persistent task views so buttons on old messages stay interactive
@@ -129,7 +132,7 @@ class TodoBot(commands.Bot):
         """Graceful shutdown: flush BulkWriter, stop webserver, then close."""
         from core.database import db
         log.info("Flushing BulkWriter before shutdown...")
-        await db.bulk_writer.stop()
+        await db.close()  # also stops BulkWriter
 
         if self._webserver_runner:
             await self._webserver_runner.cleanup()
@@ -186,11 +189,11 @@ async def on_interaction(interaction: discord.Interaction) -> None:
     uid = str(interaction.user.id)
     # Ensure user row exists before updating last_active
     db.bulk_writer.enqueue(
-        "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+        "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
         (uid,),
     )
     db.bulk_writer.enqueue(
-        "UPDATE users SET last_active=CURRENT_TIMESTAMP WHERE user_id=?",
+        "UPDATE users SET last_active=NOW() WHERE user_id=$1",
         (uid,),
     )
 
@@ -264,6 +267,6 @@ if __name__ == "__main__":
         sys.exit(1)
     finally:
         from core.database import db
-        db.close()
+        loop.run_until_complete(db.close())
         loop.close()
         log.info("Event loop closed — goodbye")

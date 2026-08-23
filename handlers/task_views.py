@@ -1,13 +1,11 @@
 """
-handlers/task_views.py — Discord UI Views and Modals v3 (System Upgrade)
-Changes:
-  - All helper calls now properly awaited (async helpers)
-  - TaskActionView: fixed pin_toggle logic bug (action logged incorrectly)
-  - TaskActionView: added inline Category select dropdown
-  - build_task_embed calls now pass pre-fetched subtasks/category (async safe)
-  - DeleteConfirmView.on_timeout disables buttons and edits message
-  - TaskListView: better page navigation (jump to first/last)
-  - All on_timeout handlers properly disable buttons
+handlers/task_views.py — Discord UI Views and Modals v4 (PostgreSQL)
+Changes over v3:
+  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
+  - CURRENT_TIMESTAMP → NOW()
+  - AddTaskModal: INSERT ... RETURNING task_id (replaces cur.lastrowid)
+  - TaskListView._fetch_page: ? → $N in dynamic query + LIMIT/OFFSET
+  - LanguageView: UPDATE uses $1, $2 placeholders
 """
 from __future__ import annotations
 
@@ -187,15 +185,17 @@ class AddTaskModal(ui.Modal):
         # ── Insert ───────────────────────────────────────────────────────────
         await ensure_user(uid, lang)
         try:
-            cur = await db.aexecute(
+            # RETURNING lets us get the new ID without lastrowid (not supported by asyncpg)
+            row = await db.afetchone(
                 """INSERT INTO tasks
                    (task, deadline, priority, description, tags,
                     category_id, parent_task_id, owner_id)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                   RETURNING task_id""",
                 (task_name, dt.isoformat(), priority, description, tags,
                  self.category_id, self.parent_task_id, uid),
             )
-            task_id = cur.lastrowid
+            task_id = row["task_id"]
             await db.alog_action(uid, "task_created", str(task_id), task_name)
             db.invalidate_stats(uid)
         except Exception as exc:
@@ -203,7 +203,7 @@ class AddTaskModal(ui.Modal):
             await _safe_respond(interaction, t("err_db", lang))
             return
 
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
         embed = build_task_embed(row, lang, tz_name)
         view  = TaskActionView(task_id, uid, lang,
                                current_priority=priority)
@@ -318,9 +318,9 @@ class EditTaskModal(ui.Modal):
 
         try:
             await db.aexecute(
-                """UPDATE tasks SET task=?, deadline=?, priority=?, description=?,
-                   tags=?, dm_reminded=0, updated_at=CURRENT_TIMESTAMP
-                   WHERE task_id=? AND owner_id=?""",
+                """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
+                   tags=$5, dm_reminded=0, updated_at=NOW()
+                   WHERE task_id=$6 AND owner_id=$7""",
                 (name_or_err, dt.isoformat(), prio_val,
                  description, tags, self.task_id, uid),
             )
@@ -331,7 +331,7 @@ class EditTaskModal(ui.Modal):
             await _safe_respond(interaction, t("err_db", lang))
             return
 
-        row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
+        row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
         embed = build_task_embed(row, lang, tz_name)
         view  = TaskActionView(self.task_id, uid, lang,
                                current_priority=prio_val)
@@ -386,7 +386,7 @@ class DeleteConfirmView(ui.View):
             return
         try:
             await db.aexecute(
-                "DELETE FROM tasks WHERE task_id=? AND owner_id=?",
+                "DELETE FROM tasks WHERE task_id=$1 AND owner_id=$2",
                 (self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_deleted", str(self.task_id))
@@ -574,7 +574,7 @@ class PriorityEditSelect(ui.Select):
         new_priority = int(self.values[0])
         try:
             await db.aexecute(
-                "UPDATE tasks SET priority=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+                "UPDATE tasks SET priority=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
                 (new_priority, view.task_id, view.uid),
             )
             await db.alog_action(view.uid, "task_priority_changed",
@@ -635,7 +635,7 @@ class CategorySelect(ui.Select):
         cat_val: Optional[int] = None if new_cat == 0 else new_cat
         try:
             await db.aexecute(
-                "UPDATE tasks SET category_id=?, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+                "UPDATE tasks SET category_id=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
                 (cat_val, view.task_id, view.uid),
             )
             await db.alog_action(view.uid, "task_category_changed", str(view.task_id), str(cat_val))
@@ -729,7 +729,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT status FROM tasks WHERE task_id=?", (self.task_id,))
+        row = await db.afetchone("SELECT status FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -740,7 +740,7 @@ class TaskActionView(ui.View):
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
         await db.aexecute(
-            "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
+            "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1",
             (self.task_id,),
         )
         await db.alog_action(self.uid, "task_completed", str(self.task_id))
@@ -770,7 +770,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=?", (self.task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -788,7 +788,7 @@ class TaskActionView(ui.View):
             return
         # Re-fetch current pin state from DB — self.is_pinned can be stale after bot restart
         pin_row = await db.afetchone(
-            "SELECT is_pinned FROM tasks WHERE task_id=? AND owner_id=?",
+            "SELECT is_pinned FROM tasks WHERE task_id=$1 AND owner_id=$2",
             (self.task_id, self.uid),
         )
         if not pin_row:
@@ -797,7 +797,7 @@ class TaskActionView(ui.View):
         current_pinned = bool(pin_row["is_pinned"])
         new_val = 0 if current_pinned else 1
         await db.aexecute(
-            "UPDATE tasks SET is_pinned=? WHERE task_id=? AND owner_id=?",
+            "UPDATE tasks SET is_pinned=$1 WHERE task_id=$2 AND owner_id=$3",
             (new_val, self.task_id, self.uid),
         )
         self.is_pinned = bool(new_val)
@@ -828,7 +828,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=?", (self.task_id,))
+        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -849,7 +849,7 @@ class TaskActionView(ui.View):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchall(
-            "SELECT deadline, status FROM tasks WHERE task_id=?", (self.task_id,)
+            "SELECT deadline, status FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         row = row[0] if row else None
         if not row:
@@ -868,7 +868,7 @@ class TaskActionView(ui.View):
                 dt = pytz.utc.localize(dt)
             new_dl = (dt + timedelta(days=1)).isoformat()
             await db.aexecute(
-                "UPDATE tasks SET deadline=?, dm_reminded=0, updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND owner_id=?",
+                "UPDATE tasks SET deadline=$1, dm_reminded=0, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
                 (new_dl, self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_snoozed", str(self.task_id), "+1d")
@@ -895,7 +895,7 @@ class TaskActionView(ui.View):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
-            "SELECT parent_task_id FROM tasks WHERE task_id=?", (self.task_id,)
+            "SELECT parent_task_id FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         if row and row["parent_task_id"] is not None:
             await interaction.response.send_message(t("subtask_no_nested", lang), ephemeral=True)
@@ -990,31 +990,34 @@ class TaskListView(ui.View):
         fs  = self.filter_status
 
         if fs == "overdue":
-            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status='Pending' AND deadline<?"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline<$2"
             params: list = [self.uid, now]
         elif fs == "today":
             today_start = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
-            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status='Pending' AND deadline BETWEEN ? AND ?"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline BETWEEN $2 AND $3"
             params = [self.uid, today_start, today_end]
         elif fs == "pinned":
-            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND is_pinned=1"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_pinned=1"
             params = [self.uid]
         elif fs == "all":
-            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL"
             params = [self.uid]
         else:
-            base   = "SELECT * FROM tasks WHERE owner_id=? AND parent_task_id IS NULL AND status=?"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status=$2"
             params = [self.uid, fs]
 
-        count_row   = await db.afetchone(f"SELECT COUNT(*) AS c FROM ({base})", params)
+        # COUNT uses a subquery so param indices are independent
+        count_row   = await db.afetchone(f"SELECT COUNT(*) AS c FROM ({base}) sub", params)
         total       = count_row["c"] if count_row else 0
         total_pages = max(1, (total + TASKS_PER_PAGE - 1) // TASKS_PER_PAGE)
         self.page   = max(1, min(self.page, total_pages))
         offset      = (self.page - 1) * TASKS_PER_PAGE
-
+        # Append LIMIT/OFFSET as the next positional params
+        limit_idx  = len(params) + 1
+        offset_idx = len(params) + 2
         tasks = await db.afetchall(
-            f"{base} ORDER BY is_pinned DESC, priority DESC, deadline ASC LIMIT ? OFFSET ?",
+            f"{base} ORDER BY is_pinned DESC, priority DESC, deadline ASC LIMIT ${limit_idx} OFFSET ${offset_idx}",
             params + [TASKS_PER_PAGE, offset],
         )
         return tasks, self.page, total_pages
@@ -1098,7 +1101,7 @@ class LanguageView(ui.View):
     async def lang_th(self, interaction: discord.Interaction, button: ui.Button) -> None:
         uid = str(interaction.user.id)
         await ensure_user(uid)
-        await db.aexecute("UPDATE users SET lang='th' WHERE user_id=?", (uid,))
+        await db.aexecute("UPDATE users SET lang='th' WHERE user_id=$1", (uid,))
         db.user_cache.invalidate(uid)
         await db.alog_action(uid, "lang_changed", detail="th")
         self.stop()
@@ -1108,7 +1111,7 @@ class LanguageView(ui.View):
     async def lang_en(self, interaction: discord.Interaction, button: ui.Button) -> None:
         uid = str(interaction.user.id)
         await ensure_user(uid)
-        await db.aexecute("UPDATE users SET lang='en' WHERE user_id=?", (uid,))
+        await db.aexecute("UPDATE users SET lang='en' WHERE user_id=$1", (uid,))
         db.user_cache.invalidate(uid)
         await db.alog_action(uid, "lang_changed", detail="en")
         self.stop()

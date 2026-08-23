@@ -1,10 +1,10 @@
 """
-handlers/settings_cog.py — Setup, language, category, and admin commands v3 (System Upgrade)
-Changes:
-  - All helper calls now properly awaited (async helpers)
-  - save_user_settings now awaited (async)
-  - category_remove: COALESCE fix for proper NULL handling in category queries
-  - admin_stats: uses import pattern more cleanly
+handlers/settings_cog.py — Setup, language, category, and admin commands v4 (PostgreSQL)
+Changes over v3:
+  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
+  - category_created: INSERT ... RETURNING category_id (replaces cur.lastrowid)
+  - admin_stats: 5 separate queries → 1 aggregate query
+  - admin_backup: removed (Supabase manages backups automatically)
 """
 from __future__ import annotations
 
@@ -70,11 +70,13 @@ class AddCategoryModal(discord.ui.Modal):
         emoji = (self.cat_emoji.value or "📝").strip() or "📝"
         await ensure_user(uid, lang)
         try:
-            cur = await db.aexecute(
-                "INSERT INTO categories (name, emoji, owner_id) VALUES (?,?,?)",
+            # RETURNING lets us get the new ID without lastrowid (not supported by asyncpg)
+            row = await db.afetchone(
+                "INSERT INTO categories (name, emoji, owner_id) VALUES ($1,$2,$3) RETURNING category_id",
                 (name, emoji, uid),
             )
-            await db.alog_action(uid, "category_created", str(cur.lastrowid), name)
+            new_id = row["category_id"] if row else None
+            await db.alog_action(uid, "category_created", str(new_id), name)
             await interaction.response.send_message(
                 t("cat_created", lang, name=f"{emoji} {name}"), ephemeral=True
             )
@@ -222,7 +224,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         await ensure_user(uid, lang)
 
         cats = await db.afetchall(
-            "SELECT * FROM categories WHERE owner_id=? OR owner_id='system' ORDER BY name",
+            "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
             (uid,),
         )
         embed = discord.Embed(title=t("cat_list_title", lang), color=0x5865F2)
@@ -251,7 +253,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         row  = await db.afetchone(
-            "SELECT name, owner_id FROM categories WHERE category_id=?", (category_id,)
+            "SELECT name, owner_id FROM categories WHERE category_id=$1", (category_id,)
         )
         if not row:
             await interaction.response.send_message(t("cat_not_found", lang), ephemeral=True)
@@ -265,11 +267,11 @@ class SettingsCog(commands.Cog, name="Settings"):
             return
         # Nullify tasks referencing this category
         await db.aexecute(
-            "UPDATE tasks SET category_id=NULL WHERE category_id=? AND owner_id=?",
+            "UPDATE tasks SET category_id=NULL WHERE category_id=$1 AND owner_id=$2",
             (category_id, uid),
         )
         await db.aexecute(
-            "DELETE FROM categories WHERE category_id=? AND owner_id=?", (category_id, uid)
+            "DELETE FROM categories WHERE category_id=$1 AND owner_id=$2", (category_id, uid)
         )
         await db.alog_action(uid, "category_deleted", str(category_id), row["name"])
         await interaction.response.send_message(
@@ -289,14 +291,22 @@ class SettingsCog(commands.Cog, name="Settings"):
             await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
             return
 
+        # Single aggregate query — avoids 5 separate round-trips to Supabase
+        stats_row = await db.afetchone(
+            """SELECT
+                COUNT(*) AS total_users,
+                SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS done_tasks,
+                SUM(CASE WHEN status='Pending'   THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue
+               FROM users
+               LEFT JOIN tasks ON tasks.owner_id = users.user_id""",
+            (datetime.utcnow().isoformat(),),
+        )
         total_users = (await db.afetchone("SELECT COUNT(*) AS c FROM users"))["c"]
-        total_tasks = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks"))["c"]
-        done_tasks  = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks WHERE status='Completed'"))["c"]
-        pending     = (await db.afetchone("SELECT COUNT(*) AS c FROM tasks WHERE status='Pending'"))["c"]
-        overdue     = (await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE status='Pending' AND deadline<?",
-            (datetime.utcnow().isoformat(),),  # type: ignore[arg-type]
-        ))["c"]
+        total_tasks = int(stats_row["done_tasks"] or 0) + int(stats_row["pending"] or 0)
+        done_tasks  = int(stats_row["done_tasks"] or 0)
+        pending     = int(stats_row["pending"] or 0)
+        overdue     = int(stats_row["overdue"] or 0)
         cache_sz    = db.user_cache.size
 
         from core.security import rate_limiter
@@ -313,19 +323,6 @@ class SettingsCog(commands.Cog, name="Settings"):
         embed.add_field(name="🚫 RL Blocked",          value=str(rl_stats.get("blocked", 0)), inline=True)
         embed.set_footer(text=t("footer_text", "en"))
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @admin_group.command(name="backup", description="💾 Trigger manual DB backup")
-    async def admin_backup(self, interaction: discord.Interaction) -> None:
-        if not _is_owner(interaction.user.id):
-            await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        import asyncio
-        path = await asyncio.to_thread(db.backup)
-        if path:
-            await interaction.followup.send(f"✅ Backup saved: `{path}`", ephemeral=True)
-        else:
-            await interaction.followup.send("❌ Backup failed — check logs.", ephemeral=True)
 
     @admin_group.command(name="cache_purge", description="🗑️ Purge expired user cache entries")
     async def admin_cache_purge(self, interaction: discord.Interaction) -> None:
