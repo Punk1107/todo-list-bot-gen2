@@ -42,9 +42,9 @@ async def _ready(request: web.Request) -> web.Response:
     """Kubernetes/Render readiness probe — returns 200 only when DB is reachable."""
     try:
         from core.database import db
-        # Quick synchronous ping — pool connection already open
-        with db._pool.get() as conn:
-            conn.execute("SELECT 1")
+        # Async ping using asyncpg pool (db._pool.get() is not a valid asyncpg API)
+        async with db._pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
         return web.json_response({"ready": True}, status=200)
     except Exception as exc:
         log.warning("Readiness probe failed: %s", exc)

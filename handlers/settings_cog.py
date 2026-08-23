@@ -9,7 +9,7 @@ Changes over v3:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import discord
@@ -291,18 +291,20 @@ class SettingsCog(commands.Cog, name="Settings"):
             await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
             return
 
-        # Single aggregate query — avoids 5 separate round-trips to Supabase
+        # Single query: COUNT(DISTINCT) for users avoids double-counting rows from the LEFT JOIN.
+        # Task aggregates use SUM(CASE) so one round-trip fetches everything.
         stats_row = await db.afetchone(
             """SELECT
-                COUNT(*) AS total_users,
-                SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS done_tasks,
-                SUM(CASE WHEN status='Pending'   THEN 1 ELSE 0 END) AS pending,
-                SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue
+                COUNT(DISTINCT users.user_id)                                         AS total_users,
+                SUM(CASE WHEN tasks.status='Completed' THEN 1 ELSE 0 END)             AS done_tasks,
+                SUM(CASE WHEN tasks.status='Pending'   THEN 1 ELSE 0 END)             AS pending,
+                SUM(CASE WHEN tasks.status='Pending' AND tasks.deadline < $1
+                         THEN 1 ELSE 0 END)                                           AS overdue
                FROM users
                LEFT JOIN tasks ON tasks.owner_id = users.user_id""",
-            (datetime.utcnow().isoformat(),),
+            (datetime.now(timezone.utc).isoformat(),),
         )
-        total_users = (await db.afetchone("SELECT COUNT(*) AS c FROM users"))["c"]
+        total_users = int(stats_row["total_users"] or 0)
         total_tasks = int(stats_row["done_tasks"] or 0) + int(stats_row["pending"] or 0)
         done_tasks  = int(stats_row["done_tasks"] or 0)
         pending     = int(stats_row["pending"] or 0)

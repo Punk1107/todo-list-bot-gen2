@@ -221,7 +221,7 @@ def rate_limit_check(check_type: str = "command"):
 
             if limited:
                 from core.database import db
-                row = db.fetchone("SELECT lang FROM users WHERE user_id=?", (uid,))
+                row = await db.afetchone("SELECT lang FROM users WHERE user_id=$1", (uid,))
                 lang = row["lang"] if row else config.bot.default_lang
                 secs = rate_limiter.remaining_block_seconds(uid)
 

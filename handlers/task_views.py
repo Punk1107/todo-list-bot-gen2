@@ -236,16 +236,14 @@ class AddTaskModal(ui.Modal):
 class EditTaskModal(ui.Modal):
     """Modal for editing an existing task — pre-fills current values."""
 
-    def __init__(self, task_row, lang: str) -> None:
+    def __init__(self, task_row, lang: str, tz_name: str = "Asia/Bangkok") -> None:
         super().__init__(title=t("task_edit_title", lang, task_id=task_row["task_id"]))
         self.lang    = lang
         self.task_id           = task_row["task_id"]
         self.uid               = task_row["owner_id"]
         self._current_priority = task_row["priority"]  # kept from DB; changed via PriorityEditSelect
 
-        # Pre-fill in user-friendly format (sync is fine here — it's pure string ops)
-        # tz_name is passed from the caller which already fetched it from DB/cache
-        tz_name = getattr(self, '_prefill_tz', "Asia/Bangkok")
+        # Pre-fill deadline in user-friendly format using the caller-supplied timezone
         current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
 
         self.task_name = ui.TextInput(
@@ -678,20 +676,25 @@ class TaskActionView(ui.View):
         self.lang      = lang
         self.is_pinned = is_pinned
 
-        # Encode task_id into every button's custom_id so interactions survive bot restarts.
-        # Buttons defined via @ui.button get short ids ("done", "edit", …) which we prefix here.
-        for child in self.children:
-            if hasattr(child, "custom_id") and child.custom_id:
-                child.custom_id = f"task_{task_id}_{child.custom_id}"
-
-        self._update_pin_label()
-
         # Priority edit dropdown — always shown on row 3
+        # Must be add_item()-ed BEFORE the prefix loop so it receives the task_id prefix.
         self.add_item(PriorityEditSelect(task_id, current_priority, lang))
 
         # Category select on row 2 — only when categories provided
         if categories is not None:
             self.add_item(CategorySelect(task_id, categories, current_cat_id, lang))
+
+        # Encode task_id into every button/select's custom_id so interactions survive bot restarts.
+        # This loop runs AFTER all add_item() calls so it covers both @ui.button items and
+        # dynamically-added selects. Items (e.g. PriorityEditSelect, CategorySelect) that already
+        # have the full prefix baked into their constructor are skipped to avoid double-prefixing.
+        _prefix = f"task_{task_id}_"
+        for child in self.children:
+            if hasattr(child, "custom_id") and child.custom_id:
+                if not child.custom_id.startswith(_prefix):
+                    child.custom_id = f"{_prefix}{child.custom_id}"
+
+        self._update_pin_label()
 
 
     def _update_pin_label(self) -> None:
@@ -774,7 +777,9 @@ class TaskActionView(ui.View):
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
-        await interaction.response.send_modal(EditTaskModal(row, lang))
+        # Fetch the user's timezone so EditTaskModal can pre-fill the deadline correctly
+        tz_name = await get_user_timezone(str(interaction.user.id))
+        await interaction.response.send_modal(EditTaskModal(row, lang, tz_name=tz_name))
 
     # ── Pin / Unpin ───────────────────────────────────────────────────────────
 
@@ -848,10 +853,9 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchall(
+        row = await db.afetchone(
             "SELECT deadline, status FROM tasks WHERE task_id=$1", (self.task_id,)
         )
-        row = row[0] if row else None
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return

@@ -20,7 +20,7 @@ import random
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, List, Optional, Sequence
 
@@ -771,7 +771,7 @@ class DatabaseManager:
         if cached is not None:
             return cached
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         row = await self.afetchone(
             """SELECT
                 COUNT(*) AS total,
@@ -829,10 +829,11 @@ class DatabaseManager:
     # ── Graceful shutdown ─────────────────────────────────────────────────────
 
     async def close(self) -> None:
-        """Close the asyncpg pool. Call on bot shutdown."""
+        """Close the asyncpg pool. Call on bot shutdown. Safe to call only once."""
         if self._pool:
             await self.bulk_writer.stop()
-            await self._pool.close()
+            pool, self._pool = self._pool, None   # null-out before closing (double-close guard)
+            await pool.close()
             log.info("DatabaseManager closed")
 
 

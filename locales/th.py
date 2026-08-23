@@ -203,6 +203,11 @@ STRINGS = {
     "stats_overdue": "เกินกำหนด",
     "stats_completion_rate": "อัตราความสำเร็จ",
     "stats_categories": "หมวดหมู่ที่ใช้",
+    # บันทึกแรงบันดาลใจใน /stats
+    "stats_note_empty":    "ยังไม่มี Task เลย! ใช้ `/add` เพื่อเริ่มต้น \U0001f680",
+    "stats_note_overdue":  "\u26a0\ufe0f มี {overdue} Task เกินกำหนด ใช้ `/overdue` ตรวจสอบ",
+    "stats_note_all_done": "\U0001f3c6 เสร็จทุก Task แล้ว! ยอดเยี่ยมมาก!",
+    "stats_note_progress": "ทำเสร็จไปแล้ว {pct}% เยี่ยมมาก!",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
     "help_title": "📖 วิธีใช้งาน To-Do List Bot Gen 2",

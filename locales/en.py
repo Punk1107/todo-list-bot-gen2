@@ -203,6 +203,11 @@ STRINGS = {
     "stats_overdue": "Overdue",
     "stats_completion_rate": "Completion Rate",
     "stats_categories": "Categories Used",
+    # Motivational notes in /stats embed
+    "stats_note_empty":    "No tasks yet! Use `/add` to get started \U0001f680",
+    "stats_note_overdue":  "\u26a0\ufe0f {overdue} task(s) overdue \u2014 use `/overdue` to review",
+    "stats_note_all_done": "\U0001f3c6 All tasks completed! Outstanding work!",
+    "stats_note_progress": "You're {pct}% done \u2014 keep it up!",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
     "help_title": "📖 To-Do List Bot Gen 2 — Help",

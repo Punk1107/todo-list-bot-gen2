@@ -564,16 +564,16 @@ def build_stats_embed(stats: dict[str, int], lang: str, username: str) -> discor
     embed.add_field(name="📌 Pinned",                        value=f"**{pinned}**",    inline=True)
     embed.add_field(name="❌ Cancelled",                      value=f"**{cancelled}**", inline=True)
 
-    # Motivational note
+    # Motivational note — use i18n keys so future languages are automatically covered
     if total == 0:
-        note = "ยังไม่มี Task เลย! ใช้ `/add` เพื่อเริ่มต้น 🚀" if lang == "th" else "No tasks yet! Use `/add` to get started 🚀"
+        note = t("stats_note_empty", lang)
     elif overdue > 0:
-        note = f"⚠️ มี {overdue} Task เกินกำหนด ใช้ `/overdue` ตรวจสอบ" if lang == "th" else f"⚠️ {overdue} task(s) overdue — use `/overdue` to review"
+        note = t("stats_note_overdue", lang, overdue=overdue)
     elif done == total and total > 0:
-        note = "🏆 เสร็จทุก Task แล้ว! ยอดเยี่ยมมาก!" if lang == "th" else "🏆 All tasks completed! Outstanding work!"
+        note = t("stats_note_all_done", lang)
     else:
         pct = int(done / total * 100) if total else 0
-        note = f"ทำเสร็จไปแล้ว {pct}% เยี่ยมมาก!" if lang == "th" else f"You're {pct}% done — keep it up!"
+        note = t("stats_note_progress", lang, pct=pct)
     embed.add_field(name="\u200B", value=f"> {note}", inline=False)
 
     embed.set_footer(text=t("footer_text", lang))

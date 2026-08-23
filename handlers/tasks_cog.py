@@ -119,9 +119,13 @@ class TasksCog(commands.Cog, name="Tasks"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        now   = datetime.now(pytz.utc)
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        end   = now.replace(hour=23, minute=59, second=59).isoformat()
+        # Compute today's boundaries in the user's local timezone, then convert to UTC
+        # for the DB query. Without this, users in UTC+7 would see UTC's "today" instead.
+        now_utc   = datetime.now(pytz.utc)
+        local_tz  = pytz.timezone(tz_name)
+        local_now = now_utc.astimezone(local_tz)
+        start = local_now.replace(hour=0,  minute=0,  second=0,  microsecond=0).astimezone(pytz.utc).isoformat()
+        end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
 
         tasks = await db.afetchall(
             """SELECT * FROM tasks
@@ -131,7 +135,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             (uid, start, end),
         )
 
-        local_date = now.astimezone(pytz.timezone(tz_name)).strftime("%d/%m/%Y")
+        local_date = local_now.strftime("%d/%m/%Y")
         embed = discord.Embed(
             title=f"📅 {t('tasks_filter_today', lang)} — {local_date}",
             color=0x5865F2,
@@ -145,7 +149,7 @@ class TasksCog(commands.Cog, name="Tasks"):
                     dt = datetime.fromisoformat(r["deadline"])
                     if dt.tzinfo is None:
                         dt = pytz.utc.localize(dt)
-                    is_overdue = dt < now
+                    is_overdue = dt < now_utc
                 except Exception:
                     is_overdue = False
                 icon = "🚨" if is_overdue else "⏳"

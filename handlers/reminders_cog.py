@@ -221,8 +221,15 @@ class RemindersCog(commands.Cog, name="Reminders"):
         """
         Send a daily digest at the configured hour.
         Runs every 5 min but only fires once per user per UTC day.
+
+        NOTE: `config.notifications.daily_summary_hour` is compared against the
+        **UTC** hour (now.hour where now = datetime.now(UTC)). Set the env var
+        DAILY_SUMMARY_HOUR to the desired UTC hour — e.g. 1 for 8 AM UTC+7.
+        Per-user local-time digest scheduling is handled by the per-user timezone
+        conversion applied to the task window (day_start/day_end) below.
         """
         now = datetime.now(UTC)
+        # Compare against UTC hour — see docstring above for rationale.
         if now.hour != config.notifications.daily_summary_hour:
             return
         if not config.notifications.daily_summary_enabled:
