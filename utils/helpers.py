@@ -41,14 +41,19 @@ _C_PINNED    = 0xFEE75C   # gold / yellow
 # Urgency helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def urgency_color(deadline_str: str, status: str) -> int:
+def urgency_color(deadline_val: Any, status: str) -> int:
     """Return embed colour based on deadline proximity and task status."""
     if status == "Completed":
         return _C_COMPLETED
     if status == "Cancelled":
         return _C_CANCELLED
     try:
-        dt = datetime.fromisoformat(deadline_str)
+        if isinstance(deadline_val, datetime):
+            dt = deadline_val
+        elif isinstance(deadline_val, str):
+            dt = datetime.fromisoformat(deadline_val)
+        else:
+            return _C_UPCOMING
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         secs = (dt - datetime.now(pytz.utc)).total_seconds()
@@ -65,12 +70,17 @@ def urgency_color(deadline_str: str, status: str) -> int:
         return _C_UPCOMING
 
 
-def urgency_badge(deadline_str: str, status: str) -> str:
+def urgency_badge(deadline_val: Any, status: str) -> str:
     """Return a short urgency badge string for embed titles."""
     if status in ("Completed", "Cancelled"):
         return ""
     try:
-        dt = datetime.fromisoformat(deadline_str)
+        if isinstance(deadline_val, datetime):
+            dt = deadline_val
+        elif isinstance(deadline_val, str):
+            dt = datetime.fromisoformat(deadline_val)
+        else:
+            return ""
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         secs = (dt - datetime.now(pytz.utc)).total_seconds()
@@ -246,22 +256,32 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
     return None
 
 
-def format_deadline(dt_str: str, tz_name: str) -> str:
-    """Format stored UTC ISO → user's local timezone string."""
+def format_deadline(dt_val: Any, tz_name: str) -> str:
+    """Format stored UTC ISO or datetime → user's local timezone string."""
     try:
-        dt = datetime.fromisoformat(dt_str)
+        if isinstance(dt_val, datetime):
+            dt = dt_val
+        elif isinstance(dt_val, str):
+            dt = datetime.fromisoformat(dt_val)
+        else:
+            return str(dt_val or "")
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         local = dt.astimezone(pytz.timezone(tz_name))
         return local.strftime("%d/%m/%Y %H:%M")
     except Exception:
-        return dt_str
+        return str(dt_val or "")
 
 
-def time_left_str(deadline_str: str) -> str:
-    """Human-readable time remaining (or overdue) from a stored UTC ISO string."""
+def time_left_str(deadline_val: Any) -> str:
+    """Human-readable time remaining (or overdue) from a stored UTC ISO string or datetime."""
     try:
-        dt = datetime.fromisoformat(deadline_str)
+        if isinstance(deadline_val, datetime):
+            dt = deadline_val
+        elif isinstance(deadline_val, str):
+            dt = datetime.fromisoformat(deadline_val)
+        else:
+            return "?"
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         delta = dt - datetime.now(pytz.utc)
@@ -290,9 +310,14 @@ def time_left_str(deadline_str: str) -> str:
         return "?"
 
 
-def calculate_next_deadline(deadline_str: str, recurring: str) -> Optional[str]:
+def calculate_next_deadline(deadline_val: Any, recurring: str) -> Optional[str]:
     try:
-        dt = datetime.fromisoformat(deadline_str)
+        if isinstance(deadline_val, datetime):
+            dt = deadline_val
+        elif isinstance(deadline_val, str):
+            dt = datetime.fromisoformat(deadline_val)
+        else:
+            return None
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         if recurring == "daily":
@@ -371,11 +396,14 @@ def build_task_embed(row, lang: str, tz_name: str,
     status    = row["status"]
     deadline  = row["deadline"]
     priority  = row["priority"]
-    is_pinned = bool(row["is_pinned"]) if "is_pinned" in row.keys() else False
+    is_pinned = bool(row["is_pinned"]) if hasattr(row, "keys") and "is_pinned" in row.keys() else False
 
     # Determine effective status for colouring
     try:
-        dt = datetime.fromisoformat(deadline)
+        if isinstance(deadline, datetime):
+            dt = deadline
+        else:
+            dt = datetime.fromisoformat(deadline)
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
         if dt < datetime.now(pytz.utc) and status == "Pending":
@@ -462,7 +490,20 @@ def build_task_embed(row, lang: str, tz_name: str,
             inline=True,
         )
 
-    created = (row["created_at"] or "")[:16]
+    created_raw = row.get("created_at") if hasattr(row, "get") else row["created_at"]
+    if isinstance(created_raw, datetime):
+        if created_raw.tzinfo is None:
+            created_raw = pytz.utc.localize(created_raw)
+        try:
+            user_tz = pytz.timezone(tz_name)
+            created = created_raw.astimezone(user_tz).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            created = created_raw.strftime("%d/%m/%Y %H:%M")
+    elif isinstance(created_raw, str):
+        created = created_raw[:16]
+    else:
+        created = ""
+
     embed.set_footer(text=f"🆔 #{task_id}  •  {t('footer_text', lang)}  •  🕐 {created}")
     return embed
 
@@ -491,7 +532,11 @@ def build_task_list_embed(
             name_disp = (name[:48] + "…") if len(name) > 48 else name
 
             try:
-                dt = datetime.fromisoformat(row["deadline"])
+                dl_val = row["deadline"]
+                if isinstance(dl_val, datetime):
+                    dt = dl_val
+                else:
+                    dt = datetime.fromisoformat(dl_val)
                 if dt.tzinfo is None:
                     dt = pytz.utc.localize(dt)
                 is_overdue = dt < now and row["status"] == "Pending"
@@ -509,7 +554,7 @@ def build_task_list_embed(
             else:
                 status_icon = "⏳"
 
-            pin_icon = " 📌" if row.get("is_pinned") else ""
+            pin_icon = " 📌" if (row.get("is_pinned") if hasattr(row, "get") else False) else ""
             dl_str   = format_deadline(row["deadline"], tz_name)
             tl       = time_left_str(row["deadline"])
 
@@ -592,6 +637,18 @@ def build_csv_export(tasks, tz_name: str) -> io.BytesIO:
         "Category", "Tags", "Description", "Pinned", "Created",
     ])
     for row in tasks:
+        created_val = row.get("created_at") if hasattr(row, "get") else row["created_at"]
+        if isinstance(created_val, datetime):
+            if created_val.tzinfo is None:
+                created_val = pytz.utc.localize(created_val)
+            try:
+                user_tz = pytz.timezone(tz_name)
+                created_str = created_val.astimezone(user_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                created_str = created_val.strftime("%d/%m/%Y %H:%M")
+        else:
+            created_str = str(created_val or "")
+
         w.writerow([
             row["task_id"], row["task"], row["status"], row["priority"],
             format_deadline(row["deadline"], tz_name),
@@ -599,7 +656,7 @@ def build_csv_export(tasks, tz_name: str) -> io.BytesIO:
             row["category_id"] or "",
             row["tags"] or "",
             (row["description"] or "").replace("\n", " "),
-            bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
-            row["created_at"] or "",
+            bool(row["is_pinned"]) if hasattr(row, "keys") and "is_pinned" in row.keys() else False,
+            created_str,
         ])
     return io.BytesIO(out.getvalue().encode("utf-8-sig"))  # BOM for Excel
