@@ -1,10 +1,11 @@
 """
-handlers/reminders_cog.py — Background loops v5 (Deadline DM Reminders)
-Changes over v4:
-  - New: deadline_dm_loop — sends DM directly to user when task is
-    24 h / 3 h / 1 h away from deadline (bitmask-based dedup via dm_reminded)
-  - dm_reminder_interval_minutes config key added
-  - Existing loops unchanged
+handlers/reminders_cog.py — Background loops v6 (PostgreSQL)
+Changes over v5:
+  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
+  - daily_digest_loop: named params {:uid} → positional $N
+  - backup_loop: REMOVED (Supabase manages backups automatically)
+  - db_wal_checkpoint_loop: REMOVED (PostgreSQL manages WAL automatically)
+  - Config references to backup_interval_hours / wal_checkpoint_interval_hours removed
 """
 from __future__ import annotations
 
@@ -46,40 +47,28 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.recurring_loop.change_interval(
             minutes=config.notifications.recurring_check_interval_minutes
         )
-        self.backup_loop.change_interval(
-            hours=config.db.backup_interval_hours
-        )
-        self.db_wal_checkpoint_loop.change_interval(
-            hours=config.db.wal_checkpoint_interval_hours
-        )
         self.deadline_dm_loop.change_interval(
             minutes=config.notifications.dm_reminder_interval_minutes
         )
 
         self.reminder_loop.start()
         self.recurring_loop.start()
-        self.backup_loop.start()
         self.cleanup_loop.start()
         self.daily_digest_loop.start()
-        self.db_wal_checkpoint_loop.start()
         self.deadline_dm_loop.start()
 
         log.info(
-            "RemindersCog started — reminder=%dmin recurring=%dmin backup=%dh wal_checkpoint=%dh dm_reminder=%dmin",
+            "RemindersCog started — reminder=%dmin recurring=%dmin dm_reminder=%dmin",
             config.notifications.reminder_interval_minutes,
             config.notifications.recurring_check_interval_minutes,
-            config.db.backup_interval_hours,
-            config.db.wal_checkpoint_interval_hours,
             config.notifications.dm_reminder_interval_minutes,
         )
 
     def cog_unload(self) -> None:
         self.reminder_loop.cancel()
         self.recurring_loop.cancel()
-        self.backup_loop.cancel()
         self.cleanup_loop.cancel()
         self.daily_digest_loop.cancel()
-        self.db_wal_checkpoint_loop.cancel()
         self.deadline_dm_loop.cancel()
 
     # ── Reminder loop ─────────────────────────────────────────────────────────
@@ -100,11 +89,11 @@ class RemindersCog(commands.Cog, name="Reminders"):
                FROM tasks t
                JOIN users u ON t.owner_id = u.user_id
                WHERE t.status = 'Pending'
-                 AND t.deadline <= ?
-                 AND t.deadline > ?
+                 AND t.deadline <= $1
+                 AND t.deadline > $2
                  AND u.notify_enabled = 1
                  AND u.channel_id IS NOT NULL
-                 AND (t.last_reminder IS NULL OR t.last_reminder < ?)
+                 AND (t.last_reminder IS NULL OR t.last_reminder < $3)
                ORDER BY t.deadline ASC
                LIMIT 100""",
             (soon_threshold, (now - timedelta(days=30)).isoformat(), remind_cutoff),
@@ -163,7 +152,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
                 # Queue last_reminder update into BulkWriter instead of individual execute()
                 reminder_updates.append((
-                    "UPDATE tasks SET last_reminder=CURRENT_TIMESTAMP WHERE task_id=?",
+                    "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
                     (tid,),
                 ))
                 log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
@@ -193,7 +182,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         now     = datetime.now(UTC).isoformat()
         expired = await db.afetchall(
             """SELECT * FROM tasks
-               WHERE status='Pending' AND recurring IS NOT NULL AND deadline < ?""",
+               WHERE status='Pending' AND recurring IS NOT NULL AND deadline < $1""",
             (now,),
         )
         for row in expired:
@@ -204,13 +193,13 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 # Batch both the complete + new insert in one transaction
                 await db.aexecute_batch([
                     (
-                        "UPDATE tasks SET status='Completed', updated_at=CURRENT_TIMESTAMP WHERE task_id=?",
+                        "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1",
                         (row["task_id"],),
                     ),
                     (
                         """INSERT INTO tasks (task, deadline, priority, status, recurring,
                            category_id, tags, description, owner_id)
-                           VALUES (?,?,?,?,?,?,?,?,?)""",
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)""",
                         (row["task"], nxt, row["priority"], "Pending", row["recurring"],
                          row["category_id"], row["tags"], row["description"], row["owner_id"]),
                     ),
@@ -276,19 +265,19 @@ class RemindersCog(commands.Cog, name="Reminders"):
                           (SELECT COUNT(*) FROM tasks t2
                            WHERE t2.owner_id=tasks.owner_id
                              AND t2.status='Pending'
-                             AND t2.deadline < :now) AS overdue_count
+                             AND t2.deadline < $4) AS overdue_count
                    FROM tasks
-                   WHERE owner_id=:uid AND status='Pending'
-                     AND deadline BETWEEN :day_start AND :day_end
+                   WHERE owner_id=$1 AND status='Pending'
+                     AND deadline BETWEEN $2 AND $3
                    ORDER BY priority DESC, deadline ASC LIMIT 10""",
-                {"uid": uid, "day_start": day_start, "day_end": day_end, "now": now.isoformat()},
+                (uid, day_start, day_end, now.isoformat()),
             )
             # Overdue count is embedded in each row via subquery (same for all rows)
             overdue_count = today_tasks[0]["overdue_count"] if today_tasks else 0
             # If no today_tasks, do a single lightweight count query
             if not today_tasks:
                 overdue_row = await db.afetchone(
-                    "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=? AND status='Pending' AND deadline<?",
+                    "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
                     (uid, now.isoformat()),
                 )
                 overdue_count = overdue_row["c"] if overdue_row else 0
@@ -326,33 +315,6 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     @daily_digest_loop.before_loop
     async def before_digest(self) -> None:
-        await self.bot.wait_until_ready()
-
-    # ── DB Backup ─────────────────────────────────────────────────────────────
-
-    @tasks.loop(hours=24)
-    async def backup_loop(self) -> None:
-        import asyncio
-        path = await asyncio.to_thread(db.backup)
-        if path:
-            log.info("Scheduled DB backup: %s", path)
-
-    @backup_loop.before_loop
-    async def before_backup(self) -> None:
-        await self.bot.wait_until_ready()
-
-    # ── WAL checkpoint ────────────────────────────────────────────────────────
-
-    @tasks.loop(hours=6)
-    async def db_wal_checkpoint_loop(self) -> None:
-        """
-        Truncate the WAL file periodically to keep disk usage bounded.
-        Interval is configurable via DB_WAL_CHECKPOINT_HOURS (default 6h).
-        """
-        await db.awa_checkpoint()
-
-    @db_wal_checkpoint_loop.before_loop
-    async def before_wal(self) -> None:
         await self.bot.wait_until_ready()
 
     # ── Cache + rate-limiter cleanup ──────────────────────────────────────────
@@ -407,8 +369,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
                    FROM tasks t
                    JOIN users u ON t.owner_id = u.user_id
                    WHERE t.status = 'Pending'
-                     AND t.deadline BETWEEN ? AND ?
-                     AND (t.dm_reminded & ?) = 0
+                     AND t.deadline BETWEEN $1 AND $2
+                     AND (t.dm_reminded & $3) = 0
                      AND u.notify_enabled = 1
                    LIMIT 200""",
                 (lower_dt, upper_dt, bit),
@@ -471,7 +433,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     # Mark this bit as sent
                     new_mask = row["dm_reminded"] | bit
                     dm_updates.append((
-                        "UPDATE tasks SET dm_reminded=? WHERE task_id=?",
+                        "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
                         (new_mask, tid),
                     ))
 
@@ -480,7 +442,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     # Still mark as sent so we don't keep retrying for closed DMs
                     new_mask = row["dm_reminded"] | bit
                     dm_updates.append((
-                        "UPDATE tasks SET dm_reminded=? WHERE task_id=?",
+                        "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
                         (new_mask, tid),
                     ))
                 except Exception as exc:

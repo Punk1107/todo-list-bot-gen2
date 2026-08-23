@@ -1,12 +1,10 @@
 """
-utils/helpers.py — Shared utility functions v3 (System Upgrade)
-Changes:
-  - ALL user helpers are now async (eliminates blocking DB calls on event loop)
-  - Redesigned premium embed builders with richer visual hierarchy
-  - Enhanced urgency system with better color gradients
-  - Improved progress bar renderer (fills with block characters)
-  - Richer task list embed with proper sections and spacing
-  - Subtask/category fetching in build_task_embed now async-safe
+utils/helpers.py — Shared utility functions v4 (PostgreSQL)
+Changes over v3:
+  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
+  - ensure_user: INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
+  - save_user_settings: 4 separate UPDATEs → 1 dynamic single UPDATE query
+  - _load_user_from_db_async: uses $1 placeholder
 """
 from __future__ import annotations
 
@@ -113,7 +111,7 @@ async def _load_user_from_db_async(uid: str):
     """Async: fetch user row from DB and populate cache."""
     from core.database import db
     row = await db.afetchone(
-        "SELECT lang, timezone, channel_id, role FROM users WHERE user_id=?", (uid,)
+        "SELECT lang, timezone, channel_id, role FROM users WHERE user_id=$1", (uid,)
     )
     if row:
         db.user_cache.set(uid, row["lang"], row["timezone"], row["channel_id"], row["role"])
@@ -165,11 +163,11 @@ async def get_user_role(user_id) -> str:
 
 
 async def ensure_user(user_id, lang: Optional[str] = None) -> None:
-    """Async: insert user row if not present (INSERT OR IGNORE)."""
+    """Async: insert user row if not present (PostgreSQL ON CONFLICT DO NOTHING)."""
     from core.database import db
     uid = str(user_id)
     await db.aexecute(
-        "INSERT OR IGNORE INTO users (user_id, timezone, lang) VALUES (?,?,?)",
+        "INSERT INTO users (user_id, timezone, lang) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
         (uid, config.bot.default_timezone, lang or config.bot.default_lang),
     )
 
@@ -183,20 +181,36 @@ async def save_user_settings(
     notify_enabled: Optional[int] = None,
     daily_digest: Optional[int] = None,
 ) -> None:
-    """Async: persist one or more user settings and invalidate cache."""
+    """Async: persist one or more user settings and invalidate cache.
+    Builds a single UPDATE query dynamically — avoids multiple round-trips.
+    """
     from core.database import db
     uid = str(user_id)
     await ensure_user(uid)
-    if timezone:
-        await db.aexecute("UPDATE users SET timezone=? WHERE user_id=?", (timezone, uid))
+
+    # Build dynamic SET clause — only update provided fields
+    sets: list[str] = []
+    values: list = []
+    idx = 1
+
+    if timezone is not None:
+        sets.append(f"timezone=${idx}"); values.append(timezone); idx += 1
     if channel_id is not None:
-        await db.aexecute("UPDATE users SET channel_id=? WHERE user_id=?", (channel_id, uid))
-    if lang:
-        await db.aexecute("UPDATE users SET lang=? WHERE user_id=?", (lang, uid))
+        sets.append(f"channel_id=${idx}"); values.append(channel_id); idx += 1
+    if lang is not None:
+        sets.append(f"lang=${idx}"); values.append(lang); idx += 1
     if notify_enabled is not None:
-        await db.aexecute("UPDATE users SET notify_enabled=? WHERE user_id=?", (notify_enabled, uid))
+        sets.append(f"notify_enabled=${idx}"); values.append(notify_enabled); idx += 1
     if daily_digest is not None:
-        await db.aexecute("UPDATE users SET daily_digest=? WHERE user_id=?", (daily_digest, uid))
+        sets.append(f"daily_digest=${idx}"); values.append(daily_digest); idx += 1
+
+    if sets:
+        values.append(uid)
+        await db.aexecute(
+            f"UPDATE users SET {', '.join(sets)} WHERE user_id=${idx}",
+            tuple(values),
+        )
+
     db.user_cache.invalidate(uid)
 
 
