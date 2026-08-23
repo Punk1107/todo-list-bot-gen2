@@ -867,7 +867,11 @@ class TaskActionView(ui.View):
             return
         try:
             from datetime import timedelta
-            dt = datetime.fromisoformat(row["deadline"])
+            dl_val = row["deadline"]
+            if isinstance(dl_val, datetime):
+                dt = dl_val
+            else:
+                dt = datetime.fromisoformat(dl_val)
             if dt.tzinfo is None:
                 dt = pytz.utc.localize(dt)
             new_dl = (dt + timedelta(days=1)).isoformat()
