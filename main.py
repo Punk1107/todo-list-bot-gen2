@@ -186,6 +186,9 @@ async def on_interaction(interaction: discord.Interaction) -> None:
     Also ensures the user row exists (INSERT OR IGNORE) so the UPDATE never silently drops.
     """
     from core.database import db
+    # Guard: do not enqueue before the DB pool is initialised (e.g. during reconnect)
+    if db._pool is None:
+        return
     uid = str(interaction.user.id)
     # Ensure user row exists before updating last_active
     db.bulk_writer.enqueue(
@@ -266,7 +269,7 @@ if __name__ == "__main__":
         log.critical("Fatal error: %s", exc, exc_info=True)
         sys.exit(1)
     finally:
-        from core.database import db
-        loop.run_until_complete(db.close())
+        # db.close() was already called inside TodoBot.close() — do NOT call it again here
+        # or asyncpg will raise an error on a double-close of the pool.
         loop.close()
         log.info("Event loop closed — goodbye")
