@@ -129,10 +129,14 @@ class RateLimiter:
     def check_command(self, uid: str) -> bool:
         self._stats["total"] += 1
         if uid in self._blocked and time.monotonic() < self._blocked[uid]:
+            # User is still in the blocked cooldown period.
+            # Count here only — _check() is NOT called so there is no double-count.
             self._stats["blocked"] += 1
             return True
         elif uid in self._blocked:
+            # Block period expired — remove the entry before continuing
             del self._blocked[uid]
+        # _check() will increment blocked if this call tips the user over the limit
         return self._check(uid, self._cmds, 60, self._cmd_limit, "cmd")
 
     def check_task_creation(self, uid: str) -> bool:

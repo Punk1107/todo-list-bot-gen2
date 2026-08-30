@@ -105,6 +105,8 @@ class TasksCog(commands.Cog, name="Tasks"):
         embed            = build_task_list_embed(tasks, page, tot, lang, tz_name, filter_label)
         view._update_nav_buttons(page, tot)
         await interaction.response.send_message(embed=embed, view=view)
+        # Store message so on_timeout can edit it with disabled buttons
+        view._message = await interaction.original_response()
 
     # ─────────────────────────────────────────────────────────────────────────
     # /today
@@ -485,7 +487,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
 
         csv_bytes = build_csv_export(tasks, tz_name)
-        fname = f"tasks_{uid}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+        fname = f"tasks_{uid}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
         await db.alog_action(uid, "task_exported", detail=f"{len(tasks)} tasks")
         await interaction.response.send_message(
             t("export_success", lang, filename=fname),

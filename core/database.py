@@ -256,15 +256,17 @@ class BulkWriter:
         # pool_getter is a callable: () -> asyncpg.Pool
         self._pool_getter = pool_getter
         self._interval = interval_ms / 1000.0
-        self._queue: deque[tuple[str, tuple]] = deque()
+        self._queue: deque[tuple[str, tuple, int]] = deque()  # (sql, params, fail_count)
         self._lock = Lock()
         self._task: Optional[asyncio.Task] = None
         self._flushed_count = 0
         self._batch_count = 0
+        self._dropped_count = 0
+        self._MAX_ITEM_RETRIES = 5  # drop an item after this many consecutive failures
 
     def enqueue(self, sql: str, params: tuple = ()) -> None:
         with self._lock:
-            self._queue.append((sql, params))
+            self._queue.append((sql, params, 0))  # fail_count starts at 0
 
     async def flush(self) -> int:
         """Drain queue and commit in one transaction. Returns rows written."""
@@ -284,7 +286,7 @@ class BulkWriter:
         try:
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    for sql, params in batch:
+                    for sql, params, _fc in batch:
                         await conn.execute(sql, *params)
             with self._lock:
                 self._flushed_count += len(batch)
@@ -292,9 +294,23 @@ class BulkWriter:
             return len(batch)
         except Exception as exc:
             log.error("BulkWriter flush failed (%d rows): %s — re-queuing", len(batch), exc)
-            # Re-queue failed items so they are not silently dropped
+            # Re-queue failed items with incremented failure count.
+            # Items that exceed _MAX_ITEM_RETRIES are dropped to prevent unbounded growth.
+            requeue = []
+            dropped = 0
+            for sql, params, fail_count in batch:
+                new_fc = fail_count + 1
+                if new_fc >= self._MAX_ITEM_RETRIES:
+                    log.warning(
+                        "BulkWriter: dropping item after %d failures — SQL: %.120s",
+                        new_fc, sql,
+                    )
+                    dropped += 1
+                else:
+                    requeue.append((sql, params, new_fc))
             with self._lock:
-                self._queue.extendleft(reversed(batch))
+                self._queue.extendleft(reversed(requeue))
+                self._dropped_count += dropped
             return 0
 
     async def _run(self) -> None:
@@ -323,6 +339,7 @@ class BulkWriter:
                 "queued": len(self._queue),
                 "flushed_rows": self._flushed_count,
                 "batch_count": self._batch_count,
+                "dropped_rows": self._dropped_count,
                 "interval_ms": int(self._interval * 1000),
             }
 
@@ -512,7 +529,7 @@ class DatabaseManager:
     """
     PostgreSQL (Supabase) database manager using asyncpg:
     - asyncpg.Pool — native async, no thread-pool wrappers needed
-    - Automatic schema migrations (v1→v7)
+    - Automatic schema migrations (v1→v8)
     - UserCache + StatsCache + QueryCache (L1 read cache)
     - BulkWriter for async queued writes (audit log, reminder timestamps)
     - Exponential backoff with jitter on transient errors

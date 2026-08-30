@@ -461,6 +461,10 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 except Exception as exc:
                     log.error("deadline_dm_loop batch update failed: %s", exc)
 
+            # Brief sleep between threshold iterations to avoid Discord rate-limit
+            # bursts when many tasks fire across multiple thresholds simultaneously.
+            await asyncio.sleep(0.1)
+
     @deadline_dm_loop.before_loop
     async def before_deadline_dm(self) -> None:
         await self.bot.wait_until_ready()
