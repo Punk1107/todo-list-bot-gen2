@@ -8,6 +8,7 @@ Changes over v3:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -76,12 +77,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
         # Step 1: priority dropdown — opens AddTaskModal after selection
         view  = PrioritySelectView(uid, lang)
-        embed = discord.Embed(
-            title=t("priority_select_title", lang),
-            description=t("priority_select_desc", lang),
-            color=0x5865F2,
-        )
-        embed.set_footer(text="To-Do List Bot Gen 2")
+        embed = PrioritySelectView.build_embed(lang)
         # Send a public message (so everyone sees 'User used /add')
         await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
         # Store message in view so it can edit out the dropdown on timeout (optional, see on_timeout)
@@ -102,7 +98,23 @@ class TasksCog(commands.Cog, name="Tasks"):
         view             = TaskListView(uid, lang, tz_name, "Pending")
         tasks, page, tot = await view._fetch_page()
         filter_label     = t("tasks_filter_Pending", lang)
-        embed            = build_task_list_embed(tasks, page, tot, lang, tz_name, filter_label)
+
+        # Count total and overdue for summary line
+        now_iso = datetime.now(pytz.utc).isoformat()
+        total_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (uid,)
+        )
+        overdue_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
+            "AND status='Pending' AND deadline<$2", (uid, now_iso)
+        )
+        total_count   = total_row["c"]   if total_row   else 0
+        overdue_count = overdue_row["c"] if overdue_row else 0
+
+        embed = build_task_list_embed(
+            tasks, page, tot, lang, tz_name, filter_label,
+            total_count=total_count, overdue_count=overdue_count,
+        )
         view._update_nav_buttons(page, tot)
         await interaction.response.send_message(embed=embed, view=view)
         # Store message so on_timeout can edit it with disabled buttons
@@ -122,7 +134,6 @@ class TasksCog(commands.Cog, name="Tasks"):
         await interaction.response.defer()
 
         # Compute today's boundaries in the user's local timezone, then convert to UTC
-        # for the DB query. Without this, users in UTC+7 would see UTC's "today" instead.
         now_utc   = datetime.now(pytz.utc)
         local_tz  = pytz.timezone(tz_name)
         local_now = now_utc.astimezone(local_tz)
@@ -137,15 +148,29 @@ class TasksCog(commands.Cog, name="Tasks"):
             (uid, start, end),
         )
 
+        overdue_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+            (uid, now_utc.isoformat()),
+        )
+        overdue_c = overdue_row["c"] if overdue_row else 0
+
+        # Dynamic color based on urgency
+        if overdue_c > 0:
+            today_color = 0xED4245
+        elif any(r["priority"] >= 4 for r in tasks):
+            today_color = 0xE67E22
+        else:
+            today_color = 0x5865F2
+
         local_date = local_now.strftime("%d/%m/%Y")
         embed = discord.Embed(
             title=f"📅 {t('tasks_filter_today', lang)} — {local_date}",
-            color=0x5865F2,
+            color=today_color,
         )
         if not tasks:
             embed.description = "> " + t("tasks_empty", lang)
         else:
-            lines = []
+            lines = [f"**{t('today_summary', lang, count=len(tasks), overdue=overdue_c)}**\n"]
             for r in tasks:
                 try:
                     dt = datetime.fromisoformat(r["deadline"])
@@ -155,8 +180,11 @@ class TasksCog(commands.Cog, name="Tasks"):
                 except Exception:
                     is_overdue = False
                 icon = "🚨" if is_overdue else "⏳"
+                tl = time_left_str(r["deadline"])
+                dl_fmt = format_deadline(r["deadline"], tz_name)
                 lines.append(
-                    f"{icon} `#{r['task_id']}` **{r['task'][:55]}** — `{format_deadline(r['deadline'], tz_name)}`"
+                    f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n"
+                    f"   ╰ 📅 `{dl_fmt}`  ·  ⏱️ `{tl}`"
                 )
             embed.description = "\n".join(lines)
             embed.set_footer(text=f"{len(tasks)} task(s) today  |  {t('footer_text', lang)}")
@@ -185,13 +213,16 @@ class TasksCog(commands.Cog, name="Tasks"):
 
         embed = discord.Embed(title=f"🚨 {t('tasks_filter_overdue', lang)}", color=0xED4245)
         if not tasks:
-            embed.description = "> ✅ " + ("ไม่มี Task เกินกำหนด!" if lang == "th" else "No overdue tasks!")
+            embed.description = "> ✅ " + t("overdue_none", lang)
         else:
-            lines = [
-                f"🚨 `#{r['task_id']}` **{r['task'][:55]}**\n"
-                f"   ╰─ `{format_deadline(r['deadline'], tz_name)}`  ({time_left_str(r['deadline'])})"
-                for r in tasks
-            ]
+            summary_line = t("overdue_summary", lang, total=len(tasks))
+            note_line = t("overdue_note", lang)
+            lines = [f"**{summary_line}**\n> *{note_line}*\n"]
+            for r in tasks:
+                lines.append(
+                    f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
+                    f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
+                )
             embed.description = "\n".join(lines)
             embed.set_footer(text=f"⚠️ {len(tasks)} overdue  |  {t('footer_text', lang)}")
         await interaction.followup.send(embed=embed)
@@ -247,7 +278,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True)
 
-        row = await db.afetchone("SELECT status, owner_id FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT task, status, owner_id FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -270,19 +301,15 @@ class TasksCog(commands.Cog, name="Tasks"):
         await db.alog_action(uid, "task_completed", str(task_id))
         db.invalidate_stats(uid)
 
+        done_msg = t("task_done_with_name", lang, task_id=task_id, task_name=row["task"])
         embed = discord.Embed(
-            title=t("task_marked_done", lang, task_id=task_id),
+            title=done_msg,
             color=0x57F287,
         )
         embed.set_footer(text=t("footer_text", lang))
         await interaction.followup.send(embed=embed)
         dm_embed = discord.Embed(
-            title="✅ " + ("Task เสร็จแล้ว!" if lang == "th" else "Task Completed!"),
-            description=(
-                f"Task **#{task_id}** ถูกทำเครื่องหมายว่าเสร็จแล้ว"
-                if lang == "th"
-                else f"Task **#{task_id}** has been marked as completed."
-            ),
+            title=done_msg,
             color=0x57F287,
         )
         dm_embed.set_footer(text=t("footer_text", lang))
@@ -310,9 +337,14 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
 
         view = DeleteConfirmView(task_id, uid, lang)
+        confirm_embed = discord.Embed(
+            title=t("delete_confirm_title", lang),
+            description=t("delete_confirm_desc", lang, task_name=row["task"]),
+            color=0xED4245,
+        )
+        confirm_embed.set_footer(text=t("footer_text", lang))
         await interaction.response.send_message(
-            t("task_delete_confirm", lang, task_name=row["task"]),
-            view=view, ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -420,12 +452,16 @@ class TasksCog(commands.Cog, name="Tasks"):
             (uid, f"%{q}%"),
         )
 
-        embed = discord.Embed(title=t("search_title", lang, query=q), color=0x5865F2)
+        title_text = f"🔍 {t('search_title', lang, query=q)}"
+        if tasks:
+            title_text += f" — {len(tasks)} {t('cat_task_count', lang, count=len(tasks))}"
+        embed = discord.Embed(title=title_text, color=0x5865F2)
         if not tasks:
             embed.description = "> " + t("search_empty", lang, query=q)
         else:
             now   = datetime.now(pytz.utc)
-            lines = []
+            lines = [f"> *{t('search_results_count', lang, query=q, count=len(tasks))}*\n"]
+            escaped_q = re.escape(q)
             for row in tasks:
                 try:
                     dt = datetime.fromisoformat(row["deadline"])
@@ -446,8 +482,14 @@ class TasksCog(commands.Cog, name="Tasks"):
 
                 pin  = " 📌" if row.get("is_pinned") else ""
                 name = row["task"][:60]
+                highlighted_name = re.sub(
+                    f"({escaped_q})", r"__**\1**__", name, flags=re.IGNORECASE
+                )
+                dl_fmt = format_deadline(row["deadline"], tz_name)
+                tl     = time_left_str(row["deadline"])
                 lines.append(
-                    f"{icon} `#{row['task_id']}`{pin} **{name}**  `{format_deadline(row['deadline'], tz_name)}`"
+                    f"{icon} `#{row['task_id']}`{pin} {highlighted_name}\n"
+                    f"   ╰ 📅 `{dl_fmt}`  ·  ⏱️ `{tl}`"
                 )
             embed.description = "\n".join(lines)
         embed.set_footer(text=t("footer_text", lang))
@@ -465,7 +507,8 @@ class TasksCog(commands.Cog, name="Tasks"):
         await ensure_user(uid, lang)
 
         stats = await db.user_task_stats(uid)
-        embed = build_stats_embed(stats, lang, interaction.user.display_name)
+        avatar_url = interaction.user.display_avatar.url if interaction.user.display_avatar else None
+        embed = build_stats_embed(stats, lang, interaction.user.display_name, avatar_url=avatar_url)
         await interaction.response.send_message(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────

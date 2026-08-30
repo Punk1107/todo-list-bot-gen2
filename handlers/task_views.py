@@ -363,6 +363,8 @@ class DeleteConfirmView(ui.View):
         self.uid      = uid
         self.lang     = lang
         self._message: Optional[discord.Message] = None
+        self.confirm.label = t("btn_confirm_delete", lang)
+        self.cancel_btn.label = t("cancel", lang)
 
     async def on_timeout(self) -> None:
         _disable_all(self)
@@ -405,15 +407,10 @@ class DeleteConfirmView(ui.View):
                 t("task_deleted", self.lang, task_id=self.task_id), ephemeral=True
             )
         dm_embed = discord.Embed(
-            title="🗑️ " + ("ลบ Task เรียบร้อย" if self.lang == "th" else "Task Deleted"),
-            description=(
-                f"Task **#{self.task_id}** ถูกลบแล้ว"
-                if self.lang == "th"
-                else f"Task **#{self.task_id}** has been permanently deleted."
-            ),
+            title=t("task_deleted", self.lang, task_id=self.task_id),
             color=0xED4245,
         )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        dm_embed.set_footer(text=t("footer_text", self.lang))
         await _send_dm(interaction.user, embed=dm_embed)
 
     @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
@@ -425,6 +422,63 @@ class DeleteConfirmView(ui.View):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
         log.error("DeleteConfirmView error (task_id=%s): %s", self.task_id, error, exc_info=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
+            else:
+                await interaction.response.send_message(t("err_generic", self.lang), ephemeral=True)
+        except Exception:
+            pass
+
+
+class SnoozeConfirmView(ui.View):
+    """Confirmation dialog before postponing a task deadline by 1 day."""
+
+    def __init__(self, task_id: int, uid: str, lang: str, new_deadline_iso: str, tz_name: str) -> None:
+        super().__init__(timeout=45)
+        self.task_id = task_id
+        self.uid = uid
+        self.lang = lang
+        self.new_deadline_iso = new_deadline_iso
+        self.tz_name = tz_name
+        self.confirm.label = t("btn_confirm_snooze", lang)
+        self.cancel_btn.label = t("cancel", lang)
+
+    @ui.button(label="⏰ Confirm (+1 Day)", style=discord.ButtonStyle.primary)
+    async def confirm(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+
+        try:
+            await db.aexecute(
+                "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
+                (self.new_deadline_iso, self.task_id, self.uid),
+            )
+            await db.alog_action(self.uid, "task_snoozed", str(self.task_id), f"new_dl={self.new_deadline_iso}")
+            db.invalidate_stats(self.uid)
+        except Exception as exc:
+            log.error("Task snooze failed: %s", exc)
+            await interaction.followup.send(t("err_db", self.lang), ephemeral=True)
+            return
+
+        self.stop()
+        new_dl_str = format_deadline(self.new_deadline_iso, self.tz_name)
+        await interaction.edit_original_response(
+            content=t("task_snoozed", self.lang, deadline=new_dl_str),
+            embed=None, view=None,
+        )
+
+    @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(
+            content=t("cancel", self.lang), embed=None, view=None,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
+        log.error("SnoozeConfirmView error (task_id=%s): %s", self.task_id, error, exc_info=True)
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
@@ -515,6 +569,21 @@ class PrioritySelectView(ui.View):
         self.lang = lang
         self.author_id = author_id
         self.add_item(_PriorityForAddSelect(author_id, lang, category_id, parent_task_id))
+
+    @staticmethod
+    def build_embed(lang: str) -> discord.Embed:
+        """Build the rich embed with inline priority guide shown before the dropdown."""
+        embed = discord.Embed(
+            title=t("priority_select_title", lang),
+            description=f"> {t('priority_select_desc', lang)}\n",
+            color=0x5865F2,
+        )
+        low_prio = "\n".join(f"{emoji} **{t(f'priority_{v}', lang)}**" for v, emoji, _ in _PRIORITY_OPTIONS[:4])
+        high_prio = "\n".join(f"{emoji} **{t(f'priority_{v}', lang)}**" for v, emoji, _ in _PRIORITY_OPTIONS[4:])
+        embed.add_field(name="Standard (P0 - P3)", value=low_prio, inline=True)
+        embed.add_field(name="High Priority (P4 - P7)", value=high_prio, inline=True)
+        embed.set_footer(text=t("footer_text", lang))
+        return embed
 
     async def on_timeout(self) -> None:
         # Disable all items and edit the message to indicate timeout
@@ -724,7 +793,7 @@ class TaskActionView(ui.View):
 
     # ── Mark Done ─────────────────────────────────────────────────────────────
 
-    @ui.button(label="✅ Done", style=discord.ButtonStyle.success, row=0, custom_id="done")
+    @ui.button(label="✅ Mark Done", style=discord.ButtonStyle.success, row=0, custom_id="done")
     async def mark_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
         # Defer immediately so Discord doesn't time out while we query the DB
         await interaction.response.defer(ephemeral=True)
@@ -732,7 +801,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT status FROM tasks WHERE task_id=$1", (self.task_id,))
+        row = await db.afetchone("SELECT task, status FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -751,17 +820,12 @@ class TaskActionView(ui.View):
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         self.stop()
-        await interaction.followup.send(t("task_marked_done", lang, task_id=self.task_id), ephemeral=True)
+        await interaction.followup.send(t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]), ephemeral=True)
         dm_embed = discord.Embed(
-            title="✅ " + ("Task เสร็จแล้ว!" if lang == "th" else "Task Completed!"),
-            description=(
-                f"Task **#{self.task_id}** ถูกทำเครื่องหมายว่าเสร็จแล้ว"
-                if lang == "th"
-                else f"Task **#{self.task_id}** marked as completed."
-            ),
+            title=t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]),
             color=0x57F287,
         )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        dm_embed.set_footer(text=t("footer_text", lang))
         await _send_dm(interaction.user, embed=dm_embed)
 
     # ── Edit ──────────────────────────────────────────────────────────────────
@@ -837,15 +901,21 @@ class TaskActionView(ui.View):
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
+        # Show a rich embed confirm instead of plain text
         confirm = DeleteConfirmView(self.task_id, self.uid, lang)
+        confirm_embed = discord.Embed(
+            title=t("delete_confirm_title", lang),
+            description=t("delete_confirm_desc", lang, task_name=row["task"]),
+            color=0xED4245,
+        )
+        confirm_embed.set_footer(text=t("footer_text", lang))
         await interaction.response.send_message(
-            t("task_delete_confirm", lang, task_name=row["task"]),
-            view=confirm, ephemeral=True,
+            embed=confirm_embed, view=confirm, ephemeral=True,
         )
 
     # ── Snooze (+1 Day) ───────────────────────────────────────────────────────
 
-    @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
+    @ui.button(label="⏰ Snooze (+1 Day)", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
     async def snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
         # Defer immediately so Discord doesn't time out while we query the DB
         await interaction.response.defer(ephemeral=True)
@@ -854,14 +924,14 @@ class TaskActionView(ui.View):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
-            "SELECT deadline, status FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT task, deadline, status FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         if row["status"] != "Pending":
             await interaction.followup.send(
-                "⚠️ " + ("เลื่อนได้เฉพาะ Task ที่ยังค้างอยู่" if lang == "th" else "Can only snooze Pending tasks"),
+                t("task_already_done", lang) if row["status"] == "Completed" else t("task_already_cancelled", lang),
                 ephemeral=True,
             )
             return
@@ -875,20 +945,17 @@ class TaskActionView(ui.View):
             if dt.tzinfo is None:
                 dt = pytz.utc.localize(dt)
             new_dl = (dt + timedelta(days=1)).isoformat()
-            await db.aexecute(
-                "UPDATE tasks SET deadline=$1, dm_reminded=0, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
-                (new_dl, self.task_id, self.uid),
+            tz_name = await get_user_timezone(self.uid)
+            new_dl_fmt = format_deadline(new_dl, tz_name)
+
+            confirm_view = SnoozeConfirmView(self.task_id, self.uid, lang, new_dl, tz_name)
+            confirm_embed = discord.Embed(
+                title=t("snooze_confirm_title", lang),
+                description=t("snooze_confirm_desc", lang, task_name=row["task"], new_deadline=new_dl_fmt),
+                color=0x5865F2,
             )
-            await db.alog_action(self.uid, "task_snoozed", str(self.task_id), "+1d")
-            db.invalidate_stats(self.uid)
-            tz_name     = await get_user_timezone(self.uid)
-            new_dl_fmt  = format_deadline(new_dl, tz_name)
-            snooze_msg = (
-                f"⏰ Task **#{self.task_id}** เลื่อนเป็น `{new_dl_fmt}`"
-                if lang == "th"
-                else f"⏰ Task **#{self.task_id}** snoozed to `{new_dl_fmt}`"
-            )
-            await interaction.followup.send(snooze_msg, ephemeral=True)
+            confirm_embed.set_footer(text=t("footer_text", lang))
+            await interaction.followup.send(embed=confirm_embed, view=confirm_view, ephemeral=True)
         except Exception as exc:
             log.error("Snooze failed task_id=%d: %s", self.task_id, exc)
             await interaction.followup.send(t("err_generic", lang), ephemeral=True)
@@ -990,6 +1057,8 @@ class TaskListView(ui.View):
         self._message: Optional[discord.Message] = None  # set by caller after send
         self._filter_select = TaskFilterSelect(lang, filter_status)
         self.add_item(self._filter_select)
+        self.refresh.label = t("btn_refresh", lang)
+        self.page_indicator.label = t("page_indicator", lang, page=1, total=1)
 
     async def on_timeout(self) -> None:
         _disable_all(self)
@@ -1053,10 +1122,14 @@ class TaskListView(ui.View):
                     item.disabled = (page <= 1)
                 elif cid == "lv_prev":
                     item.disabled = (page <= 1)
+                elif cid == "lv_page":
+                    item.label = t("page_indicator", self.lang, page=page, total=total_pages)
                 elif cid == "lv_next":
                     item.disabled = (page >= total_pages)
                 elif cid == "lv_last":
                     item.disabled = (page >= total_pages)
+                elif cid == "lv_refresh":
+                    item.label = t("btn_refresh", self.lang)
 
     async def update_message(self, interaction: discord.Interaction) -> None:
         tasks, page, total_pages = await self._fetch_page()
@@ -1071,34 +1144,54 @@ class TaskListView(ui.View):
             "Completed": "tasks_filter_Completed",
         }
         filter_label = t(filter_key_map.get(fs, f"tasks_filter_{fs}"), self.lang)
-        embed = build_task_list_embed(tasks, page, total_pages, self.lang, self.tz_name, filter_label)
+
+        # Fetch total + overdue counts for summary line
+        now_iso = datetime.now(pytz.utc).isoformat()
+        total_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (self.uid,)
+        )
+        overdue_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
+            "AND status='Pending' AND deadline<$2", (self.uid, now_iso)
+        )
+        total_count   = total_row["c"]   if total_row   else 0
+        overdue_count = overdue_row["c"] if overdue_row else 0
+
+        embed = build_task_list_embed(
+            tasks, page, total_pages, self.lang, self.tz_name, filter_label,
+            total_count=total_count, overdue_count=overdue_count,
+        )
         self._update_nav_buttons(page, total_pages)
         await interaction.edit_original_response(embed=embed, view=self)
 
-    @ui.button(emoji="⏮", style=discord.ButtonStyle.secondary, custom_id="lv_first", row=3)
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=1)
+    async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
+        await self.update_message(interaction)
+
+    @ui.button(emoji="⏮", style=discord.ButtonStyle.secondary, custom_id="lv_first", row=2)
     async def first_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         self.page = 1
         await self.update_message(interaction)
 
-    @ui.button(emoji="◀", style=discord.ButtonStyle.secondary, custom_id="lv_prev", row=3)
+    @ui.button(emoji="◀", style=discord.ButtonStyle.secondary, custom_id="lv_prev", row=2)
     async def prev_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         self.page -= 1
         await self.update_message(interaction)
 
-    @ui.button(emoji="🔄", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
-    async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.defer()
-        await self.update_message(interaction)
+    @ui.button(label="📄 Page 1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="lv_page", row=2)
+    async def page_indicator(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        pass
 
-    @ui.button(emoji="▶", style=discord.ButtonStyle.secondary, custom_id="lv_next", row=3)
+    @ui.button(emoji="▶", style=discord.ButtonStyle.secondary, custom_id="lv_next", row=2)
     async def next_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         self.page += 1
         await self.update_message(interaction)
 
-    @ui.button(emoji="⏭", style=discord.ButtonStyle.secondary, custom_id="lv_last", row=3)
+    @ui.button(emoji="⏭", style=discord.ButtonStyle.secondary, custom_id="lv_last", row=2)
     async def last_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         _, _, total_pages = await self._fetch_page()

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import discord
-from discord import app_commands
+from discord import app_commands, ui
 from discord.ext import commands
 import pytz
 
@@ -91,6 +91,140 @@ class AddCategoryModal(discord.ui.Modal):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Help UI Components
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_help_embed(category: str, lang: str) -> discord.Embed:
+    if category == "tasks":
+        embed = discord.Embed(
+            title=f"📝 {t('help_cat_tasks', lang)}",
+            description="All slash commands for creating, tracking, and completing tasks:" if lang != "th" else "คำสั่งทั้งหมดสำหรับสร้าง ติดตาม และจัดการงานของคุณ:",
+            color=0x5865F2,
+        )
+        task_cmds = [
+            ("➕ `/add`", t("help_add", lang)),
+            ("📋 `/list`", t("help_list", lang)),
+            ("📅 `/today`", "View tasks due today with urgency markers" if lang != "th" else "ดู Task ที่ต้องส่งวันนี้พร้อมตัวบอกความเร่งด่วน"),
+            ("🚨 `/overdue`", "View overdue tasks needing immediate action" if lang != "th" else "ดูรายการ Task ที่เกินกำหนดส่ง"),
+            ("📌 `/task [id]`", "Inspect task details, subtasks, tags, and actions" if lang != "th" else "ดูรายละเอียด Task งานย่อย แท็ก และปุ่มจัดการ"),
+            ("✅ `/done [id]`", t("help_done", lang)),
+            ("🗑️ `/delete [id]`", t("help_delete", lang)),
+            ("📌 `/pin [id]` / `/unpin [id]`", "Pin/unpin important tasks to top of list" if lang != "th" else "ปักหมุด/เลิกปักหมุด Task สำคัญให้อยู่บนสุด"),
+            ("🔄 `/recurring [id]`", "Set recurrence interval (daily, weekly, monthly)" if lang != "th" else "ตั้งการทำซ้ำอัตโนมัติ (รายวัน, รายสัปดาห์, รายเดือน)"),
+            ("🔍 `/search [query]`", t("help_search", lang)),
+            ("📊 `/stats`", t("help_stats", lang)),
+            ("📥 `/export`", t("help_export", lang)),
+        ]
+        for cmd, desc in task_cmds:
+            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
+
+    elif category == "settings":
+        embed = discord.Embed(
+            title=f"⚙️ {t('help_cat_settings', lang)}",
+            description="Configure your preferences and organize tasks into categories:" if lang != "th" else "ตั้งค่าการใช้งานและจัดระเบียบงานด้วยหมวดหมู่:",
+            color=0x5865F2,
+        )
+        setting_cmds = [
+            ("🕒 `/setup [timezone]`", t("help_setup", lang)),
+            ("🌐 `/lang`", t("help_lang", lang)),
+            ("📂 `/category list`", "List all default and custom categories" if lang != "th" else "แสดงรายการหมวดหมู่ทั้งหมดทั้งระบบและที่คุณสร้าง"),
+            ("➕ `/category add`", "Create a new custom category with emoji" if lang != "th" else "สร้างหมวดหมู่ใหม่พร้อมอิโมจิ"),
+            ("🗑️ `/category remove [id]`", "Delete a custom category" if lang != "th" else "ลบหมวดหมู่ที่คุณสร้าง"),
+        ]
+        for cmd, desc in setting_cmds:
+            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
+
+    elif category == "tips":
+        embed = discord.Embed(
+            title=f"💡 {t('help_cat_tips', lang)}",
+            description="Helpful tips to make the most of your To-Do bot:" if lang != "th" else "เคล็ดลับและฟีเจอร์เด็ดเพื่อการทำงานที่มีประสิทธิภาพยิ่งขึ้น:",
+            color=0x5865F2,
+        )
+        tips = [
+            ("⚡ Inline Actions", "When viewing a task with `/task [id]`, you can edit priority, mark done, pin, snooze, or add subtasks using buttons!" if lang != "th" else "เมื่อดู Task ด้วย `/task [id]` สามารถกดปุ่มปรับ Priority, ปักหมุด, เลื่อนกำหนดส่ง หรือเพิ่ม Subtask ได้ทันที!"),
+            ("⏰ Snooze (+1 Day)", "Easily push back deadlines by 1 day right from the task action view with a single confirmation." if lang != "th" else "เลื่อนกำหนดส่งออกไป 1 วันได้ง่ายๆ ผ่านปุ่ม Snooze พร้อมหน้าต่างยืนยัน"),
+            ("📌 Pins & Priority", "Pinned tasks and high-priority tasks always float to the top of your `/list`." if lang != "th" else "Task ที่ปักหมุดและ Task ที่มี Priority สูงจะลอยขึ้นมาอยู่อันดับแรกๆ ใน `/list` เสมอ"),
+            ("🔔 DM Reminders", "The bot automatically notifies you via DM 24h, 3h, and 1h before deadlines!" if lang != "th" else "Bot จะส่ง DM เตือนคุณล่วงหน้า 24 ชม., 3 ชม., และ 1 ชม. ก่อนถึงกำหนดส่งโดยอัตโนมัติ!"),
+        ]
+        for title, desc in tips:
+            embed.add_field(name=title, value=f"> {desc}", inline=False)
+
+    else:  # overview
+        embed = discord.Embed(
+            title=t("help_title", lang),
+            description=t("help_desc", lang),
+            color=0x5865F2,
+        )
+        embed.add_field(
+            name="🚀 Getting Started",
+            value=t("help_quickstart", lang),
+            inline=False,
+        )
+        embed.add_field(
+            name="📚 Browse Categories",
+            value=(
+                "Use the dropdown menu below to view specific command guides:\n"
+                "• **📝 Task Commands**: Adding, editing, completing, and organizing\n"
+                "• **⚙️ Settings & Categories**: Timezone, language, categories\n"
+                "• **💡 Tips & Shortcuts**: Best practices and smart features"
+                if lang != "th" else
+                "ใช้เมนูด้านล่างเพื่อเลือกดูคำสั่งตามหมวดหมู่:\n"
+                "• **📝 คำสั่งจัดการ Task**: การสร้าง, แก้ไข, ทำเสร็จ, และจัดระเบียบ\n"
+                "• **⚙️ ตั้งค่า & หมวดหมู่**: Timezone, ภาษา, และหมวดหมู่\n"
+                "• **💡 เคล็ดลับ & ทางลัด**: ฟีเจอร์เด็ดและการใช้งานให้คุ้มค่า"
+            ),
+            inline=False,
+        )
+
+    embed.set_footer(text=t("help_version_footer", lang))
+    return embed
+
+
+class HelpCategorySelect(ui.Select):
+    def __init__(self, lang: str) -> None:
+        self.lang = lang
+        options = [
+            discord.SelectOption(
+                label=t("help_cat_overview", lang),
+                value="overview",
+                emoji="🚀",
+                default=True,
+            ),
+            discord.SelectOption(
+                label=t("help_cat_tasks", lang),
+                value="tasks",
+                emoji="📝",
+            ),
+            discord.SelectOption(
+                label=t("help_cat_settings", lang),
+                value="settings",
+                emoji="⚙️",
+            ),
+            discord.SelectOption(
+                label=t("help_cat_tips", lang),
+                value="tips",
+                emoji="💡",
+            ),
+        ]
+        super().__init__(placeholder="📖 Select help category...", options=options, min_values=1, max_values=1)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        val = self.values[0]
+        for opt in self.options:
+            opt.default = (opt.value == val)
+
+        embed = build_help_embed(val, self.lang)
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+
+class HelpView(ui.View):
+    def __init__(self, lang: str) -> None:
+        super().__init__(timeout=300)
+        self.lang = lang
+        self.add_item(HelpCategorySelect(lang))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Settings Cog
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -121,6 +255,10 @@ class SettingsCog(commands.Cog, name="Settings"):
             )
             return
 
+        # Fetch previous timezone to display transition if changed
+        curr_row = await db.afetchone("SELECT timezone FROM users WHERE user_id=$1", (uid,))
+        prev_tz = curr_row["timezone"] if curr_row and curr_row["timezone"] else None
+
         channel_id = interaction.channel_id
         await ensure_user(uid, lang)
         await save_user_settings(uid, timezone=tz_clean, channel_id=channel_id)
@@ -132,10 +270,25 @@ class SettingsCog(commands.Cog, name="Settings"):
             description=t("setup_success", lang, tz=tz_clean, channel=ch_mention),
             color=0x57F287,
         )
+        # Checklist showing what's configured
+        embed.add_field(
+            name="✅ Setup Checklist",
+            value=t("setup_checklist", lang),
+            inline=False,
+        )
+        if prev_tz and prev_tz != tz_clean:
+            tz_val = f"`{prev_tz}` ➔ **`{tz_clean}`**"
+        else:
+            tz_val = f"**`{tz_clean}`**"
+        embed.add_field(
+            name="🕒 Timezone",
+            value=t("setup_current_tz", lang, tz=tz_val),
+            inline=True,
+        )
         embed.add_field(
             name="🌐 Language / ภาษา",
             value="Use `/lang` to switch language | ใช้ `/lang` เพื่อเปลี่ยนภาษา",
-            inline=False,
+            inline=True,
         )
         embed.set_footer(text=t("footer_text", lang))
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -151,9 +304,14 @@ class SettingsCog(commands.Cog, name="Settings"):
         await ensure_user(uid, discord_locale=discord_locale)
         current_lang = await get_user_lang(uid)
 
+        from locales.i18n import get_flag, get_lang_name
+        flag = get_flag(current_lang)
+        lang_name = get_lang_name(current_lang)
+        active_str = t("lang_current_active", current_lang, flag=flag, name=lang_name)
+
         embed = discord.Embed(
             title=t("lang_select_title", current_lang),
-            description=t("lang_select_desc", current_lang),
+            description=f"> **{active_str}**\n\n{t('lang_select_desc', current_lang)}",
             color=0x5865F2,
         )
         view = LanguageView(current_lang)
@@ -170,49 +328,9 @@ class SettingsCog(commands.Cog, name="Settings"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
 
-        embed = discord.Embed(
-            title=t("help_title", lang),
-            description=t("help_desc", lang),
-            color=0x5865F2,
-        )
-
-        task_cmds = {
-            "/add":             t("help_add", lang),
-            "/list":            t("help_list", lang),
-            "/today":           "📅 " + ("ดู Task วันนี้" if lang == "th" else "Tasks due today"),
-            "/overdue":         "🚨 " + ("Task เกินกำหนด" if lang == "th" else "Overdue tasks"),
-            "/task [id]":       "📌 " + ("รายละเอียด Task" if lang == "th" else "Task detail"),
-            "/done [id]":       t("help_done", lang),
-            "/delete [id]":     t("help_delete", lang),
-            "/pin [id]":        "📌 " + ("ปักหมุด" if lang == "th" else "Pin task"),
-            "/unpin [id]":      "📌 " + ("เลิกปักหมุด" if lang == "th" else "Unpin task"),
-            "/recurring [id]":  "🔄 " + ("ตั้งการทำซ้ำ" if lang == "th" else "Set recurring"),
-            "/search [q]":      t("help_search", lang),
-            "/stats":           t("help_stats", lang),
-            "/export":          t("help_export", lang),
-        }
-        embed.add_field(
-            name="📝 " + ("คำสั่ง Task" if lang == "th" else "Task Commands"),
-            value="\n".join(f"`{k}` — {v}" for k, v in task_cmds.items()),
-            inline=False,
-        )
-
-        setting_cmds = {
-            "/setup [tz]":       t("help_setup", lang),
-            "/lang":             t("help_lang", lang),
-            "/category list":    "📂 " + ("รายการหมวดหมู่" if lang == "th" else "List categories"),
-            "/category add":     "➕ " + ("เพิ่มหมวดหมู่" if lang == "th" else "Add category"),
-            "/category remove":  "🗑️ " + ("ลบหมวดหมู่" if lang == "th" else "Remove category"),
-            "/help":             t("help_commands", lang),
-        }
-        embed.add_field(
-            name="⚙️ " + ("การตั้งค่า" if lang == "th" else "Settings"),
-            value="\n".join(f"`{k}` — {v}" for k, v in setting_cmds.items()),
-            inline=False,
-        )
-
-        embed.set_footer(text=t("footer_text", lang))
-        await interaction.response.send_message(embed=embed)
+        view = HelpView(lang)
+        embed = build_help_embed("overview", lang)
+        await interaction.response.send_message(embed=embed, view=view)
 
     # ── /category group ───────────────────────────────────────────────────────
 
@@ -229,18 +347,44 @@ class SettingsCog(commands.Cog, name="Settings"):
         await ensure_user(uid, lang)
 
         cats = await db.afetchall(
-            "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
+            """SELECT c.category_id, c.name, c.emoji, c.owner_id,
+                      COUNT(t.task_id) AS task_count
+               FROM categories c
+               LEFT JOIN tasks t ON t.category_id = c.category_id AND t.owner_id = $1 AND t.status != 'Cancelled'
+               WHERE c.owner_id = $1 OR c.owner_id = 'system'
+               GROUP BY c.category_id, c.name, c.emoji, c.owner_id
+               ORDER BY c.owner_id DESC, c.name ASC""",
             (uid,),
         )
         embed = discord.Embed(title=t("cat_list_title", lang), color=0x5865F2)
         if not cats:
             embed.description = t("cat_empty", lang)
         else:
-            lines = []
+            default_lines = []
+            custom_lines  = []
             for row in cats:
-                owner_tag = " *(default)*" if row["owner_id"] == "system" else ""
-                lines.append(f"{row['emoji']} **{row['name']}**  `#{row['category_id']}`{owner_tag}")
-            embed.description = "\n".join(lines)
+                tc = row["task_count"]
+                count_str = f"• *{t('cat_task_count', lang, count=tc)}*"
+                line = f"{row['emoji']} **{row['name']}**  `#{row['category_id']}`  {count_str}"
+                if row["owner_id"] == "system":
+                    default_lines.append(line)
+                else:
+                    custom_lines.append(line)
+
+            if default_lines:
+                embed.add_field(
+                    name=f"📌 {t('cat_section_default', lang)}",
+                    value="\n".join(default_lines),
+                    inline=False,
+                )
+            if custom_lines:
+                embed.add_field(
+                    name=f"🗂️ {t('cat_section_custom', lang)}",
+                    value="\n".join(custom_lines),
+                    inline=False,
+                )
+            elif not default_lines:
+                embed.description = t("cat_empty", lang)
         embed.set_footer(text=t("footer_text", lang))
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

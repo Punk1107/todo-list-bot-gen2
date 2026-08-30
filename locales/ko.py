@@ -28,7 +28,8 @@ STRINGS = {
     "setup_desc": "시작하려면 다음 설정을 구성해주세요.",
     "setup_timezone": "시간대",
     "setup_timezone_desc": "예: Asia/Seoul, UTC, America/New_York",
-    "setup_success": "✅ 설정 완료! 시간대: **{tz}** | 채널: {channel}",
+    "setup_success": "✅ 설정 완료! 시간대: **{tz}** | 이름: {channel}",
+    "setup_checklist": "✅ 시간대  ✅ 알림 채널  ☑️ 언어 (`/lang` 사용)",
     "setup_invalid_tz": "❌ 시간대 `{tz}`이(가) 유효하지 않습니다. 다시 확인해주세요.\n[시간대 전체 목록](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
     "setup_channel_required": "❌ Discord 채널에서 이 명령어를 사용해주세요.",
 
@@ -61,6 +62,9 @@ STRINGS = {
     "tasks_empty": "📭 작업이 없습니다.\n**`/add`** 를 눌러 첫 번째 작업을 만들어보세요!",
     "tasks_page": "{page}/{total} 페이지",
     "tasks_total": "전체 작업 수: **{count}**",
+    "tasks_summary": "{total} 작업 · {overdue} 기한 초과",
+    "today_summary": "📅 오늘: **{count}** 작업 · ⚠️ 기한 초과: **{overdue}**",
+    "overdue_summary": "🚨 기한 초과 전체: **{total}** 작업",
     "tasks_filter_pending": "⏳ 진행 중",
     "tasks_filter_Pending": "⏳ 진행 중",
     "tasks_filter_done": "✅ 완료",
@@ -91,14 +95,19 @@ STRINGS = {
 
     # ─── Task Actions ───────────────────────────────────────────────────────────
     "btn_done": "✅ 완료 표시",
+    "btn_mark_done": "✅ 완료로 표시",
     "btn_delete": "🗑️ 삭제",
     "btn_edit": "✏️ 편집",
     "btn_subtask": "➕ 하위 작업",
+    "btn_snooze": "⏰ 스르즈 (+1일)",
     "btn_prev": "◀ 이전",
     "btn_next": "다음 ▶",
     "btn_refresh": "🔄 새로고침",
     "btn_back": "🔙 뒤로",
     "btn_confirm_delete": "🗑️ 삭제 확인",
+    "page_indicator": "📄 {page} / {total} 페이지",
+    "delete_confirm_title": "⚠️ 삭제 확인",
+    "delete_confirm_desc": "이 작업을 삭제하시겠습니까?\n> **{task_name}**\n\n⚠️ 이 작업은 **되돌릴 수 없습니다**.",
 
     "task_marked_done": "✅ 작업 **#{task_id}** 이(가) 완료로 표시되었습니다!",
     "task_already_done": "⚠️ 이 작업은 이미 완료되었습니다.",
@@ -125,6 +134,8 @@ STRINGS = {
     "cat_title": "🏷️ 카테고리",
     "cat_list_title": "📂 전체 카테고리",
     "cat_empty": "카테고리가 없습니다.",
+    "cat_section_default": "📌 기본 카테고리",
+    "cat_section_custom": "🗂️ 나의 카테고리",
     "cat_add_title": "➕ 새 카테고리 추가",
     "cat_name_label": "카테고리 이름",
     "cat_emoji_label": "이모지 (선택사항)",
@@ -173,6 +184,7 @@ STRINGS = {
     "reminder_overdue": "🚨 **작업 기한이 초과되었습니다!**\n`{task}` 의 기한은 {deadline}이었습니다",
     "reminder_due_soon": "⚡ **마감이 임박했습니다!**\n`{task}` 까지 {time_left} 남았습니다",
     "reminder_due_today": "📅 **오늘이 마감일입니다!**\n`{task}` 의 마감 시간은 {time}입니다",
+    "reminder_action_hint": "`/done {task_id}` 를 사용하거나 ✅ 완료 를 눔러 알림을 중지하세요.",
 
     "dm_reminder_title": "⏰ 마감일 알림 (DM)",
     "dm_reminder_24h": "📅 **작업 마감이 가까워지고 있습니다!**\n`{task}` 까지 **{time_left}** 남았습니다.",
@@ -187,6 +199,7 @@ STRINGS = {
 
     # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 검색 결과: `{query}`",
+    "search_results_count": "🔍 검색: **{query}** — {count}개 찾았습니다",
     "search_empty": "🔍 `{query}` 에 일치하는 작업이 없습니다.",
     "search_query_label": "검색어",
     "search_query_placeholder": "작업 이름 또는 태그 입력...",
@@ -199,6 +212,10 @@ STRINGS = {
     "stats_overdue": "기한 초과",
     "stats_completion_rate": "완료율",
     "stats_categories": "사용된 카테고리",
+    "stats_header_on_track": "🎯 순조롭습니다!",
+    "stats_header_overdue": "⚠️ {overdue}개 작업 기한 초과!",
+    "stats_header_all_done": "🏆 모두 완료!",
+    "stats_header_empty": "📭 작업 없음",
     "stats_note_empty":    "작업이 없습니다! `/add` 로 시작하세요 🚀",
     "stats_note_overdue":  "⚠️ {overdue}개 작업이 기한 초과 — `/overdue` 로 확인하세요",
     "stats_note_all_done": "🏆 모든 작업 완료! 훌륭합니다!",
@@ -208,6 +225,7 @@ STRINGS = {
     "help_title": "📖 To-Do List Bot Gen 2 — 도움말",
     "help_desc": "다국어를 지원하는 고기능 To-Do Bot.",
     "help_commands": "모든 명령어",
+    "help_quickstart": "🚀 퀘 스타트\n`1.` `/setup Asia/Seoul` 로 시간대 설정\n`2.` `/add` 로 첫 번째 작업 생성\n`3.` `/list` 로 작업 확인",
     "help_add": "새 작업 추가",
     "help_list": "모든 작업 보기",
     "help_done": "작업 완료 표시",
@@ -227,4 +245,35 @@ STRINGS = {
     "err_no_setup": "⚠️ 먼저 `/setup` 으로 Bot을 설정해주세요.",
     "err_input_invalid": "❌ 잘못된 입력: {detail}",
     "err_suspicious": "🚫 의심스러운 동작이 감지되었습니다. 명령어가 차단되었습니다.",
+
+    # ─── Snooze Confirm ─────────────────────────────────────────────────────────
+    "snooze_confirm_title": "⏰ 연기 확인",
+    "snooze_confirm_desc": "이 작업의 마감일을 1일 연기하시겠습니까?\n> **{task_name}**\n📅 새 마감일: `{new_deadline}`",
+    "btn_confirm_snooze": "⏰ 연기 확인 (+1일)",
+
+    # ─── Help Categories (Interactive Select) ───────────────────────────────────
+    "help_cat_overview": "🚀 개요 및 빠른 시작",
+    "help_cat_tasks": "📝 작업 명령어",
+    "help_cat_settings": "⚙️ 설정 및 카테고리",
+    "help_cat_tips": "💡 팁 및 단축키",
+    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+
+    # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
+    "digest_title": "☀️ 오늘 작업 요약 — {date}",
+    "digest_no_tasks": "오늘 마감인 작업이 없습니다!",
+    "digest_today_tasks": "오늘의 작업",
+    "digest_upcoming_title": "🔮 다가오는 작업 (향후 3일)",
+    "digest_motivational_clean": "✨ 훌륭합니다! 오늘 마감인 작업이 없습니다. 좋은 하루 되세요!",
+    "digest_motivational_busy": "💪 오늘 {count}개의 작업이 있습니다. 힘내서 완료해 보세요!",
+    "digest_motivational_overdue": "⚠️ 주의! 마감 기한이 지난 작업이 {overdue}개 있습니다.",
+    "overdue_none": "기한이 지난 작업이 없습니다! 완벽하게 관리되고 있습니다 🎉",
+    "overdue_note": "💪 힘내세요! 기한 지난 작업을 하나씩 해결해 봅시다.",
+    "task_done_with_name": "✅ 작업 **#{task_id}** ({task_name}) 완료 처리되었습니다!",
+
+    # ─── Settings & Meta ────────────────────────────────────────────────────────
+    "setup_current_tz": "현재 표준시: **{tz}**",
+    "lang_current_active": "현재 활성화된 언어: {flag} **{name}**",
+    "cat_task_count": "{count}개 작업",
+    "task_detail_created": "생성일",
+    "task_detail_updated": "수정일",
 }

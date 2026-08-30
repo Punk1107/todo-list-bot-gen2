@@ -29,6 +29,7 @@ STRINGS = {
     "setup_timezone": "时区",
     "setup_timezone_desc": "例如：Asia/Bangkok、UTC、America/New_York",
     "setup_success": "✅ 设置完成！时区：**{tz}** | 频道：{channel}",
+    "setup_checklist": "✅ 时区  ✅ 通知频道  ☑️ 语言（使用 `/lang`）",
     "setup_invalid_tz": "❌ 时区 `{tz}` 无效，请检查后重试。\n[完整时区列表](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
     "setup_channel_required": "❌ 请在 Discord 频道中使用此命令。",
 
@@ -61,6 +62,9 @@ STRINGS = {
     "tasks_empty": "📭 暂无任务。\n按 **`/add`** 创建您的第一个任务！",
     "tasks_page": "第 {page}/{total} 页",
     "tasks_total": "总任务数：**{count}**",
+    "tasks_summary": "{total} 任务 · {overdue} 已逾期",
+    "today_summary": "📅 今天：**{count}** 任务 · ⚠️ 已逾期：**{overdue}**",
+    "overdue_summary": "🚨 已逾期合计：**{total}** 任务",
     "tasks_filter_pending": "⏳ 待处理",
     "tasks_filter_Pending": "⏳ 待处理",
     "tasks_filter_done": "✅ 已完成",
@@ -91,14 +95,19 @@ STRINGS = {
 
     # ─── Task Actions ───────────────────────────────────────────────────────────
     "btn_done": "✅ 标记完成",
+    "btn_mark_done": "✅ 标记为完成",
     "btn_delete": "🗑️ 删除",
     "btn_edit": "✏️ 编辑",
     "btn_subtask": "➕ 子任务",
+    "btn_snooze": "⏰ 延迟 (+1天)",
     "btn_prev": "◀ 上一页",
     "btn_next": "下一页 ▶",
     "btn_refresh": "🔄 刷新",
     "btn_back": "🔙 返回",
     "btn_confirm_delete": "🗑️ 确认删除",
+    "page_indicator": "📄 第 {page} / {total} 页",
+    "delete_confirm_title": "⚠️ 确认删除",
+    "delete_confirm_desc": "确定要删除此任务吗？\n> **{task_name}**\n\n⚠️ 此操作**无法撤销**。",
 
     "task_marked_done": "✅ 任务 **#{task_id}** 已标记为完成！",
     "task_already_done": "⚠️ 此任务已经完成。",
@@ -125,6 +134,8 @@ STRINGS = {
     "cat_title": "🏷️ 分类",
     "cat_list_title": "📂 所有分类",
     "cat_empty": "暂无分类。",
+    "cat_section_default": "📌 默认分类",
+    "cat_section_custom": "🗂️ 我的分类",
     "cat_add_title": "➕ 添加新分类",
     "cat_name_label": "分类名称",
     "cat_emoji_label": "表情符号（可选）",
@@ -173,6 +184,7 @@ STRINGS = {
     "reminder_overdue": "🚨 **任务已逾期！**\n`{task}` 应于 {deadline} 完成",
     "reminder_due_soon": "⚡ **任务即将截止！**\n`{task}` 还有 {time_left}",
     "reminder_due_today": "📅 **今天截止！**\n`{task}` 将于 {time} 截止",
+    "reminder_action_hint": "使用 `/done {task_id}` 或点击 ✅ 完成 停止提醒。",
 
     "dm_reminder_title": "⏰ 截止日期提醒（私信）",
     "dm_reminder_24h": "📅 **您的任务即将到期！**\n`{task}` 还有 **{time_left}**。",
@@ -187,6 +199,7 @@ STRINGS = {
 
     # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 搜索结果：`{query}`",
+    "search_results_count": "🔍 搜索：**{query}** — 找到 {count} 个结果",
     "search_empty": "🔍 未找到匹配 `{query}` 的任务。",
     "search_query_label": "搜索关键词",
     "search_query_placeholder": "输入任务名称或标签...",
@@ -199,6 +212,10 @@ STRINGS = {
     "stats_overdue": "已逾期",
     "stats_completion_rate": "完成率",
     "stats_categories": "使用的分类",
+    "stats_header_on_track": "🎯 进展顺利！",
+    "stats_header_overdue": "⚠️ {overdue} 个任务已逾期！",
+    "stats_header_all_done": "🏆 全部完成！",
+    "stats_header_empty": "📭 暂无任务",
     "stats_note_empty":    "还没有任务！使用 `/add` 开始吧 🚀",
     "stats_note_overdue":  "⚠️ {overdue} 个任务已逾期 — 使用 `/overdue` 查看",
     "stats_note_all_done": "🏆 所有任务已完成！出色的工作！",
@@ -208,6 +225,7 @@ STRINGS = {
     "help_title": "📖 To-Do List Bot Gen 2 — 帮助",
     "help_desc": "功能完整的待办事项机器人，支持多语言。",
     "help_commands": "所有命令",
+    "help_quickstart": "🚀 快速开始\n`1.` 使用 `/setup Asia/Shanghai` 设置时区\n`2.` 使用 `/add` 创建第一个任务\n`3.` 使用 `/list` 查看所有任务",
     "help_add": "添加新任务",
     "help_list": "查看所有任务",
     "help_done": "将任务标记为完成",
@@ -227,4 +245,35 @@ STRINGS = {
     "err_no_setup": "⚠️ 请先使用 `/setup` 配置机器人。",
     "err_input_invalid": "❌ 输入无效：{detail}",
     "err_suspicious": "🚫 检测到可疑行为，命令已被阻止。",
+
+    # ─── Snooze Confirm ─────────────────────────────────────────────────────────
+    "snooze_confirm_title": "⏰ 确认推迟",
+    "snooze_confirm_desc": "您确定要将此任务推迟 1 天吗？\n> **{task_name}**\n📅 新截止时间: `{new_deadline}`",
+    "btn_confirm_snooze": "⏰ 确认推迟 (+1天)",
+
+    # ─── Help Categories (Interactive Select) ───────────────────────────────────
+    "help_cat_overview": "🚀 概览与快速入门",
+    "help_cat_tasks": "📝 任务命令",
+    "help_cat_settings": "⚙️ 设置与分类",
+    "help_cat_tips": "💡 技巧与快捷方式",
+    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+
+    # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
+    "digest_title": "☀️ 每日任务简报 — {date}",
+    "digest_no_tasks": "今天没有到期任务！",
+    "digest_today_tasks": "今天的任务",
+    "digest_upcoming_title": "🔮 即将到来的任务 (未来3天)",
+    "digest_motivational_clean": "✨ 太棒了！今天没有待办任务，祝你有美好的一天！",
+    "digest_motivational_busy": "💪 今天有 {count} 个任务需要完成。加油！",
+    "digest_motivational_overdue": "⚠️ 请注意！您有 {overdue} 个逾期任务，请尽快处理！",
+    "overdue_none": "没有逾期任务！一切进展顺利 🎉",
+    "overdue_note": "💪 加油！逐步清理逾期任务吧。",
+    "task_done_with_name": "✅ 任务 **#{task_id}** ({task_name}) 已标记为完成！",
+
+    # ─── Settings & Meta ────────────────────────────────────────────────────────
+    "setup_current_tz": "当前时区: **{tz}**",
+    "lang_current_active": "当前使用的语言: {flag} **{name}**",
+    "cat_task_count": "{count} 个任务",
+    "task_detail_created": "创建于",
+    "task_detail_updated": "更新于",
 }

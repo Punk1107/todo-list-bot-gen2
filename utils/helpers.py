@@ -107,15 +107,42 @@ def urgency_badge(deadline_val: Any, status: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def progress_bar(value: int, total: int, width: int = 12) -> str:
-    """Render a Unicode block progress bar with percentage.
-    E.g.  progress_bar(3, 5) → ████████░░░░ **60%**
-    """
-    if total == 0:
-        return f"`{'░' * width}` **—**"
-    pct = value / total
-    filled = round(pct * width)
-    bar = "█" * filled + "░" * (width - filled)
+    """Build a modern progress bar string with percentage and counts."""
+    if total <= 0:
+        return f"`{'▱' * width}` **0%** (0/0)"
+    pct = min(max(value / total, 0.0), 1.0)
+    filled = int(round(pct * width))
+    bar = "▰" * filled + "▱" * (width - filled)
     return f"`{bar}` **{pct * 100:.0f}%** ({value}/{total})"
+
+
+def urgency_bar(deadline_val: Any) -> str:
+    """Return a short horizontal bar showing time urgency as colored square indicators.
+    Returns an empty string if deadline cannot be parsed.
+    """
+    try:
+        if isinstance(deadline_val, datetime):
+            dt = deadline_val
+        elif isinstance(deadline_val, str):
+            dt = datetime.fromisoformat(deadline_val)
+        else:
+            return ""
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        secs = (dt - datetime.now(pytz.utc)).total_seconds()
+        if secs < 0:
+            return "🟥🟥🟥🟥🟥"   # overdue
+        if secs < 3_600:            # < 1h
+            return "🟥🟥🟥🟥⬜"
+        if secs < 10_800:           # < 3h
+            return "🟧🟧🟧⬜⬜"
+        if secs < 86_400:           # < 24h
+            return "🟨🟨🟨⬜⬜"
+        if secs < 172_800:          # < 48h
+            return "🟦🟦🟦🟦⬜"
+        return "🟩🟩🟩🟩🟩"         # plenty of time
+    except Exception:
+        return ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -432,14 +459,16 @@ def build_task_embed(row, lang: str, tz_name: str,
     badge    = urgency_badge(deadline, status)
     tl       = time_left_str(deadline)
     dl_fmt   = format_deadline(deadline, tz_name)
+    ubar     = urgency_bar(deadline) if status not in ("Completed", "Cancelled") else ""
 
-    # ── Title ────────────────────────────────────────────────────────────────
+    # ── Title ──────────────────────────────────────────────────────────────────────
     pin_prefix   = "📌 " if is_pinned else ""
     badge_suffix = f"  {badge}" if badge else ""
     task_name    = row["task"]
     title_text   = f"{pin_prefix}#{task_id} — {task_name[:80]}{badge_suffix}"
 
     embed = discord.Embed(title=title_text, color=color)
+    embed.timestamp = datetime.now(pytz.utc)  # live timestamp shown in footer
 
     # ── Row 1: Status | Priority ─────────────────────────────────────────────
     embed.add_field(
@@ -455,19 +484,24 @@ def build_task_embed(row, lang: str, tz_name: str,
     # Blank to force 2-column layout on row 1
     embed.add_field(name="\u200B", value="\u200B", inline=True)
 
-    # ── Row 2: Deadline ──────────────────────────────────────────────────────
+    # ── Row 2: Deadline with urgency bar ───────────────────────────────────────────
+    dl_value = f"📅 `{dl_fmt}`\n⏱️ {tl}"
+    if ubar:
+        dl_value += f"\n{ubar}"
     embed.add_field(
         name=t("task_detail_deadline", lang),
-        value=f"📅 `{dl_fmt}`\n⏱️ {tl}",
+        value=dl_value,
         inline=False,
     )
 
-    # ── Description ─────────────────────────────────────────────────────────
+    # ── Description ──────────────────────────────────────────────────────────────────
     if row["description"]:
         desc_display = row["description"][:500]
+        # Use blockquote for better readability instead of codeblock
+        desc_lines = "\n".join(f"> {line}" for line in desc_display.splitlines()) or f"> {desc_display}"
         embed.add_field(
             name=t("task_detail_desc", lang),
-            value=f"```{desc_display}```",
+            value=desc_lines,
             inline=False,
         )
 
@@ -488,14 +522,14 @@ def build_task_embed(row, lang: str, tz_name: str,
             inline=True,
         )
 
-    # ── Subtask progress (pre-fetched) ───────────────────────────────────────
+    # ── Subtask progress (pre-fetched) ──────────────────────────────────────────────
     if subtasks:
         total_sub = len(subtasks)
         done_sub  = sum(1 for s in subtasks if s["status"] == "Completed")
         bar = progress_bar(done_sub, total_sub)
         embed.add_field(
             name=t("task_detail_subtasks", lang),
-            value=bar,
+            value=f"✅ {done_sub}/{total_sub}  {bar}",
             inline=False,
         )
 
@@ -507,32 +541,73 @@ def build_task_embed(row, lang: str, tz_name: str,
             inline=True,
         )
 
-    created_raw = row.get("created_at") if hasattr(row, "get") else row["created_at"]
-    if isinstance(created_raw, datetime):
-        if created_raw.tzinfo is None:
-            created_raw = pytz.utc.localize(created_raw)
-        try:
-            user_tz = pytz.timezone(tz_name)
-            created = created_raw.astimezone(user_tz).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            created = created_raw.strftime("%d/%m/%Y %H:%M")
-    elif isinstance(created_raw, str):
-        created = created_raw[:16]
-    else:
-        created = ""
+    def _fmt_ts(val) -> str:
+        if not val:
+            return ""
+        if isinstance(val, datetime):
+            dt = val if val.tzinfo else pytz.utc.localize(val)
+            try:
+                user_tz = pytz.timezone(tz_name)
+                return dt.astimezone(user_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                return dt.strftime("%d/%m/%Y %H:%M")
+        elif isinstance(val, str):
+            try:
+                dt = datetime.fromisoformat(val)
+                if dt.tzinfo is None:
+                    dt = pytz.utc.localize(dt)
+                user_tz = pytz.timezone(tz_name)
+                return dt.astimezone(user_tz).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                return val[:16]
+        return ""
 
-    embed.set_footer(text=f"🆔 #{task_id}  •  {t('footer_text', lang)}  •  🕐 {created}")
+    created_raw = row.get("created_at") if hasattr(row, "get") else (row["created_at"] if "created_at" in row else None)
+    updated_raw = row.get("updated_at") if hasattr(row, "get") else (row["updated_at"] if "updated_at" in row else None)
+
+    created = _fmt_ts(created_raw)
+    updated = _fmt_ts(updated_raw)
+
+    footer_parts = [f"🆔 #{task_id}"]
+    if created:
+        footer_parts.append(f"🕐 {t('task_detail_created', lang)}: {created} ({tz_name})")
+    if updated and updated != created:
+        footer_parts.append(f"✏️ {t('task_detail_updated', lang)}: {updated}")
+    footer_parts.append(t("footer_text", lang))
+
+    embed.set_footer(text="  •  ".join(footer_parts))
     return embed
 
 
 def build_task_list_embed(
     tasks, page: int, total_pages: int,
     lang: str, tz_name: str, filter_label: str,
+    total_count: int = 0, overdue_count: int = 0,
 ) -> discord.Embed:
-    """Build a premium paginated task list embed with urgency indicators."""
+    """Build a premium paginated task list embed with urgency indicators.
+
+    Dynamic embed colour: reflects the most urgent pending task in the list.
+    Adds a summary line showing total tasks and overdue count.
+    """
+    # Compute dynamic colour from worst urgency in current page
+    now = datetime.now(pytz.utc)
+    worst_color = 0x5865F2  # default blurple
+    if tasks:
+        for row in tasks:
+            if row["status"] not in ("Pending", "Overdue"):
+                continue
+            c = urgency_color(row["deadline"], row["status"])
+            # Priority: red > orange > yellow > blurple > green
+            color_priority = {_C_OVERDUE: 5, _C_CRITICAL: 4, _C_WARNING: 3,
+                              _C_UPCOMING: 2, _C_FINE: 1}.get(c, 0)
+            worst_priority = {_C_OVERDUE: 5, _C_CRITICAL: 4, _C_WARNING: 3,
+                              _C_UPCOMING: 2, _C_FINE: 1}.get(worst_color, 0)
+            if color_priority > worst_priority:
+                worst_color = c
+
     embed = discord.Embed(
         title=f"📋 {t('tasks_title', lang)}  ›  {filter_label}",
-        color=0x5865F2,
+        color=worst_color,
     )
 
     if not tasks:
@@ -540,8 +615,12 @@ def build_task_list_embed(
             f"\n> {t('tasks_empty', lang)}\n"
         )
     else:
-        now = datetime.now(pytz.utc)
         lines: list[str] = []
+
+        # Summary line at top
+        if total_count > 0:
+            summary = t("tasks_summary", lang, total=total_count, overdue=overdue_count)
+            lines.append(f"――― {summary} ―――")
 
         for row in tasks:
             tid  = row["task_id"]
@@ -580,15 +659,16 @@ def build_task_list_embed(
                 f"   ╰ 📅 `{dl_str}`  ·  ⏱️ `{tl}`"
             )
 
-        embed.description = "\n".join(lines)
+        embed.description = "\n\n".join(lines) if len(tasks) <= 8 else "\n".join(lines)
 
     page_str = f"📄 {page} / {total_pages}"
     embed.set_footer(text=f"{page_str}  ·  {t('footer_text', lang)}")
     return embed
 
 
-def build_stats_embed(stats: dict[str, int], lang: str, username: str) -> discord.Embed:
-    """Build a premium stats embed with progress bar and breakdown."""
+def build_stats_embed(stats: dict[str, int], lang: str, username: str,
+                      avatar_url: Optional[str] = None) -> discord.Embed:
+    """Build a premium stats embed with progress bar, dynamic header, and breakdown."""
     total     = stats.get("total", 0)
     done      = stats.get("completed", 0)
     pending   = stats.get("pending", 0)
@@ -605,10 +685,25 @@ def build_stats_embed(stats: dict[str, int], lang: str, username: str) -> discor
     else:
         color = _C_UPCOMING
 
+    # Dynamic header message based on current state
+    if total == 0:
+        header = t("stats_header_empty", lang)
+    elif overdue > 0:
+        header = t("stats_header_overdue", lang, overdue=overdue)
+    elif done == total and total > 0:
+        header = t("stats_header_all_done", lang)
+    else:
+        header = t("stats_header_on_track", lang)
+
     embed = discord.Embed(
         title=f"📊 {t('stats_title', lang)}  ·  {username}",
+        description=f"> **{header}**",
         color=color,
     )
+
+    # Optional: set user avatar as thumbnail
+    if avatar_url:
+        embed.set_thumbnail(url=avatar_url)
 
     # Completion progress bar
     bar = progress_bar(done, total)
@@ -618,15 +713,17 @@ def build_stats_embed(stats: dict[str, int], lang: str, username: str) -> discor
         inline=False,
     )
 
-    # 3-column breakdown
-    embed.add_field(name=f"📝 {t('stats_total', lang)}",     value=f"**{total}**",     inline=True)
-    embed.add_field(name=f"✅ {t('stats_completed', lang)}", value=f"**{done}**",      inline=True)
+    # 3-column breakdown grouped logically:
+    # Row 1: Active / Immediate attention
     embed.add_field(name=f"⏳ {t('stats_pending', lang)}",   value=f"**{pending}**",   inline=True)
     embed.add_field(name=f"🚨 {t('stats_overdue', lang)}",   value=f"**{overdue}**",   inline=True)
     embed.add_field(name="📌 Pinned",                        value=f"**{pinned}**",    inline=True)
+    # Row 2: Finished / Lifetime totals
+    embed.add_field(name=f"✅ {t('stats_completed', lang)}", value=f"**{done}**",      inline=True)
     embed.add_field(name="❌ Cancelled",                      value=f"**{cancelled}**", inline=True)
+    embed.add_field(name=f"📝 {t('stats_total', lang)}",     value=f"**{total}**",     inline=True)
 
-    # Motivational note — use i18n keys so future languages are automatically covered
+    # Motivational note
     if total == 0:
         note = t("stats_note_empty", lang)
     elif overdue > 0:
