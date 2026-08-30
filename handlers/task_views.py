@@ -1204,7 +1204,7 @@ class TaskListView(ui.View):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class LanguageSelect(ui.Select):
-    """Dropdown that lists all 6 supported languages."""
+    """Dropdown that lists all 9 supported languages."""
 
     def __init__(self, current_lang: str) -> None:
         from locales.i18n import SUPPORTED_LANGS, get_flag, get_lang_name
@@ -1216,6 +1216,9 @@ class LanguageSelect(ui.Select):
             "ja": "日本語",
             "ko": "한국어",
             "es": "Español",
+            "ru": "Русский",
+            "fr": "Français",
+            "de": "Deutsch",
         }
         for lang_code in SUPPORTED_LANGS:
             flag  = get_flag(lang_code)
@@ -1252,7 +1255,7 @@ class LanguageSelect(ui.Select):
 
 
 class LanguageView(ui.View):
-    """Language selection view — contains a 6-language Select Menu."""
+    """Language selection view — contains a 9-language Select Menu."""
 
     def __init__(self, current_lang: str) -> None:
         super().__init__(timeout=120)

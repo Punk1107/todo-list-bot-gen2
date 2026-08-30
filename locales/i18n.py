@@ -1,6 +1,6 @@
 """
 i18n — Internationalisation Manager
-Handles TH / EN / ZH / JA / KO / ES language switching per-user.
+Handles TH / EN / ZH / JA / KO / ES / RU / FR / DE language switching per-user.
 Language is persisted in the database and cached in UserCache.
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_LANGS = ("th", "en", "zh", "ja", "ko", "es")
+SUPPORTED_LANGS = ("th", "en", "zh", "ja", "ko", "es", "ru", "fr", "de")
 DEFAULT_LANG = "en"   # fallback when Discord locale does not match any supported lang
 
 # ── Discord locale → our lang code ───────────────────────────────────────────
@@ -24,6 +24,9 @@ DISCORD_LOCALE_MAP: dict[str, str] = {
     "ko":    "ko",
     "es-ES": "es",
     "es-419": "es",  # Latin America Spanish
+    "ru":    "ru",
+    "fr":    "fr",
+    "de":    "de",
 }
 
 
@@ -52,6 +55,12 @@ def _load(lang: str) -> dict:
             from locales.ko import STRINGS
         elif lang == "es":
             from locales.es import STRINGS
+        elif lang == "ru":
+            from locales.ru import STRINGS
+        elif lang == "fr":
+            from locales.fr import STRINGS
+        elif lang == "de":
+            from locales.de import STRINGS
         else:
             from locales.en import STRINGS   # safe fallback
         _CACHE[lang] = STRINGS
