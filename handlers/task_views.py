@@ -987,11 +987,19 @@ class TaskListView(ui.View):
         self.tz_name       = tz_name
         self.filter_status = filter_status
         self.page          = 1
+        self._message: Optional[discord.Message] = None  # set by caller after send
         self._filter_select = TaskFilterSelect(lang, filter_status)
         self.add_item(self._filter_select)
 
     async def on_timeout(self) -> None:
         _disable_all(self)
+        # Edit the message so the user sees disabled controls instead of
+        # interactive ones that will raise an error when clicked.
+        try:
+            if hasattr(self, "_message") and self._message:
+                await self._message.edit(view=self)
+        except Exception:
+            pass
 
     async def _fetch_page(self) -> tuple[list, int, int]:
         now = datetime.now(pytz.utc).isoformat()
@@ -1001,8 +1009,15 @@ class TaskListView(ui.View):
             base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline<$2"
             params: list = [self.uid, now]
         elif fs == "today":
-            today_start = datetime.now(pytz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
+            try:
+                local_tz  = pytz.timezone(self.tz_name)
+                local_now = datetime.now(pytz.utc).astimezone(local_tz)
+                today_start = local_now.replace(hour=0,  minute=0,  second=0,  microsecond=0).astimezone(pytz.utc).isoformat()
+                today_end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
+            except Exception:
+                # Fallback to UTC if timezone is invalid
+                today_start = datetime.now(pytz.utc).replace(hour=0,  minute=0,  second=0,  microsecond=0).isoformat()
+                today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
             base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline BETWEEN $2 AND $3"
             params = [self.uid, today_start, today_end]
         elif fs == "pinned":
@@ -1149,10 +1164,16 @@ class LanguageView(ui.View):
     def __init__(self, current_lang: str) -> None:
         super().__init__(timeout=120)
         self.current_lang = current_lang
+        self._message: Optional[discord.Message] = None  # set by caller after send
         self.add_item(LanguageSelect(current_lang))
 
     async def on_timeout(self) -> None:
         _disable_all(self)
+        try:
+            if self._message:
+                await self._message.edit(view=self)
+        except Exception:
+            pass
 
 
 

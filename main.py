@@ -71,6 +71,14 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
+# ── Cog list ──────────────────────────────────────────────────────────────────
+# Define BEFORE TodoBot so setup_hook() can reference it without NameError.
+COGS = [
+    "handlers.tasks_cog",
+    "handlers.settings_cog",
+    "handlers.reminders_cog",
+]
+
 
 class TodoBot(commands.Bot):
     """Bot subclass that syncs slash commands in setup_hook.
@@ -148,12 +156,7 @@ bot = TodoBot(
     description="To-Do List Bot Gen 2",
 )
 
-# ── Cog list ──────────────────────────────────────────────────────────────────
-COGS = [
-    "handlers.tasks_cog",
-    "handlers.settings_cog",
-    "handlers.reminders_cog",
-]
+# ── Cog list (defined above TodoBot — kept here as a comment reference) ───────
 
 # ── Events ────────────────────────────────────────────────────────────────────
 
@@ -250,13 +253,17 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    # Graceful shutdown on SIGINT / SIGTERM
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     def _shutdown(_signum, _frame):
-        log.info("Shutdown signal received — closing bot")
-        loop.stop()
+        """Schedule bot.close() on the running loop so BulkWriter is flushed
+        gracefully before the pool is closed.  Simply stopping the loop here
+        would skip TodoBot.close() and lose queued BulkWriter writes.
+        """
+        log.info("Shutdown signal received — scheduling graceful bot close")
+        # bot.close() triggers TodoBot.close() → BulkWriter.stop() → pool.close()
+        asyncio.ensure_future(bot.close(), loop=loop)
 
     signal.signal(signal.SIGINT,  _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
@@ -271,5 +278,6 @@ if __name__ == "__main__":
     finally:
         # db.close() was already called inside TodoBot.close() — do NOT call it again here
         # or asyncpg will raise an error on a double-close of the pool.
-        loop.close()
+        if not loop.is_closed():
+            loop.close()
         log.info("Event loop closed — goodbye")

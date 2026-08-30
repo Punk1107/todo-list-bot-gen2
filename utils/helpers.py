@@ -13,7 +13,7 @@ import csv
 import io
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import discord
 import pytz
@@ -47,6 +47,9 @@ def urgency_color(deadline_val: Any, status: str) -> int:
         return _C_COMPLETED
     if status == "Cancelled":
         return _C_CANCELLED
+    # "Overdue" is a derived status set in build_task_embed — treat same as past deadline
+    if status == "Overdue":
+        return _C_OVERDUE
     try:
         if isinstance(deadline_val, datetime):
             dt = deadline_val
@@ -74,6 +77,8 @@ def urgency_badge(deadline_val: Any, status: str) -> str:
     """Return a short urgency badge string for embed titles."""
     if status in ("Completed", "Cancelled"):
         return ""
+    if status == "Overdue":
+        return "🔴 OVERDUE"
     try:
         if isinstance(deadline_val, datetime):
             dt = deadline_val

@@ -158,6 +158,8 @@ class SettingsCog(commands.Cog, name="Settings"):
         )
         view = LanguageView(current_lang)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        # Store message so on_timeout can edit it with disabled select
+        view._message = await interaction.original_response()
 
 
     # ── /help ─────────────────────────────────────────────────────────────────
