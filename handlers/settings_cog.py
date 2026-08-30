@@ -162,17 +162,7 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
         )
         embed.add_field(
             name="📚 Browse Categories",
-            value=(
-                "Use the dropdown menu below to view specific command guides:\n"
-                "• **📝 Task Commands**: Adding, editing, completing, and organizing\n"
-                "• **⚙️ Settings & Categories**: Timezone, language, categories\n"
-                "• **💡 Tips & Shortcuts**: Best practices and smart features"
-                if lang != "th" else
-                "ใช้เมนูด้านล่างเพื่อเลือกดูคำสั่งตามหมวดหมู่:\n"
-                "• **📝 คำสั่งจัดการ Task**: การสร้าง, แก้ไข, ทำเสร็จ, และจัดระเบียบ\n"
-                "• **⚙️ ตั้งค่า & หมวดหมู่**: Timezone, ภาษา, และหมวดหมู่\n"
-                "• **💡 เคล็ดลับ & ทางลัด**: ฟีเจอร์เด็ดและการใช้งานให้คุ้มค่า"
-            ),
+            value=t("help_overview_browse", lang),
             inline=False,
         )
 
@@ -221,7 +211,20 @@ class HelpView(ui.View):
     def __init__(self, lang: str) -> None:
         super().__init__(timeout=300)
         self.lang = lang
+        self._message: Optional[discord.Message] = None  # set by caller after send
         self.add_item(HelpCategorySelect(lang))
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            try:
+                child.disabled = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        try:
+            if self._message:
+                await self._message.edit(view=self)
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -286,7 +289,7 @@ class SettingsCog(commands.Cog, name="Settings"):
             inline=True,
         )
         embed.add_field(
-            name="🌐 Language / ภาษา",
+            name=t("setup_lang_field", lang),
             value="Use `/lang` to switch language | ใช้ `/lang` เพื่อเปลี่ยนภาษา",
             inline=True,
         )
@@ -331,6 +334,8 @@ class SettingsCog(commands.Cog, name="Settings"):
         view = HelpView(lang)
         embed = build_help_embed("overview", lang)
         await interaction.response.send_message(embed=embed, view=view)
+        # Store message so on_timeout can edit it with disabled select
+        view._message = await interaction.original_response()
 
     # ── /category group ───────────────────────────────────────────────────────
 
@@ -424,7 +429,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         )
         await db.alog_action(uid, "category_deleted", str(category_id), row["name"])
         await interaction.response.send_message(
-            f"🗑️ Category **{row['name']}** removed.", ephemeral=True
+            t("cat_removed", lang, name=row["name"]), ephemeral=True
         )
 
     # ── /admin group (owner-only) ─────────────────────────────────────────────

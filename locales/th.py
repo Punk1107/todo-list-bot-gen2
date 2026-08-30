@@ -283,4 +283,17 @@ STRINGS = {
     "cat_task_count": "{count} งาน",
     "task_detail_created": "สร้างเมื่อ",
     "task_detail_updated": "แก้ไขล่าสุด",
+
+    # ─── UX/UI Additions ─────────────────────────────────────────────────────────
+    "cat_no_category": "— ไม่มีหมวดหมู่",
+    "cat_removed": "🗑️ ลบหมวดหมู่ **{name}** เรียบร้อยแล้ว",
+    "setup_lang_field": "🌐 ภาษา",
+    "stats_cancelled": "ยกเลิกแล้ว",
+    "priority_timeout": "⌛ หมดเวลาเลือก กรุณารันคำสั่งใหม่อีกครั้ง",
+    "reminder_field_deadline": "📅 กำหนดส่ง",
+    "reminder_field_priority": "⚡ ความสำคัญ",
+    "reminder_field_task_id": "🆔 Task ID",
+    "dm_reminder_field_time_left": "⏱️ เวลาที่เหลือ",
+    "digest_stats_line": "📊 **{pending}** งานค้าง  ·  🚨 **{overdue}** เกินกำหนด",
+    "help_overview_browse": "ใช้เมนูด้านล่างเพื่อเลือกดูคำสั่งตามหมวดหมู่:\n• **📝 คำสั่งจัดการ Task**: การสร้าง, แก้ไข, ทำเสร็จ, และจัดระเบียบ\n• **⚙️ ตั้งค่า & หมวดหมู่**: Timezone, ภาษา, และหมวดหมู่\n• **💡 เคล็ดลับ & ทางลัด**: ฟีเจอร์เด็ดและการใช้งานให้คุ้มค่า",
 }

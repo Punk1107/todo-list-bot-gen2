@@ -481,8 +481,6 @@ def build_task_embed(row, lang: str, tz_name: str,
         value=_prio_label(priority, lang),
         inline=True,
     )
-    # Blank to force 2-column layout on row 1
-    embed.add_field(name="\u200B", value="\u200B", inline=True)
 
     # ── Row 2: Deadline with urgency bar ───────────────────────────────────────────
     dl_value = f"📅 `{dl_fmt}`\n⏱️ {tl}"
@@ -659,7 +657,7 @@ def build_task_list_embed(
                 f"   ╰ 📅 `{dl_str}`  ·  ⏱️ `{tl}`"
             )
 
-        embed.description = "\n\n".join(lines) if len(tasks) <= 8 else "\n".join(lines)
+        embed.description = "\n\n".join(lines)
 
     page_str = f"📄 {page} / {total_pages}"
     embed.set_footer(text=f"{page_str}  ·  {t('footer_text', lang)}")
@@ -720,7 +718,7 @@ def build_stats_embed(stats: dict[str, int], lang: str, username: str,
     embed.add_field(name="📌 Pinned",                        value=f"**{pinned}**",    inline=True)
     # Row 2: Finished / Lifetime totals
     embed.add_field(name=f"✅ {t('stats_completed', lang)}", value=f"**{done}**",      inline=True)
-    embed.add_field(name="❌ Cancelled",                      value=f"**{cancelled}**", inline=True)
+    embed.add_field(name=f"❌ {t('stats_cancelled', lang)}",  value=f"**{cancelled}**", inline=True)
     embed.add_field(name=f"📝 {t('stats_total', lang)}",     value=f"**{total}**",     inline=True)
 
     # Motivational note
