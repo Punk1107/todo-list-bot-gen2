@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 8   # bump when adding migrations below
+SCHEMA_VERSION = 9   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -517,6 +517,14 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE users ADD CONSTRAINT users_lang_check
         CHECK(lang IN ('th','en','zh','ja','ko','es'));
     INSERT INTO schema_version VALUES (8) ON CONFLICT (version) DO UPDATE SET version=8;
+    """),
+
+    # ── v9: expand lang CHECK constraint to support 9 languages ──────────────
+    (9, """
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_lang_check;
+    ALTER TABLE users ADD CONSTRAINT users_lang_check
+        CHECK(lang IN ('th','en','zh','ja','ko','es','ru','fr','de'));
+    INSERT INTO schema_version VALUES (9) ON CONFLICT (version) DO UPDATE SET version=9;
     """),
 ]
 
