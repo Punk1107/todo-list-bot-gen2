@@ -142,12 +142,14 @@ class SettingsCog(commands.Cog, name="Settings"):
 
     # ── /lang ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="lang", description="🌐 เปลี่ยนภาษา / Change language")
+    @app_commands.command(name="lang", description="🌐 เปลี่ยนภาษา / Change language / 言語変更 / 언어변경")
     @rate_limit_check("command")
     async def lang(self, interaction: discord.Interaction) -> None:
         uid          = str(interaction.user.id)
+        discord_locale = str(interaction.locale)
+        # For brand-new users: seed their language from Discord locale
+        await ensure_user(uid, discord_locale=discord_locale)
         current_lang = await get_user_lang(uid)
-        await ensure_user(uid, current_lang)
 
         embed = discord.Embed(
             title=t("lang_select_title", current_lang),
@@ -156,6 +158,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         )
         view = LanguageView(current_lang)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
     # ── /help ─────────────────────────────────────────────────────────────────
 

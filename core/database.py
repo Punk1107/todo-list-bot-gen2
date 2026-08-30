@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 7   # bump when adding migrations below
+SCHEMA_VERSION = 8   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -492,6 +492,14 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_tasks_dm_reminded
         ON tasks(owner_id, status, deadline, dm_reminded);
     INSERT INTO schema_version VALUES (7) ON CONFLICT (version) DO UPDATE SET version=7;
+    """),
+
+    # ── v8: expand lang CHECK constraint to support 6 languages ──────────────
+    (8, """
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_lang_check;
+    ALTER TABLE users ADD CONSTRAINT users_lang_check
+        CHECK(lang IN ('th','en','zh','ja','ko','es'));
+    INSERT INTO schema_version VALUES (8) ON CONFLICT (version) DO UPDATE SET version=8;
     """),
 ]
 

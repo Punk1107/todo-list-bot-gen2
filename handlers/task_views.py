@@ -1095,35 +1095,65 @@ class TaskListView(ui.View):
 # Language Select
 # ─────────────────────────────────────────────────────────────────────────────
 
+class LanguageSelect(ui.Select):
+    """Dropdown that lists all 6 supported languages."""
+
+    def __init__(self, current_lang: str) -> None:
+        from locales.i18n import SUPPORTED_LANGS, get_flag, get_lang_name
+        options = []
+        _LANG_LABELS = {
+            "th": "ไทย",
+            "en": "English",
+            "zh": "简体中文",
+            "ja": "日本語",
+            "ko": "한국어",
+            "es": "Español",
+        }
+        for lang_code in SUPPORTED_LANGS:
+            flag  = get_flag(lang_code)
+            label = _LANG_LABELS.get(lang_code, lang_code.upper())
+            options.append(
+                discord.SelectOption(
+                    label=f"{flag}  {label}",
+                    value=lang_code,
+                    default=(lang_code == current_lang),
+                )
+            )
+        super().__init__(
+            placeholder="🌐 Select your language...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="language_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        new_lang = self.values[0]
+        uid = str(interaction.user.id)
+        await ensure_user(uid)
+        await db.aexecute("UPDATE users SET lang=$1 WHERE user_id=$2", (new_lang, uid))
+        db.user_cache.invalidate(uid)
+        await db.alog_action(uid, "lang_changed", detail=new_lang)
+        self.view.stop()
+        # Reply immediately in the newly chosen language
+        await interaction.response.edit_message(
+            content=t("lang_changed", new_lang),
+            embed=None,
+            view=None,
+        )
+
+
 class LanguageView(ui.View):
-    """Language selection buttons (TH / EN)."""
+    """Language selection view — contains a 6-language Select Menu."""
 
     def __init__(self, current_lang: str) -> None:
         super().__init__(timeout=120)
         self.current_lang = current_lang
+        self.add_item(LanguageSelect(current_lang))
 
     async def on_timeout(self) -> None:
         _disable_all(self)
 
-    @ui.button(label="🇹🇭 ไทย", style=discord.ButtonStyle.primary, custom_id="lang_th")
-    async def lang_th(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        uid = str(interaction.user.id)
-        await ensure_user(uid)
-        await db.aexecute("UPDATE users SET lang='th' WHERE user_id=$1", (uid,))
-        db.user_cache.invalidate(uid)
-        await db.alog_action(uid, "lang_changed", detail="th")
-        self.stop()
-        await interaction.response.send_message(t("lang_changed", "th"), ephemeral=True)
-
-    @ui.button(label="🇬🇧 English", style=discord.ButtonStyle.primary, custom_id="lang_en")
-    async def lang_en(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        uid = str(interaction.user.id)
-        await ensure_user(uid)
-        await db.aexecute("UPDATE users SET lang='en' WHERE user_id=$1", (uid,))
-        db.user_cache.invalidate(uid)
-        await db.alog_action(uid, "lang_changed", detail="en")
-        self.stop()
-        await interaction.response.send_message(t("lang_changed", "en"), ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -172,14 +172,26 @@ async def get_user_role(user_id) -> str:
     return row["role"] if row else "user"
 
 
-async def ensure_user(user_id, lang: Optional[str] = None) -> None:
-    """Async: insert user row if not present (PostgreSQL ON CONFLICT DO NOTHING)."""
+async def ensure_user(user_id, lang: Optional[str] = None,
+                      discord_locale: Optional[str] = None) -> None:
+    """Async: insert user row if not present (PostgreSQL ON CONFLICT DO NOTHING).
+
+    Initial language priority for new users:
+      1. explicit ``lang`` argument (e.g. from /setup)
+      2. ``discord_locale`` mapped via DISCORD_LOCALE_MAP
+      3. config.bot.default_lang
+    Existing users are never updated by this function — use save_user_settings().
+    """
     from core.database import db
+    from locales.i18n import locale_to_lang
     uid = str(user_id)
+    if lang is None and discord_locale is not None:
+        lang = locale_to_lang(discord_locale)
     await db.aexecute(
         "INSERT INTO users (user_id, timezone, lang) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
         (uid, config.bot.default_timezone, lang or config.bot.default_lang),
     )
+
 
 
 async def save_user_settings(
