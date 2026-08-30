@@ -276,4 +276,9 @@ STRINGS = {
     "cat_task_count": "{count}件のタスク",
     "task_detail_created": "作成日時",
     "task_detail_updated": "更新日時",
+
+    # ─── UX/UI Additions (stubs — fall back to EN) ───────────────────────────────
+    # "cat_no_category", "cat_removed", "setup_lang_field", "stats_cancelled",
+    # "priority_timeout", "reminder_field_*", "dm_reminder_field_*", "digest_stats_line"
+    # etc. are intentionally omitted; the i18n system falls back to EN automatically.
 }

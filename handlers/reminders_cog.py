@@ -136,17 +136,17 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     color=color,
                 )
                 embed.add_field(
-                    name="📅 Deadline",
+                    name=t("reminder_field_deadline", lang),
                     value=f"`{format_deadline(row['deadline'], tz_name)}`  ({time_left_str(row['deadline'])})",
                     inline=True,
                 )
                 embed.add_field(
-                    name="⚡ Priority",
+                    name=t("reminder_field_priority", lang),
                     value=prio_icon,
                     inline=True,
                 )
                 embed.add_field(
-                    name="🆔 Task ID",
+                    name=t("reminder_field_task_id", lang),
                     value=f"`#{tid}` — `/task {tid}`",
                     inline=True,
                 )
@@ -319,7 +319,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
             date_str = local_now.strftime('%d/%m/%Y')
             embed = discord.Embed(
                 title=t("digest_title", lang, date=date_str),
-                description=f"> {motivational}\n\n📊 **{pending_total}** pending  ·  🚨 **{overdue_count}** overdue",
+                description=f"> {motivational}\n\n{t('digest_stats_line', lang, pending=pending_total, overdue=overdue_count)}",
                 color=digest_color,
             )
 
@@ -462,17 +462,17 @@ class RemindersCog(commands.Cog, name="Reminders"):
                         color=color,
                     )
                     embed.add_field(
-                        name="📅 Deadline",
+                        name=t("reminder_field_deadline", lang),
                         value=f"`{dl_fmt}`",
                         inline=True,
                     )
                     embed.add_field(
-                        name="⏱️ เวลาที่เหลือ" if lang == "th" else "⏱️ Time Left",
+                        name=t("dm_reminder_field_time_left", lang),
                         value=f"`{tl}`",
                         inline=True,
                     )
                     embed.add_field(
-                        name="🆔 Task ID",
+                        name=t("reminder_field_task_id", lang),
                         value=f"`#{tid}`",
                         inline=True,
                     )

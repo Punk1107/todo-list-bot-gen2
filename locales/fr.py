@@ -283,4 +283,9 @@ STRINGS = {
     "cat_task_count": "{count} tâche(s)",
     "task_detail_created": "Créée le",
     "task_detail_updated": "Mise à jour",
+
+    # ─── UX/UI Additions (stubs — fall back to EN) ───────────────────────────────
+    # "cat_no_category", "cat_removed", "setup_lang_field", "stats_cancelled",
+    # "priority_timeout", "reminder_field_*", "dm_reminder_field_*", "digest_stats_line"
+    # etc. are intentionally omitted; the i18n system falls back to EN automatically.
 }

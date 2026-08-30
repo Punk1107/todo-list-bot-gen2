@@ -355,10 +355,10 @@ class EditTaskModal(ui.Modal):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class DeleteConfirmView(ui.View):
-    """30-second confirmation dialog before permanent deletion."""
+    """60-second confirmation dialog before permanent deletion."""
 
     def __init__(self, task_id: int, uid: str, lang: str) -> None:
-        super().__init__(timeout=30)
+        super().__init__(timeout=60)
         self.task_id  = task_id
         self.uid      = uid
         self.lang     = lang
@@ -435,7 +435,7 @@ class SnoozeConfirmView(ui.View):
     """Confirmation dialog before postponing a task deadline by 1 day."""
 
     def __init__(self, task_id: int, uid: str, lang: str, new_deadline_iso: str, tz_name: str) -> None:
-        super().__init__(timeout=45)
+        super().__init__(timeout=60)
         self.task_id = task_id
         self.uid = uid
         self.lang = lang
@@ -591,7 +591,10 @@ class PrioritySelectView(ui.View):
             child.disabled = True
         if hasattr(self, "message") and self.message:
             try:
-                await self.message.edit(view=self)
+                await self.message.edit(
+                    content=t("priority_timeout", self.lang),
+                    view=self,
+                )
             except Exception:
                 pass
 
@@ -669,7 +672,7 @@ class CategorySelect(ui.Select):
     def __init__(self, task_id: int, categories: list, current_cat_id: Optional[int], lang: str) -> None:
         options = [
             discord.SelectOption(
-                label="— " + ("ไม่มีหมวดหมู่" if lang == "th" else "No Category"),
+                label=t("cat_no_category", lang),
                 value="0",
                 default=(current_cat_id is None),
             )
@@ -770,7 +773,7 @@ class TaskActionView(ui.View):
         pin_cid = f"task_{self.task_id}_pin"
         for item in self.children:
             if getattr(item, "custom_id", None) == pin_cid:
-                item.label = "📌 Unpin" if self.is_pinned else "📌 Pin"  # type: ignore[attr-defined]
+                item.label = "📌 Unpin" if self.is_pinned else "📍 Pin"  # type: ignore[attr-defined]
 
     async def on_timeout(self) -> None:
         pass  # timeout=None — persistent views never expire; kept as no-op for safety
@@ -847,7 +850,7 @@ class TaskActionView(ui.View):
 
     # ── Pin / Unpin ───────────────────────────────────────────────────────────
 
-    @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary, row=0, custom_id="pin")
+    @ui.button(label="📍 Pin", style=discord.ButtonStyle.secondary, row=0, custom_id="pin")
     async def pin_toggle(self, interaction: discord.Interaction, button: ui.Button) -> None:
         # Defer immediately so Discord doesn't time out while we query the DB
         await interaction.response.defer(ephemeral=True)
@@ -1013,8 +1016,8 @@ class TaskFilterSelect(ui.Select):
                 emoji="📅", default=(current == "today"),
             ),
             discord.SelectOption(
-                label="📌 Pinned", value="pinned",
-                default=(current == "pinned"),
+                label=t("tasks_filter_pinned", lang), value="pinned",
+                emoji="📌", default=(current == "pinned"),
             ),
             discord.SelectOption(
                 label=t("tasks_filter_all", lang), value="all",
@@ -1023,7 +1026,7 @@ class TaskFilterSelect(ui.Select):
         ]
         super().__init__(
             placeholder=t("list_filter_placeholder", lang),
-            options=options, row=2,
+            options=options, row=1,
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
@@ -1058,7 +1061,9 @@ class TaskListView(ui.View):
         self._filter_select = TaskFilterSelect(lang, filter_status)
         self.add_item(self._filter_select)
         self.refresh.label = t("btn_refresh", lang)
+        # Initialize page indicator correctly before first render
         self.page_indicator.label = t("page_indicator", lang, page=1, total=1)
+        self._update_nav_buttons(1, 1)
 
     async def on_timeout(self) -> None:
         _disable_all(self)
@@ -1164,7 +1169,7 @@ class TaskListView(ui.View):
         self._update_nav_buttons(page, total_pages)
         await interaction.edit_original_response(embed=embed, view=self)
 
-    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=1)
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
     async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         await self.update_message(interaction)
@@ -1175,7 +1180,7 @@ class TaskListView(ui.View):
         self.page = 1
         await self.update_message(interaction)
 
-    @ui.button(emoji="◀", style=discord.ButtonStyle.secondary, custom_id="lv_prev", row=2)
+    @ui.button(emoji="◀", style=discord.ButtonStyle.primary, custom_id="lv_prev", row=2)
     async def prev_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         self.page -= 1
@@ -1185,7 +1190,7 @@ class TaskListView(ui.View):
     async def page_indicator(self, interaction: discord.Interaction, button: ui.Button) -> None:
         pass
 
-    @ui.button(emoji="▶", style=discord.ButtonStyle.secondary, custom_id="lv_next", row=2)
+    @ui.button(emoji="▶", style=discord.ButtonStyle.primary, custom_id="lv_next", row=2)
     async def next_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         self.page += 1

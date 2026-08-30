@@ -283,4 +283,17 @@ STRINGS = {
     "cat_task_count": "{count} task(s)",
     "task_detail_created": "Created",
     "task_detail_updated": "Updated",
+
+    # ─── UX/UI Additions ─────────────────────────────────────────────────────────
+    "cat_no_category": "— No Category",
+    "cat_removed": "🗑️ Category **{name}** removed.",
+    "setup_lang_field": "🌐 Language",
+    "stats_cancelled": "Cancelled",
+    "priority_timeout": "⌛ Selection timed out. Please run the command again.",
+    "reminder_field_deadline": "📅 Deadline",
+    "reminder_field_priority": "⚡ Priority",
+    "reminder_field_task_id": "🆔 Task ID",
+    "dm_reminder_field_time_left": "⏱️ Time Left",
+    "digest_stats_line": "📊 **{pending}** pending  ·  🚨 **{overdue}** overdue",
+    "help_overview_browse": "Use the dropdown menu below to view specific command guides:\n• **📝 Task Commands**: Adding, editing, completing, and organizing\n• **⚙️ Settings & Categories**: Timezone, language, categories\n• **💡 Tips & Shortcuts**: Best practices and smart features",
 }

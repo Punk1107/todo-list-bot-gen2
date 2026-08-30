@@ -276,4 +276,9 @@ STRINGS = {
     "cat_task_count": "{count} 个任务",
     "task_detail_created": "创建于",
     "task_detail_updated": "更新于",
+
+    # ─── UX/UI Additions (stubs — fall back to EN) ───────────────────────────────
+    # "cat_no_category", "cat_removed", "setup_lang_field", "stats_cancelled",
+    # "priority_timeout", "reminder_field_*", "dm_reminder_field_*", "digest_stats_line"
+    # etc. are intentionally omitted; the i18n system falls back to EN automatically.
 }
