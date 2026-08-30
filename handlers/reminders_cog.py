@@ -21,7 +21,7 @@ from core.database import db
 from core.config import config
 from locales.i18n import t
 from utils.helpers import (
-    format_deadline, time_left_str, calculate_next_deadline,
+    format_deadline, time_left_str, calculate_next_deadline, urgency_color,
 )
 
 log = logging.getLogger(__name__)
@@ -120,14 +120,13 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 if is_overdue:
                     msg   = t("reminder_overdue", lang,
                               task=row["task"], deadline=format_deadline(row["deadline"], tz_name))
-                    color = 0xED4245
                     icon  = "🚨"
                 else:
                     msg   = t("reminder_due_soon", lang,
                               task=row["task"], time_left=time_left_str(row["deadline"]))
-                    color = 0xE67E22
                     icon  = "⏰"
 
+                color = urgency_color(row["deadline"], "Overdue" if is_overdue else "Pending")
                 pin_note  = " 📌" if row["is_pinned"] else ""
                 prio_icon = _PRIO_ICONS[min(row["priority"], 7)]
 
@@ -146,6 +145,14 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     value=prio_icon,
                     inline=True,
                 )
+                embed.add_field(
+                    name="🆔 Task ID",
+                    value=f"`#{tid}` — `/task {tid}`",
+                    inline=True,
+                )
+                # Action hint — tell user how to stop reminders
+                hint = t("reminder_action_hint", lang, task_id=tid)
+                embed.add_field(name="\u200B", value=f"> 💡 {hint}", inline=False)
                 embed.set_footer(text=t("footer_text", lang))
 
                 await channel.send(f"<@{row['user_id']}>", embed=embed)
@@ -264,54 +271,93 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 local_now  = now.astimezone(local_tz)
                 day_start  = local_now.replace(hour=0, minute=0, second=0).astimezone(UTC).isoformat()
                 day_end    = local_now.replace(hour=23, minute=59, second=59).astimezone(UTC).isoformat()
+                upcoming_end = (local_now + timedelta(days=3)).replace(hour=23, minute=59, second=59).astimezone(UTC).isoformat()
             except Exception:
                 continue
 
             today_tasks = await db.afetchall(
-                """SELECT task_id, task, deadline, priority,
-                          (SELECT COUNT(*) FROM tasks t2
-                           WHERE t2.owner_id=tasks.owner_id
-                             AND t2.status='Pending'
-                             AND t2.deadline < $4) AS overdue_count
+                """SELECT task_id, task, deadline, priority
                    FROM tasks
                    WHERE owner_id=$1 AND status='Pending'
                      AND deadline BETWEEN $2 AND $3
                    ORDER BY priority DESC, deadline ASC LIMIT 10""",
-                (uid, day_start, day_end, now.isoformat()),
+                (uid, day_start, day_end),
             )
-            # Overdue count is embedded in each row via subquery (same for all rows)
-            overdue_count = today_tasks[0]["overdue_count"] if today_tasks else 0
-            # If no today_tasks, do a single lightweight count query
-            if not today_tasks:
-                overdue_row = await db.afetchone(
-                    "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
-                    (uid, now.isoformat()),
-                )
-                overdue_count = overdue_row["c"] if overdue_row else 0
 
-            embed = discord.Embed(
-                title=f"☀️ {'สรุป Task วันนี้' if lang == 'th' else 'Daily Task Digest'} — {local_now.strftime('%d/%m/%Y')}",
-                color=0x5865F2,
+            overdue_row = await db.afetchone(
+                "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+                (uid, now.isoformat()),
             )
+            overdue_count = overdue_row["c"] if overdue_row else 0
+
+            pending_row = await db.afetchone(
+                "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
+                (uid,),
+            )
+            pending_total = pending_row["c"] if pending_row else 0
+
+            upcoming_tasks = await db.afetchall(
+                """SELECT task_id, task, deadline, priority
+                   FROM tasks
+                   WHERE owner_id=$1 AND status='Pending'
+                     AND deadline > $2 AND deadline <= $3
+                   ORDER BY deadline ASC LIMIT 3""",
+                (uid, day_end, upcoming_end),
+            )
+
+            # Motivational message & color
+            if overdue_count > 0:
+                motivational = t("digest_motivational_overdue", lang, overdue=overdue_count)
+                digest_color = 0xED4245
+            elif not today_tasks and pending_total == 0:
+                motivational = t("digest_motivational_clean", lang)
+                digest_color = 0x57F287
+            else:
+                motivational = t("digest_motivational_busy", lang, count=len(today_tasks))
+                digest_color = 0x5865F2
+
+            date_str = local_now.strftime('%d/%m/%Y')
+            embed = discord.Embed(
+                title=t("digest_title", lang, date=date_str),
+                description=f"> {motivational}\n\n📊 **{pending_total}** pending  ·  🚨 **{overdue_count}** overdue",
+                color=digest_color,
+            )
+
             if today_tasks:
                 lines = [
-                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
+                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{format_deadline(r['deadline'], tz_name)}`  ·  ⏱️ `{time_left_str(r['deadline'])}`"
                     for r in today_tasks
                 ]
                 embed.add_field(
-                    name="📅 " + ("Task วันนี้" if lang == "th" else "Today's Tasks"),
+                    name=f"📅 {t('digest_today_tasks', lang)} ({len(today_tasks)})",
                     value="\n".join(lines),
                     inline=False,
                 )
             else:
-                embed.description = "> ✅ " + ("ไม่มี Task วันนี้!" if lang == "th" else "No tasks due today!")
+                embed.add_field(
+                    name=f"📅 {t('digest_today_tasks', lang)}",
+                    value=f"> ✅ {t('digest_no_tasks', lang)}",
+                    inline=False,
+                )
+
+            if upcoming_tasks:
+                up_lines = [
+                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
+                    for r in upcoming_tasks
+                ]
+                embed.add_field(
+                    name=t("digest_upcoming_title", lang),
+                    value="\n".join(up_lines),
+                    inline=False,
+                )
 
             if overdue_count > 0:
                 embed.add_field(
-                    name="🚨 Overdue",
-                    value=f"**{overdue_count}** task(s) — use `/overdue`",
+                    name=f"🚨 {t('tasks_filter_overdue', lang)}",
+                    value=f"**{overdue_count}** {t('cat_task_count', lang, count=overdue_count)} — `/overdue`",
                     inline=False,
                 )
+
             embed.set_footer(text=t("footer_text", lang))
 
             try:

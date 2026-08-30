@@ -29,6 +29,7 @@ STRINGS = {
     "setup_timezone": "Zona horaria",
     "setup_timezone_desc": "Ejemplo: America/Mexico_City, UTC, Europe/Madrid",
     "setup_success": "✅ ¡Configuración completa! Zona horaria: **{tz}** | Canal: {channel}",
+    "setup_checklist": "✅ Zona horaria  ✅ Canal de notificaciones  ☑️ Idioma (usa `/lang`)",
     "setup_invalid_tz": "❌ La zona horaria `{tz}` no es válida. Por favor verifica e intenta de nuevo.\n[Lista completa de zonas horarias](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
     "setup_channel_required": "❌ Por favor usa este comando en un canal de Discord.",
 
@@ -61,6 +62,9 @@ STRINGS = {
     "tasks_empty": "📭 Aún no hay tareas.\n¡Presiona **`/add`** para crear tu primera tarea!",
     "tasks_page": "Página {page}/{total}",
     "tasks_total": "Total de tareas: **{count}**",
+    "tasks_summary": "{total} tareas · {overdue} vencidas",
+    "today_summary": "📅 Hoy: **{count}** tarea(s) · ⚠️ Vencidas: **{overdue}**",
+    "overdue_summary": "🚨 Total vencidas: **{total}** tarea(s)",
     "tasks_filter_pending": "⏳ Pendiente",
     "tasks_filter_Pending": "⏳ Pendiente",
     "tasks_filter_done": "✅ Completado",
@@ -91,14 +95,19 @@ STRINGS = {
 
     # ─── Task Actions ───────────────────────────────────────────────────────────
     "btn_done": "✅ Marcar completado",
+    "btn_mark_done": "✅ Marcar como completado",
     "btn_delete": "🗑️ Eliminar",
     "btn_edit": "✏️ Editar",
     "btn_subtask": "➕ Subtarea",
+    "btn_snooze": "⏰ Posponer (+1 día)",
     "btn_prev": "◀ Anterior",
     "btn_next": "Siguiente ▶",
     "btn_refresh": "🔄 Actualizar",
     "btn_back": "🔙 Volver",
     "btn_confirm_delete": "🗑️ Confirmar eliminación",
+    "page_indicator": "📄 Página {page} / {total}",
+    "delete_confirm_title": "⚠️ Confirmar eliminación",
+    "delete_confirm_desc": "¿Estás seguro de que deseas eliminar permanentemente esta tarea?\n> **{task_name}**\n\n⚠️ Esta acción **no se puede deshacer**.",
 
     "task_marked_done": "✅ ¡Tarea **#{task_id}** marcada como completada!",
     "task_already_done": "⚠️ Esta tarea ya está completada.",
@@ -125,6 +134,8 @@ STRINGS = {
     "cat_title": "🏷️ Categorías",
     "cat_list_title": "📂 Todas las categorías",
     "cat_empty": "Aún no hay categorías.",
+    "cat_section_default": "📌 Categorías predeterminadas",
+    "cat_section_custom": "🗂️ Mis categorías",
     "cat_add_title": "➕ Agregar nueva categoría",
     "cat_name_label": "Nombre de la categoría",
     "cat_emoji_label": "Emoji (opcional)",
@@ -173,6 +184,7 @@ STRINGS = {
     "reminder_overdue": "🚨 **¡Tarea vencida!**\n`{task}` debía completarse el {deadline}",
     "reminder_due_soon": "⚡ **¡Tarea próxima a vencer!**\n`{task}` vence en {time_left}",
     "reminder_due_today": "📅 **¡Vence hoy!**\n`{task}` vence a las {time}",
+    "reminder_action_hint": "Usa `/done {task_id}` o presiona ✅ Completado para detener los recordatorios.",
 
     "dm_reminder_title": "⏰ Recordatorio de fecha límite (DM)",
     "dm_reminder_24h": "📅 **¡Tu tarea se acerca a su fecha límite!**\n`{task}` tiene solo **{time_left}** restante.",
@@ -187,6 +199,7 @@ STRINGS = {
 
     # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 Resultados de búsqueda: `{query}`",
+    "search_results_count": "🔍 Búsqueda: **{query}** — {count} resultado(s) encontrado(s)",
     "search_empty": "🔍 No se encontraron tareas que coincidan con `{query}`.",
     "search_query_label": "Búsqueda",
     "search_query_placeholder": "Escribe nombre de tarea o etiqueta...",
@@ -199,6 +212,10 @@ STRINGS = {
     "stats_overdue": "Vencidas",
     "stats_completion_rate": "Tasa de completado",
     "stats_categories": "Categorías usadas",
+    "stats_header_on_track": "🎯 ¡En camino!",
+    "stats_header_overdue": "⚠️ ¡{overdue} tarea(s) vencida(s)!",
+    "stats_header_all_done": "🏆 ¡Todo completado!",
+    "stats_header_empty": "📭 Sin tareas aún",
     "stats_note_empty":    "¡Aún no hay tareas! Usa `/add` para empezar 🚀",
     "stats_note_overdue":  "⚠️ {overdue} tarea(s) vencida(s) — usa `/overdue` para revisar",
     "stats_note_all_done": "🏆 ¡Todas las tareas completadas! ¡Excelente trabajo!",
@@ -208,6 +225,7 @@ STRINGS = {
     "help_title": "📖 To-Do List Bot Gen 2 — Ayuda",
     "help_desc": "Un bot de lista de tareas completo con soporte multiidioma.",
     "help_commands": "Todos los comandos",
+    "help_quickstart": "🚀 Inicio rápido\n`1.` Usa `/setup America/Mexico_City` para tu zona horaria\n`2.` Usa `/add` para crear tu primera tarea\n`3.` Usa `/list` para ver todas tus tareas",
     "help_add": "Agregar nueva tarea",
     "help_list": "Ver todas las tareas",
     "help_done": "Marcar tarea como completada",
@@ -227,4 +245,35 @@ STRINGS = {
     "err_no_setup": "⚠️ Por favor configura el bot primero usando `/setup`.",
     "err_input_invalid": "❌ Entrada inválida: {detail}",
     "err_suspicious": "🚫 Comportamiento sospechoso detectado. Comando bloqueado.",
+
+    # ─── Snooze Confirm ─────────────────────────────────────────────────────────
+    "snooze_confirm_title": "⏰ Confirmar posposición",
+    "snooze_confirm_desc": "¿Estás seguro de que deseas posponer esta tarea 1 día?\n> **{task_name}**\n📅 Nueva fecha límite: `{new_deadline}`",
+    "btn_confirm_snooze": "⏰ Confirmar (+1 día)",
+
+    # ─── Help Categories (Interactive Select) ───────────────────────────────────
+    "help_cat_overview": "🚀 Visión general y Guía rápida",
+    "help_cat_tasks": "📝 Comandos de tareas",
+    "help_cat_settings": "⚙️ Ajustes y Categorías",
+    "help_cat_tips": "💡 Consejos y Atajos",
+    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+
+    # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
+    "digest_title": "☀️ Resumen diario de tareas — {date}",
+    "digest_no_tasks": "¡No hay tareas pendientes para hoy!",
+    "digest_today_tasks": "Tareas de hoy",
+    "digest_upcoming_title": "🔮 Próximas tareas (próximos 3 días)",
+    "digest_motivational_clean": "✨ ¡Genial! Tu agenda está despejada hoy. ¡Que tengas un gran día!",
+    "digest_motivational_busy": "💪 Tienes {count} tarea(s) para hoy. ¡A por ellas!",
+    "digest_motivational_overdue": "⚠️ ¡Atención! Tienes {overdue} tarea(s) atrasada(s). ¡Ponte al día!",
+    "overdue_none": "¡No hay tareas atrasadas! Vas perfectamente al día 🎉",
+    "overdue_note": "💪 ¡Tú puedes! Revisa y completa tus tareas atrasadas.",
+    "task_done_with_name": "✅ ¡Tarea **#{task_id}** ({task_name}) marcada como completada!",
+
+    # ─── Settings & Meta ────────────────────────────────────────────────────────
+    "setup_current_tz": "Zona horaria actual: **{tz}**",
+    "lang_current_active": "Idioma activo actualmente: {flag} **{name}**",
+    "cat_task_count": "{count} tarea(s)",
+    "task_detail_created": "Creado",
+    "task_detail_updated": "Actualizado",
 }

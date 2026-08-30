@@ -29,6 +29,7 @@ STRINGS = {
     "setup_timezone": "เขตเวลา (Timezone)",
     "setup_timezone_desc": "ตัวอย่าง: Asia/Bangkok, UTC, America/New_York",
     "setup_success": "✅ ตั้งค่าสำเร็จ! เขตเวลา: **{tz}** | ช่อง: {channel}",
+    "setup_checklist": "✅ เขตเวลา  ✅ ช่องแจ้งเตือน  ☑️ ภาษา (ใช้ `/lang`)",
     "setup_invalid_tz": "❌ เขตเวลา `{tz}` ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง\n[รายการเขตเวลาทั้งหมด](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
     "setup_channel_required": "❌ กรุณาใช้คำสั่งนี้ในช่อง Discord",
 
@@ -61,6 +62,9 @@ STRINGS = {
     "tasks_empty": "📭 ยังไม่มี Task\nกด **`/add`** เพื่อเพิ่ม Task แรกของคุณ!",
     "tasks_page": "หน้า {page}/{total}",
     "tasks_total": "Task ทั้งหมด: **{count}** รายการ",
+    "tasks_summary": "{total} tasks · {overdue} เกินกำหนด",
+    "today_summary": "📅 วันนี้: **{count}** task · ⚠️ เกินกำหนด: **{overdue}**",
+    "overdue_summary": "🚨 เกินกำหนดทั้งหมด: **{total}** task",
     "tasks_filter_pending": "⏳ รอดำเนินการ",
     "tasks_filter_Pending": "⏳ รอดำเนินการ",
     "tasks_filter_done": "✅ เสร็จแล้ว",
@@ -91,14 +95,20 @@ STRINGS = {
 
     # ─── Task Actions ───────────────────────────────────────────────────────────
     "btn_done": "✅ เสร็จแล้ว",
+    "btn_mark_done": "✅ ทำเครื่องหมายว่าเสร็จ",
     "btn_delete": "🗑️ ลบ",
     "btn_edit": "✏️ แก้ไข",
     "btn_subtask": "➕ Subtask",
+    "btn_snooze": "⏰ เลื่อน (+1 วัน)",
     "btn_prev": "◀ ก่อนหน้า",
     "btn_next": "ถัดไป ▶",
     "btn_refresh": "🔄 รีเฟรช",
     "btn_back": "🔙 กลับ",
     "btn_confirm_delete": "🗑️ ยืนยันลบ",
+    "page_indicator": "📄 หน้า {page} / {total}",
+    # Delete confirm embed
+    "delete_confirm_title": "⚠️ ยืนยันการลบ Task",
+    "delete_confirm_desc": "คุณแน่ใจหรือไม่ว่าต้องการลบ Task นี้?\n> **{task_name}**\n\n⚠️ การดำเนินการนี้ **ไม่สามารถย้อนกลับได้**",
 
     "task_marked_done": "✅ Task **#{task_id}** เสร็จแล้ว!",
     "task_already_done": "⚠️ Task นี้เสร็จสิ้นแล้ว",
@@ -125,6 +135,8 @@ STRINGS = {
     "cat_title": "🏷️ หมวดหมู่",
     "cat_list_title": "📂 หมวดหมู่ทั้งหมด",
     "cat_empty": "ยังไม่มีหมวดหมู่",
+    "cat_section_default": "📌 หมวดหมู่เริ่มต้น",
+    "cat_section_custom": "🗂️ หมวดหมู่ของคุณ",
     "cat_add_title": "➕ เพิ่มหมวดหมู่ใหม่",
     "cat_name_label": "ชื่อหมวดหมู่",
     "cat_emoji_label": "Emoji (ไม่บังคับ)",
@@ -176,6 +188,7 @@ STRINGS = {
     "reminder_overdue": "🚨 **Task เกินกำหนด!**\n`{task}` ครบกำหนดเมื่อ {deadline}",
     "reminder_due_soon": "⚡ **Task ใกล้ครบกำหนด!**\n`{task}` ครบกำหนดในอีก {time_left}",
     "reminder_due_today": "📅 **Task ครบกำหนดวันนี้!**\n`{task}` ครบกำหนดเวลา {time}",
+    "reminder_action_hint": "ใช้ `/done {task_id}` หรือกด ✅ Done บน Task เพื่อหยุดการแจ้งเตือน",
 
     # DM deadline reminders
     "dm_reminder_title": "⏰ แจ้งเตือน Deadline (DM)",
@@ -191,6 +204,7 @@ STRINGS = {
 
     # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 ผลการค้นหา: `{query}`",
+    "search_results_count": "🔍 ค้นหา: **{query}** — พบ {count} รายการ",
     "search_empty": "🔍 ไม่พบ Task ที่ตรงกับ `{query}`",
     "search_query_label": "คำค้นหา",
     "search_query_placeholder": "พิมพ์ชื่อ Task หรือ Tag...",
@@ -203,6 +217,11 @@ STRINGS = {
     "stats_overdue": "เกินกำหนด",
     "stats_completion_rate": "อัตราความสำเร็จ",
     "stats_categories": "หมวดหมู่ที่ใช้",
+    # Dynamic stats header messages
+    "stats_header_on_track": "🎯 กำลังดำเนินการได้ดี!",
+    "stats_header_overdue": "⚠️ มี {overdue} Task เกินกำหนด!",
+    "stats_header_all_done": "🏆 เสร็จทุก Task แล้ว!",
+    "stats_header_empty": "📭 ยังไม่มี Task",
     # บันทึกแรงบันดาลใจใน /stats
     "stats_note_empty":    "ยังไม่มี Task เลย! ใช้ `/add` เพื่อเริ่มต้น \U0001f680",
     "stats_note_overdue":  "\u26a0\ufe0f มี {overdue} Task เกินกำหนด ใช้ `/overdue` ตรวจสอบ",
@@ -213,6 +232,7 @@ STRINGS = {
     "help_title": "📖 วิธีใช้งาน To-Do List Bot Gen 2",
     "help_desc": "บอท To-Do List ที่ครบครัน รองรับทั้งภาษาไทยและอังกฤษ",
     "help_commands": "คำสั่งทั้งหมด",
+    "help_quickstart": "🚀 เริ่มต้นใช้งาน\n`1.` ใช้ `/setup Asia/Bangkok` เพื่อตั้งค่า timezone\n`2.` ใช้ `/add` เพื่อสร้าง Task แรก\n`3.` ใช้ `/list` เพื่อดู Task ทั้งหมด",
     "help_add": "เพิ่ม Task ใหม่",
     "help_list": "ดูรายการ Task ทั้งหมด",
     "help_done": "ทำเครื่องหมายว่าเสร็จแล้ว",
@@ -232,4 +252,35 @@ STRINGS = {
     "err_no_setup": "⚠️ กรุณาตั้งค่า Bot ก่อนโดยใช้ `/setup`",
     "err_input_invalid": "❌ ข้อมูลที่กรอกไม่ถูกต้อง: {detail}",
     "err_suspicious": "🚫 พบพฤติกรรมที่น่าสงสัย คำสั่งถูกบล็อก",
+
+    # ─── Snooze Confirm ─────────────────────────────────────────────────────────
+    "snooze_confirm_title": "⏰ ยืนยันการเลื่อนเวลา",
+    "snooze_confirm_desc": "คุณแน่ใจหรือไม่ว่าต้องการเลื่อนกำหนดส่งงานนี้ออกไป 1 วัน?\n> **{task_name}**\n📅 กำหนดส่งใหม่: `{new_deadline}`",
+    "btn_confirm_snooze": "⏰ ยืนยันเลื่อน (+1 วัน)",
+
+    # ─── Help Categories (Interactive Select) ───────────────────────────────────
+    "help_cat_overview": "🚀 ภาพรวม & เริ่มต้นใช้งาน",
+    "help_cat_tasks": "📝 คำสั่งจัดการ Task",
+    "help_cat_settings": "⚙️ ตั้งค่า & หมวดหมู่",
+    "help_cat_tips": "💡 เคล็ดลับ & ทางลัด",
+    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+
+    # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
+    "digest_title": "☀️ สรุป Task วันนี้ — {date}",
+    "digest_no_tasks": "ไม่มี Task ที่ต้องส่งวันนี้!",
+    "digest_today_tasks": "Task วันนี้",
+    "digest_upcoming_title": "🔮 Task ที่กำลังจะมาถึง (3 วันข้างหน้า)",
+    "digest_motivational_clean": "✨ ยอดเยี่ยม! วันนี้ไม่มีงานค้างเลย ขอให้เป็นวันที่ดีนะ",
+    "digest_motivational_busy": "💪 วันนี้มี {count} งานที่ต้องลุย! สู้ๆ นะคุณทำได้แน่นอน",
+    "digest_motivational_overdue": "⚠️ ระวังด้วยนะ! มีงานเกินกำหนด {overdue} งาน รีบเคลียร์เลย!",
+    "overdue_none": "ไม่มีงานเกินกำหนด! เยี่ยมมาก จัดการได้ตรงเวลาสุดๆ 🎉",
+    "overdue_note": "💪 สู้ๆ นะ! ทยอยเคลียร์งานค้างทีละงานได้เลย",
+    "task_done_with_name": "✅ ทำเครื่องหมาย Task **#{task_id}** ({task_name}) เสร็จเรียบร้อยแล้ว!",
+
+    # ─── Settings & Meta ────────────────────────────────────────────────────────
+    "setup_current_tz": "Timezone ปัจจุบัน: **{tz}**",
+    "lang_current_active": "ภาษาที่ใช้งานอยู่ในปัจจุบัน: {flag} **{name}**",
+    "cat_task_count": "{count} งาน",
+    "task_detail_created": "สร้างเมื่อ",
+    "task_detail_updated": "แก้ไขล่าสุด",
 }

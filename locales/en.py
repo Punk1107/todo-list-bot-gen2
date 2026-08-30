@@ -29,6 +29,7 @@ STRINGS = {
     "setup_timezone": "Timezone",
     "setup_timezone_desc": "Example: Asia/Bangkok, UTC, America/New_York",
     "setup_success": "✅ Setup complete! Timezone: **{tz}** | Channel: {channel}",
+    "setup_checklist": "✅ Timezone  ✅ Notification channel  ☑️ Language (use `/lang`)",
     "setup_invalid_tz": "❌ Invalid timezone `{tz}`. Please check and try again.\n[Full timezone list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)",
     "setup_channel_required": "❌ Please use this command in a Discord channel.",
 
@@ -61,6 +62,9 @@ STRINGS = {
     "tasks_empty": "📭 No tasks yet.\nPress **`/add`** to create your first task!",
     "tasks_page": "Page {page}/{total}",
     "tasks_total": "Total tasks: **{count}**",
+    "tasks_summary": "{total} tasks · {overdue} overdue",
+    "today_summary": "📅 Today: **{count}** task(s) · ⚠️ Overdue: **{overdue}**",
+    "overdue_summary": "🚨 Total overdue: **{total}** task(s)",
     "tasks_filter_pending": "⏳ Pending",
     "tasks_filter_Pending": "⏳ Pending",
     "tasks_filter_done": "✅ Done",
@@ -91,14 +95,20 @@ STRINGS = {
 
     # ─── Task Actions ───────────────────────────────────────────────────────────
     "btn_done": "✅ Mark Done",
+    "btn_mark_done": "✅ Mark as Done",
     "btn_delete": "🗑️ Delete",
     "btn_edit": "✏️ Edit",
     "btn_subtask": "➕ Subtask",
+    "btn_snooze": "⏰ Snooze (+1 Day)",
     "btn_prev": "◀ Prev",
     "btn_next": "Next ▶",
     "btn_refresh": "🔄 Refresh",
     "btn_back": "🔙 Back",
     "btn_confirm_delete": "🗑️ Confirm Delete",
+    "page_indicator": "📄 Page {page} / {total}",
+    # Delete confirm embed
+    "delete_confirm_title": "⚠️ Confirm Deletion",
+    "delete_confirm_desc": "Are you sure you want to permanently delete this task?\n> **{task_name}**\n\n⚠️ This action **cannot be undone**.",
 
     "task_marked_done": "✅ Task **#{task_id}** marked as done!",
     "task_already_done": "⚠️ This task is already completed.",
@@ -125,6 +135,8 @@ STRINGS = {
     "cat_title": "🏷️ Categories",
     "cat_list_title": "📂 All Categories",
     "cat_empty": "No categories yet.",
+    "cat_section_default": "📌 Default Categories",
+    "cat_section_custom": "🗂️ Your Categories",
     "cat_add_title": "➕ Add New Category",
     "cat_name_label": "Category Name",
     "cat_emoji_label": "Emoji (optional)",
@@ -176,6 +188,7 @@ STRINGS = {
     "reminder_overdue": "🚨 **Task Overdue!**\n`{task}` was due on {deadline}",
     "reminder_due_soon": "⚡ **Task Due Soon!**\n`{task}` is due in {time_left}",
     "reminder_due_today": "📅 **Task Due Today!**\n`{task}` is due at {time}",
+    "reminder_action_hint": "Use `/done {task_id}` or press ✅ Done on the task to stop reminders.",
 
     # DM deadline reminders
     "dm_reminder_title": "⏰ Deadline Reminder (DM)",
@@ -191,6 +204,7 @@ STRINGS = {
 
     # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 Search Results: `{query}`",
+    "search_results_count": "🔍 Search: **{query}** — {count} result(s) found",
     "search_empty": "🔍 No tasks matching `{query}` found.",
     "search_query_label": "Search Query",
     "search_query_placeholder": "Type task name or tag...",
@@ -203,6 +217,11 @@ STRINGS = {
     "stats_overdue": "Overdue",
     "stats_completion_rate": "Completion Rate",
     "stats_categories": "Categories Used",
+    # Dynamic stats header messages
+    "stats_header_on_track": "🎯 On Track!",
+    "stats_header_overdue": "⚠️ {overdue} task(s) overdue!",
+    "stats_header_all_done": "🏆 All Done!",
+    "stats_header_empty": "📭 No Tasks Yet",
     # Motivational notes in /stats embed
     "stats_note_empty":    "No tasks yet! Use `/add` to get started \U0001f680",
     "stats_note_overdue":  "\u26a0\ufe0f {overdue} task(s) overdue \u2014 use `/overdue` to review",
@@ -213,6 +232,7 @@ STRINGS = {
     "help_title": "📖 To-Do List Bot Gen 2 — Help",
     "help_desc": "A full-featured To-Do List bot with Thai & English support.",
     "help_commands": "All Commands",
+    "help_quickstart": "🚀 Quick Start\n`1.` Use `/setup Asia/Bangkok` to set your timezone\n`2.` Use `/add` to create your first task\n`3.` Use `/list` to view all your tasks",
     "help_add": "Add a new task",
     "help_list": "View all tasks",
     "help_done": "Mark a task as done",
@@ -232,4 +252,35 @@ STRINGS = {
     "err_no_setup": "⚠️ Please configure the bot first using `/setup`.",
     "err_input_invalid": "❌ Invalid input: {detail}",
     "err_suspicious": "🚫 Suspicious behaviour detected. Command blocked.",
+
+    # ─── Snooze Confirm ─────────────────────────────────────────────────────────
+    "snooze_confirm_title": "⏰ Confirm Snooze",
+    "snooze_confirm_desc": "Are you sure you want to postpone this task by 1 day?\n> **{task_name}**\n📅 New deadline: `{new_deadline}`",
+    "btn_confirm_snooze": "⏰ Confirm (+1 Day)",
+
+    # ─── Help Categories (Interactive Select) ───────────────────────────────────
+    "help_cat_overview": "🚀 Overview & Quick Start",
+    "help_cat_tasks": "📝 Task Commands",
+    "help_cat_settings": "⚙️ Settings & Categories",
+    "help_cat_tips": "💡 Tips & Shortcuts",
+    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+
+    # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
+    "digest_title": "☀️ Daily Task Digest — {date}",
+    "digest_no_tasks": "No tasks due today!",
+    "digest_today_tasks": "Today's Tasks",
+    "digest_upcoming_title": "🔮 Upcoming Tasks (Next 3 Days)",
+    "digest_motivational_clean": "✨ Awesome! Your schedule is clear today. Have a great day!",
+    "digest_motivational_busy": "💪 You have {count} task(s) today. Stay focused and conquer them!",
+    "digest_motivational_overdue": "⚠️ Heads up! You have {overdue} overdue task(s). Let's catch up!",
+    "overdue_none": "No overdue tasks! You're completely on track 🎉",
+    "overdue_note": "💪 You can do it! Complete your overdue tasks today.",
+    "task_done_with_name": "✅ Task **#{task_id}** ({task_name}) marked as completed!",
+
+    # ─── Settings & Meta ────────────────────────────────────────────────────────
+    "setup_current_tz": "Current Timezone: **{tz}**",
+    "lang_current_active": "Currently active language: {flag} **{name}**",
+    "cat_task_count": "{count} task(s)",
+    "task_detail_created": "Created",
+    "task_detail_updated": "Updated",
 }
