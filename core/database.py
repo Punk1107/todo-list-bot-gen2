@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 10   # bump when adding migrations below
+SCHEMA_VERSION = 11   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -530,14 +530,22 @@ MIGRATIONS: list[tuple[int, str]] = [
     # ── v10: guild_settings — per-guild configuration stored in Supabase ─────────
     (10, """
     CREATE TABLE IF NOT EXISTS guild_settings (
-        guild_id    TEXT    PRIMARY KEY,
+        guild_id    TEXT    NOT NULL,
         key         TEXT    NOT NULL,
         value       TEXT,
         updated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-        UNIQUE(guild_id, key)
+        PRIMARY KEY (guild_id, key)
     );
     CREATE INDEX IF NOT EXISTS idx_guild_settings_guild ON guild_settings(guild_id);
     INSERT INTO schema_version VALUES (10) ON CONFLICT (version) DO UPDATE SET version=10;
+    """),
+
+    # ── v11: fix primary key on guild_settings if created in v10 ───────────────
+    (11, """
+    ALTER TABLE guild_settings DROP CONSTRAINT IF EXISTS guild_settings_pkey;
+    ALTER TABLE guild_settings DROP CONSTRAINT IF EXISTS guild_settings_guild_id_key_key;
+    ALTER TABLE guild_settings ADD PRIMARY KEY (guild_id, key);
+    INSERT INTO schema_version VALUES (11) ON CONFLICT (version) DO UPDATE SET version=11;
     """),
 ]
 
