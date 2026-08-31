@@ -45,25 +45,59 @@ class AlertDispatcher:
         rate_limit_sec: int = 300,
     ) -> None:
         self._bot            = bot
-        self._channel_id     = channel_id
+        self._default_channel_id = channel_id
         self._rate_limit_sec = rate_limit_sec
-        self._queue: asyncio.Queue[discord.Embed] = asyncio.Queue(maxsize=50)
-        self._last_alert: dict[str, float] = {}   # error_type → last sent time
+        # Queue contains tuples of (target_channel_id, embed)
+        self._queue: asyncio.Queue[tuple[int, discord.Embed]] = asyncio.Queue(maxsize=100)
+        self._last_alert: dict[str, float] = {}   # error_type:guild_id → last sent time
         self._task: Optional[asyncio.Task] = None
+        self._guild_channels: dict[str, int] = {}  # in-memory cache: guild_id -> channel_id
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Start the background sender task. Call after bot is ready."""
-        if not self._channel_id:
-            log.info("AlertDispatcher: ADMIN_LOG_CHANNEL_ID not set — alerts disabled")
-            return
-        self._task = asyncio.create_task(self._consumer(), name="alert_dispatcher")
-        log.info("AlertDispatcher started — channel: %s", self._channel_id)
+        """Start the background sender task."""
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._consumer(), name="alert_dispatcher")
+            log.info("AlertDispatcher consumer started")
+
+    def update_guild_channel(self, guild_id: str, channel_id: int) -> None:
+        """Hot-update a specific guild's alert channel."""
+        self._guild_channels[guild_id] = channel_id
+        log.info("AlertDispatcher: guild %s channel updated to %s", guild_id, channel_id)
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._consumer(), name="alert_dispatcher")
+
+    def update_channel(self, channel_id: int) -> None:
+        """Hot-update the fallback/default alert channel."""
+        self._default_channel_id = channel_id
+        log.info("AlertDispatcher: default channel updated to %s", channel_id)
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._consumer(), name="alert_dispatcher")
 
     def stop(self) -> None:
         if self._task and not self._task.done():
             self._task.cancel()
+
+    # ── Channel Resolution ───────────────────────────────────────────────────
+
+    async def get_channel_for_guild(self, guild_id: str) -> Optional[int]:
+        """Find the configured channel for a guild, from memory, Supabase, or default."""
+        if guild_id in self._guild_channels:
+            return self._guild_channels[guild_id]
+
+        if guild_id and guild_id != "DM":
+            try:
+                from core.database import db
+                ch_val = await db.get_guild_setting(guild_id, "admin_log_channel_id")
+                if ch_val:
+                    cid = int(ch_val)
+                    self._guild_channels[guild_id] = cid
+                    return cid
+            except Exception as exc:
+                log.debug("AlertDispatcher: DB channel lookup failed for guild %s: %s", guild_id, exc)
+
+        return self._default_channel_id
 
     # ── Public dispatch API ──────────────────────────────────────────────────
 
@@ -77,70 +111,78 @@ class AlertDispatcher:
         guild_id: str = "-",
     ) -> None:
         """
-        Enqueue an error alert embed.
-        Rate-limited: same error type skipped within self._rate_limit_sec.
+        Enqueue an error alert embed for the specific guild's admin channel.
+        Rate-limited: same error type per guild skipped within self._rate_limit_sec.
         """
-        if not self._channel_id:
+        target_ch_id = await self.get_channel_for_guild(guild_id)
+        if not target_ch_id:
             return
 
         error_type = type(error).__name__
+        rate_key = f"{error_type}:{guild_id}"
         now = time.time()
 
-        # Rate limit check
-        if now - self._last_alert.get(error_type, 0) < self._rate_limit_sec:
-            log.debug("AlertDispatcher: rate-limiting alert for %s", error_type)
+        # Rate limit check per error type per guild
+        if now - self._last_alert.get(rate_key, 0) < self._rate_limit_sec:
+            log.debug("AlertDispatcher: rate-limiting alert for %s in guild %s", error_type, guild_id)
             return
 
-        self._last_alert[error_type] = now
+        self._last_alert[rate_key] = now
         embed = self._build_error_embed(error, level=level, command=command,
                                         user_id=user_id, guild_id=guild_id)
-        await self._enqueue(embed)
+        await self._enqueue(target_ch_id, embed)
 
     async def dispatch_health_alert(self, snapshot: HealthSnapshot) -> None:
         """
-        Enqueue a health degradation alert.
+        Enqueue a health degradation alert to the default/global admin channel.
         Only fires when DB is unreachable or memory is critically high.
         """
-        if not self._channel_id:
-            return
+        target_ch_id = self._default_channel_id
+        if not target_ch_id:
+            # Fallback to any configured guild channel
+            if self._guild_channels:
+                target_ch_id = next(iter(self._guild_channels.values()))
+            else:
+                return
+
         if snapshot.is_healthy:
             return   # No alert needed
 
-        rate_key = "health_alert"
+        rate_key = "health_alert:global"
         now = time.time()
         if now - self._last_alert.get(rate_key, 0) < self._rate_limit_sec:
             return
 
         self._last_alert[rate_key] = now
         embed = self._build_health_alert_embed(snapshot)
-        await self._enqueue(embed)
+        await self._enqueue(target_ch_id, embed)
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
-    async def _enqueue(self, embed: discord.Embed) -> None:
+    async def _enqueue(self, channel_id: int, embed: discord.Embed) -> None:
         try:
-            self._queue.put_nowait(embed)
+            self._queue.put_nowait((channel_id, embed))
         except asyncio.QueueFull:
             log.warning("AlertDispatcher: queue full — dropping alert embed")
 
     async def _consumer(self) -> None:
-        """Background task: drain the queue and send embeds to the admin channel."""
+        """Background task: drain the queue and send embeds to their respective channels."""
         while True:
-            embed = await self._queue.get()
+            target_ch_id, embed = await self._queue.get()
             try:
-                channel = self._bot.get_channel(self._channel_id)
+                channel = self._bot.get_channel(target_ch_id)
                 if channel is None:
-                    channel = await self._bot.fetch_channel(self._channel_id)
+                    channel = await self._bot.fetch_channel(target_ch_id)
                 if isinstance(channel, discord.abc.Messageable):
                     await channel.send(embed=embed)
                 else:
-                    log.warning("AlertDispatcher: channel %s is not messageable", self._channel_id)
+                    log.warning("AlertDispatcher: channel %s is not messageable", target_ch_id)
             except discord.Forbidden:
-                log.error("AlertDispatcher: no permission to send in channel %s", self._channel_id)
+                log.error("AlertDispatcher: no permission to send in channel %s", target_ch_id)
             except discord.NotFound:
-                log.error("AlertDispatcher: channel %s not found", self._channel_id)
+                log.error("AlertDispatcher: channel %s not found", target_ch_id)
             except Exception as exc:
-                log.error("AlertDispatcher: failed to send alert: %s", exc)
+                log.error("AlertDispatcher: failed to send alert to channel %s: %s", target_ch_id, exc)
             finally:
                 self._queue.task_done()
             # Small delay between sends to avoid Discord rate limits
