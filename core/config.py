@@ -172,6 +172,30 @@ class WebserverConfig:
         )
 
 
+@dataclass(frozen=True)
+class MonitoringConfig:
+    enabled: bool
+    admin_log_channel_id: Optional[int]   # Discord channel ID for error alerts
+    health_check_interval_min: int        # How often to run health checks (minutes)
+    alert_rate_limit_sec: int             # Min seconds between identical alerts
+
+    @classmethod
+    def from_env(cls) -> "MonitoringConfig":
+        channel_raw = _env("ADMIN_LOG_CHANNEL_ID", None)
+        channel_id: Optional[int] = None
+        if channel_raw:
+            try:
+                channel_id = int(channel_raw)
+            except ValueError:
+                log.warning("ADMIN_LOG_CHANNEL_ID is not a valid integer — alerts disabled")
+        return cls(
+            enabled=_env_bool("MONITORING_ENABLED", True),
+            admin_log_channel_id=channel_id,
+            health_check_interval_min=_env_int("HEALTH_CHECK_INTERVAL_MIN", 5),
+            alert_rate_limit_sec=_env_int("ALERT_RATE_LIMIT_SEC", 300),
+        )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Root config — single point of truth
 # ──────────────────────────────────────────────────────────────────────────────
@@ -183,6 +207,7 @@ class AppConfig:
     rate_limit: RateLimitConfig
     notifications: NotificationConfig
     webserver: WebserverConfig
+    monitoring: MonitoringConfig
 
     @classmethod
     def load(cls) -> "AppConfig":
@@ -192,6 +217,7 @@ class AppConfig:
             rate_limit=RateLimitConfig.from_env(),
             notifications=NotificationConfig.from_env(),
             webserver=WebserverConfig.from_env(),
+            monitoring=MonitoringConfig.from_env(),
         )
         log.info("Configuration loaded successfully")
         return cfg
