@@ -165,10 +165,12 @@ class WebserverConfig:
 
     @classmethod
     def from_env(cls) -> "WebserverConfig":
+        # Check PORT first (standard on Render/Railway/Heroku), fallback to WEBSERVER_PORT
+        port = _env_int("PORT", _env_int("WEBSERVER_PORT", 8080))
         return cls(
             enabled=_env_bool("WEBSERVER_ENABLED", True),
             host=_env("WEBSERVER_HOST", "0.0.0.0"),
-            port=_env_int("WEBSERVER_PORT", 8080),
+            port=port,
         )
 
 
