@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 9   # bump when adding migrations below
+SCHEMA_VERSION = 11   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -526,6 +526,27 @@ MIGRATIONS: list[tuple[int, str]] = [
         CHECK(lang IN ('th','en','zh','ja','ko','es','ru','fr','de'));
     INSERT INTO schema_version VALUES (9) ON CONFLICT (version) DO UPDATE SET version=9;
     """),
+
+    # ── v10: guild_settings — per-guild configuration stored in Supabase ─────────
+    (10, """
+    CREATE TABLE IF NOT EXISTS guild_settings (
+        guild_id    TEXT    NOT NULL,
+        key         TEXT    NOT NULL,
+        value       TEXT,
+        updated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (guild_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_guild_settings_guild ON guild_settings(guild_id);
+    INSERT INTO schema_version VALUES (10) ON CONFLICT (version) DO UPDATE SET version=10;
+    """),
+
+    # ── v11: fix primary key on guild_settings if created in v10 ───────────────
+    (11, """
+    ALTER TABLE guild_settings DROP CONSTRAINT IF EXISTS guild_settings_pkey;
+    ALTER TABLE guild_settings DROP CONSTRAINT IF EXISTS guild_settings_guild_id_key_key;
+    ALTER TABLE guild_settings ADD PRIMARY KEY (guild_id, key);
+    INSERT INTO schema_version VALUES (11) ON CONFLICT (version) DO UPDATE SET version=11;
+    """),
 ]
 
 
@@ -858,6 +879,43 @@ class DatabaseManager:
             "query_cache": self.query_cache.stats,
             "bulk_writer": self.bulk_writer.metrics,
         }
+
+    # ── Guild settings (monitoring & admin config) ────────────────────────────
+
+    async def get_guild_setting(self, guild_id: str, key: str) -> Optional[str]:
+        """
+        Fetch a single guild configuration value from Supabase.
+        Returns None if not set.
+        """
+        row = await self.fetchone(
+            "SELECT value FROM guild_settings WHERE guild_id=$1 AND key=$2",
+            (guild_id, key),
+        )
+        return row["value"] if row else None
+
+    async def set_guild_setting(self, guild_id: str, key: str, value: str) -> None:
+        """
+        Upsert a guild configuration key-value pair into Supabase.
+        Creates the row if it doesn't exist, updates it if it does.
+        """
+        await self.execute(
+            """
+            INSERT INTO guild_settings (guild_id, key, value, updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (guild_id, key)
+            DO UPDATE SET value=$3, updated_at=NOW()
+            """,
+            (guild_id, key, value),
+        )
+        log.debug("guild_settings updated: guild=%s key=%s", guild_id, key)
+
+    async def get_all_guild_settings(self, guild_id: str) -> dict[str, str]:
+        """Fetch all settings for a guild as a dict."""
+        rows = await self.fetchall(
+            "SELECT key, value FROM guild_settings WHERE guild_id=$1",
+            (guild_id,),
+        )
+        return {row["key"]: row["value"] for row in rows} if rows else {}
 
     # ── Graceful shutdown ─────────────────────────────────────────────────────
 

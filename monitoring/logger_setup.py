@@ -66,6 +66,12 @@ def setup_logging(level: int = logging.INFO) -> None:
     """
     LOG_DIR.mkdir(exist_ok=True)
 
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     context_filter = ContextInjectFilter()
     error_filter   = _ErrorOnlyFilter()
 

@@ -77,10 +77,10 @@ class TodoBot(commands.Bot):
         for cog in COGS:
             try:
                 await self.load_extension(cog)
-                log.info("✓ Loaded cog: %s", cog)
+                log.info("[OK] Loaded cog: %s", cog)
             except Exception as exc:
                 failed += 1
-                log.error("✗ Failed to load cog %s: %s", cog, exc, exc_info=True)
+                log.error("[FAIL] Failed to load cog %s: %s", cog, exc, exc_info=True)
 
         if failed == len(COGS):
             log.critical("All cogs failed to load — aborting")
@@ -197,6 +197,23 @@ async def on_ready() -> None:
              config.db.query_cache_ttl, 2048)
     log.info("  uvloop   : %s", "✓ active" if _UVLOOP else "✗ not available")
     log.info("━" * 60)
+
+    # ── Load guild-specific monitoring settings from Supabase ─────────────────
+    # If any guild has set an admin_log_channel_id via /monitoring setup,
+    # apply it now so alerts work correctly after a restart.
+    if config.monitoring.enabled and bot._alert_dispatcher and bot.guilds:
+        try:
+            for guild in bot.guilds:
+                ch_id_str = await db.get_guild_setting(str(guild.id), "admin_log_channel_id")
+                if ch_id_str:
+                    ch_id = int(ch_id_str)
+                    bot._alert_dispatcher.update_guild_channel(str(guild.id), ch_id)
+                    log.info(
+                        "Monitoring: loaded admin_log_channel_id=%s for guild %s (%s)",
+                        ch_id, guild.id, guild.name,
+                    )
+        except Exception as exc:
+            log.warning("Monitoring: could not load guild settings: %s", exc)
 
     await bot.change_presence(
         activity=discord.Activity(
