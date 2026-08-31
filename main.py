@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import logging.handlers
 import os
 import signal
 import sys
@@ -37,34 +36,14 @@ except ImportError:
 # ── Config (validates .env — exits if DISCORD_TOKEN missing) ──────────────────
 from core.config import config
 
-# ── Logging  ──────────────────────────────────────────────────────────────────
-LOG_DIR = ROOT / "logs"
-LOG_DIR.mkdir(exist_ok=True)
-
-_fmt = logging.Formatter(
-    "%(asctime)s | %(levelname)-8s | %(name)-30s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
-# Rotating file handler — 5 MB per file, keep 5 backups
-_file_handler = logging.handlers.RotatingFileHandler(
-    LOG_DIR / "bot.log", maxBytes=5_242_880, backupCount=5, encoding="utf-8"
-)
-_file_handler.setFormatter(_fmt)
-
-_console_handler = logging.StreamHandler(sys.stdout)
-_console_handler.setFormatter(_fmt)
-
-logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handler])
+# ── Logging (structured, multi-file) ─────────────────────────────────────────
+from monitoring.logger_setup import setup_logging
+setup_logging()
 
 log = logging.getLogger("main")
 
 if _UVLOOP:
     log.info("uvloop active — using high-performance event loop")
-
-# Suppress noisy third-party loggers
-for _name in ("discord", "discord.http", "discord.gateway", "aiohttp.access"):
-    logging.getLogger(_name).setLevel(logging.WARNING)
 
 # ── Bot setup ─────────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
@@ -77,6 +56,7 @@ COGS = [
     "handlers.tasks_cog",
     "handlers.settings_cog",
     "handlers.reminders_cog",
+    "handlers.monitoring_cog",   # admin /health /errors /cmdstats
 ]
 
 
@@ -122,6 +102,34 @@ class TodoBot(commands.Bot):
         from utils.webserver import start_async
         self._webserver_runner = await start_async()
 
+        # ── Monitoring system ────────────────────────────────────────────────
+        if config.monitoring.enabled:
+            # Start error tracker auto-reset (24 h)
+            from monitoring.error_tracker import error_tracker
+            error_tracker.start()
+
+            # Start background health monitor
+            from monitoring.health_monitor import health_monitor
+            health_monitor._interval = config.monitoring.health_check_interval_min * 60
+            await health_monitor.start(self)
+
+            # Start alert dispatcher (sends to admin channel if configured)
+            from monitoring.alert_dispatcher import AlertDispatcher
+            self._alert_dispatcher = AlertDispatcher(
+                bot=self,
+                channel_id=config.monitoring.admin_log_channel_id,
+                rate_limit_sec=config.monitoring.alert_rate_limit_sec,
+            )
+            await self._alert_dispatcher.start()
+
+            log.info(
+                "Monitoring enabled — health_interval=%dmin  alert_channel=%s",
+                config.monitoring.health_check_interval_min,
+                config.monitoring.admin_log_channel_id or "not set",
+            )
+        else:
+            self._alert_dispatcher = None
+
         # Sync slash commands — application_id is available here
         debug_guild_id = os.getenv("DEBUG_GUILD_ID")
         try:
@@ -137,7 +145,19 @@ class TodoBot(commands.Bot):
             log.error("Slash command sync failed: %s", exc)
 
     async def close(self) -> None:
-        """Graceful shutdown: flush BulkWriter, stop webserver, then close."""
+        """Graceful shutdown: stop monitoring, flush BulkWriter, stop webserver."""
+        # Stop monitoring tasks first (they may be writing logs)
+        if config.monitoring.enabled:
+            try:
+                from monitoring.error_tracker import error_tracker
+                error_tracker.stop()
+                from monitoring.health_monitor import health_monitor
+                health_monitor.stop()
+                if self._alert_dispatcher:
+                    self._alert_dispatcher.stop()
+            except Exception as exc:
+                log.warning("Monitoring shutdown error: %s", exc)
+
         from core.database import db
         log.info("Flushing BulkWriter before shutdown...")
         await db.close()  # also stops BulkWriter
@@ -155,6 +175,9 @@ bot = TodoBot(
     help_command=None,
     description="To-Do List Bot Gen 2",
 )
+
+# ── Internal state defaults ────────────────────────────────────────────────────
+bot._alert_dispatcher = None   # set in setup_hook if monitoring is enabled
 
 # ── Cog list (defined above TodoBot — kept here as a comment reference) ───────
 
@@ -225,7 +248,46 @@ async def on_app_command_error(
     elif isinstance(error, discord.app_commands.CommandNotFound):
         return   # Silently ignore — can happen during deploy
     else:
-        log.error("Unhandled app_command_error: %s", error, exc_info=True)
+        # ── Record & dispatch unhandled errors ──────────────────────────────
+        cmd_name = interaction.command.name if interaction.command else "-"
+        uid      = str(interaction.user.id)
+        gid      = str(interaction.guild_id or "DM")
+
+        log.error(
+            "Unhandled app_command_error: %s",
+            error,
+            exc_info=True,
+            extra={"guild_id": gid, "user_id": uid, "command": cmd_name},
+        )
+
+        # Record into error tracker
+        if config.monitoring.enabled:
+            from monitoring.error_tracker import error_tracker
+            error_tracker.record(error, command=cmd_name, user_id=uid)
+
+            # Dispatch alert to admin channel (rate-limited, non-blocking)
+            if bot._alert_dispatcher:
+                asyncio.create_task(
+                    bot._alert_dispatcher.dispatch_error(
+                        error,
+                        level=logging.ERROR,
+                        command=cmd_name,
+                        user_id=uid,
+                        guild_id=gid,
+                    ),
+                    name="alert_dispatch",
+                )
+
+            # Log the command as failed
+            from monitoring.commands_log import commands_logger
+            commands_logger.log_command(
+                cmd_name,
+                user_id=uid,
+                guild_id=gid,
+                success=False,
+                error_type=type(error).__name__,
+            )
+
         msg = t("err_generic", lang)
 
     try:
