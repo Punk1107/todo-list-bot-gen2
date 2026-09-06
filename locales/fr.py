@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 Description",
     "task_detail_recurring": "🔄 Répétition",
     "task_detail_subtasks": "📊 Sous-tâches",
-    "task_detail_created": "📆 Créée le",
-    "task_detail_updated": "🔄 Dernière mise à jour",
     "task_not_found": "❌ Tâche #**{task_id}** introuvable.",
     "task_not_owned": "❌ Cette tâche ne vous appartient pas.",
 
@@ -257,6 +255,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ Confirmer le report",
     "snooze_confirm_desc": "Êtes-vous sûr de vouloir reporter cette tâche d'un jour ?\n> **{task_name}**\n📅 Nouvelle date limite : `{new_deadline}`",
     "btn_confirm_snooze": "⏰ Confirmer (+1 jour)",
+    "task_snoozed": "⏰ Tâche reportée d'un jour ! Nouvelle échéance : `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 Aperçu et démarrage rapide",

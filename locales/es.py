@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 Descripción",
     "task_detail_recurring": "🔄 Recurrente",
     "task_detail_subtasks": "📊 Subtareas",
-    "task_detail_created": "📆 Creado",
-    "task_detail_updated": "🔄 Última actualización",
     "task_not_found": "❌ Tarea #**{task_id}** no encontrada.",
     "task_not_owned": "❌ Esta tarea no te pertenece.",
 
@@ -250,6 +248,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ Confirmar posposición",
     "snooze_confirm_desc": "¿Estás seguro de que deseas posponer esta tarea 1 día?\n> **{task_name}**\n📅 Nueva fecha límite: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ Confirmar (+1 día)",
+    "task_snoozed": "⏰ ¡Tarea pospuesta 1 día! Nueva fecha límite: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 Visión general y Guía rápida",
