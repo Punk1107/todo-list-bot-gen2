@@ -1,11 +1,11 @@
 """
-handlers/reminders_cog.py — Background loops v6 (PostgreSQL)
-Changes over v5:
-  - SQL placeholders: ? → $N (PostgreSQL/asyncpg)
-  - daily_digest_loop: named params {:uid} → positional $N
-  - backup_loop: REMOVED (Supabase manages backups automatically)
-  - db_wal_checkpoint_loop: REMOVED (PostgreSQL manages WAL automatically)
-  - Config references to backup_interval_hours / wal_checkpoint_interval_hours removed
+handlers/reminders_cog.py — Background loops v7 (PostgreSQL + per-user TZ digest)
+Changes over v6:
+  - daily_digest_loop: upgraded to per-user timezone precision scheduler (every 1 min)
+  - daily_digest_loop: guards with last_digest_date in DB (survives restarts)
+  - Added DailyDigestView (interactive buttons on digest messages)
+  - Added _build_digest_embed() shared helper (used by loop + /digest command)
+  - completed_at=NOW() added to all task completion updates
 """
 from __future__ import annotations
 
@@ -30,6 +30,187 @@ UTC = pytz.utc
 
 # Priority icons: index = priority value (0=lowest → 7=highest)
 _PRIO_ICONS = ["⬜", "🟦", "🟩", "🟨", "🟧", "🟥", "🔴", "🆘"]
+
+
+# ── Shared helpers (used by both daily_digest_loop and /digest command) ────────
+
+async def _build_digest_embed(
+    uid: str,
+    lang: str,
+    tz_name: str,
+    local_now: datetime,
+    utc_now: datetime,
+) -> discord.Embed:
+    """
+    Build the rich Daily Digest embed for a user.
+    Shared between the scheduled loop and the on-demand /digest slash command.
+    """
+    local_tz     = pytz.timezone(tz_name)
+    day_start    = local_now.replace(hour=0, minute=0, second=0).astimezone(UTC).isoformat()
+    day_end      = local_now.replace(hour=23, minute=59, second=59).astimezone(UTC).isoformat()
+    upcoming_end = (local_now + timedelta(days=3)).replace(
+        hour=23, minute=59, second=59
+    ).astimezone(UTC).isoformat()
+
+    today_tasks = await db.afetchall(
+        """SELECT task_id, task, deadline, priority
+           FROM tasks
+           WHERE owner_id=$1 AND status='Pending'
+             AND deadline BETWEEN $2 AND $3
+           ORDER BY priority DESC, deadline ASC LIMIT 10""",
+        (uid, day_start, day_end),
+    )
+
+    overdue_row = await db.afetchone(
+        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+        (uid, utc_now.isoformat()),
+    )
+    overdue_count = overdue_row["c"] if overdue_row else 0
+
+    pending_row = await db.afetchone(
+        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
+        (uid,),
+    )
+    pending_total = pending_row["c"] if pending_row else 0
+
+    upcoming_tasks = await db.afetchall(
+        """SELECT task_id, task, deadline, priority
+           FROM tasks
+           WHERE owner_id=$1 AND status='Pending'
+             AND deadline > $2 AND deadline <= $3
+           ORDER BY deadline ASC LIMIT 3""",
+        (uid, day_end, upcoming_end),
+    )
+
+    # Motivational message & color
+    if overdue_count > 0:
+        motivational = t("digest_motivational_overdue", lang, overdue=overdue_count)
+        digest_color = 0xED4245
+    elif not today_tasks and pending_total == 0:
+        motivational = t("digest_motivational_clean", lang)
+        digest_color = 0x57F287
+    else:
+        motivational = t("digest_motivational_busy", lang, count=len(today_tasks))
+        digest_color = 0x5865F2
+
+    date_str = local_now.strftime("%d/%m/%Y")
+    embed = discord.Embed(
+        title=t("digest_title", lang, date=date_str),
+        description=(
+            f"> {motivational}\n\n"
+            f"{t('digest_stats_line', lang, pending=pending_total, overdue=overdue_count)}"
+        ),
+        color=digest_color,
+    )
+
+    if today_tasks:
+        lines = [
+            (
+                f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` "
+                f"**{r['task'][:50]}**\n   ╰ 📅 `{format_deadline(r['deadline'], tz_name)}`"
+                f"  ·  ⏱️ `{time_left_str(r['deadline'])}`"
+            )
+            for r in today_tasks
+        ]
+        embed.add_field(
+            name=f"📅 {t('digest_today_tasks', lang)} ({len(today_tasks)})",
+            value="\n".join(lines),
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name=f"📅 {t('digest_today_tasks', lang)}",
+            value=f"> ✅ {t('digest_no_tasks', lang)}",
+            inline=False,
+        )
+
+    if upcoming_tasks:
+        up_lines = [
+            (
+                f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` "
+                f"**{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
+            )
+            for r in upcoming_tasks
+        ]
+        embed.add_field(
+            name=t("digest_upcoming_title", lang),
+            value="\n".join(up_lines),
+            inline=False,
+        )
+
+    if overdue_count > 0:
+        embed.add_field(
+            name=f"🚨 {t('tasks_filter_overdue', lang)}",
+            value=(
+                f"**{overdue_count}** {t('cat_task_count', lang, count=overdue_count)}"
+                f" — `/overdue`"
+            ),
+            inline=False,
+        )
+
+    embed.set_footer(text=t("footer_text", lang))
+    return embed
+
+
+class DailyDigestView(discord.ui.View):
+    """Interactive buttons attached to daily digest messages."""
+
+    def __init__(self, lang: str) -> None:
+        super().__init__(timeout=300)  # buttons expire after 5 min
+        self.lang = lang
+        # Add Refresh button — List and Add are plain link-style (no callback needed)
+        self._add_buttons()
+
+    def _add_buttons(self) -> None:
+        lang = self.lang
+
+        # [📋 View All Tasks] — triggers /list equivalent (ephemeral tip)
+        list_btn = discord.ui.Button(
+            label=t("digest_btn_list", lang),
+            style=discord.ButtonStyle.secondary,
+            custom_id="digest_btn_list",
+            row=0,
+        )
+        list_btn.callback = self._list_callback
+        self.add_item(list_btn)
+
+        # [🔄 Refresh] — resend the digest embed with fresh data
+        refresh_btn = discord.ui.Button(
+            label=t("digest_btn_refresh", lang),
+            style=discord.ButtonStyle.primary,
+            custom_id="digest_btn_refresh",
+            row=0,
+        )
+        refresh_btn.callback = self._refresh_callback
+        self.add_item(refresh_btn)
+
+    async def _list_callback(self, interaction: discord.Interaction) -> None:
+        from utils.helpers import get_user_lang
+        lang = await get_user_lang(interaction.user.id)
+        await interaction.response.send_message(
+            t("help_add", lang) + "\n\n> Use `/list` to view your tasks.",
+            ephemeral=True,
+        )
+
+    async def _refresh_callback(self, interaction: discord.Interaction) -> None:
+        from utils.helpers import get_user_lang, get_user_timezone
+        uid     = str(interaction.user.id)
+        lang    = await get_user_lang(interaction.user.id)
+        tz_name = await get_user_timezone(interaction.user.id)
+        now     = datetime.now(UTC)
+        try:
+            local_tz  = pytz.timezone(tz_name)
+            local_now = now.astimezone(local_tz)
+        except Exception:
+            local_now = now
+
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            embed = await _build_digest_embed(uid, lang, tz_name, local_now, now)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception as exc:
+            log.error("DigestView refresh error: %s", exc)
+            await interaction.followup.send("❌ Refresh failed.", ephemeral=True)
 
 
 class RemindersCog(commands.Cog, name="Reminders"):
@@ -200,7 +381,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                 # Batch both the complete + new insert in one transaction
                 await db.aexecute_batch([
                     (
-                        "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1",
+                        "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
                         (row["task_id"],),
                     ),
                     (
@@ -223,152 +404,97 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     # ── Daily digest ──────────────────────────────────────────────────────────
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=1)
     async def daily_digest_loop(self) -> None:
         """
-        Send a daily digest at the configured hour.
-        Runs every 5 min but only fires once per user per UTC day.
-
-        NOTE: `config.notifications.daily_summary_hour` is compared against the
-        **UTC** hour (now.hour where now = datetime.now(UTC)). Set the env var
-        DAILY_SUMMARY_HOUR to the desired UTC hour — e.g. 1 for 8 AM UTC+7.
-        Per-user local-time digest scheduling is handled by the per-user timezone
-        conversion applied to the task window (day_start/day_end) below.
+        Precision per-user timezone scheduler — checks every minute.
+        Fires the daily digest when a user's LOCAL time hits 08:00 (or their
+        configured digest_hour).  Guards against double-sending with both
+        an in-memory set (_digest_sent_today) AND the persisted
+        last_digest_date column in the users table (survives restarts).
         """
-        now = datetime.now(UTC)
-        # Compare against UTC hour — see docstring above for rationale.
-        if now.hour != config.notifications.daily_summary_hour:
-            return
         if not config.notifications.daily_summary_enabled:
             return
 
-        # Reset tracking at midnight
+        now = datetime.now(UTC)
+
+        # Reset in-memory set at UTC midnight (safe guard — DB column is the truth)
         today_key = now.strftime("%Y-%m-%d")
         if self._digest_day != today_key:
             self._digest_sent_today = set()
             self._digest_day = today_key
 
+        # Only trigger at the :00 second to avoid running 60× per minute
+        if now.second != 0:
+            return
+
         users = await db.afetchall(
-            """SELECT user_id, channel_id, timezone, lang
+            """SELECT user_id, channel_id, timezone, lang, last_digest_date,
+                      COALESCE(digest_hour, 8) AS digest_hour
                FROM users
                WHERE daily_digest=1 AND notify_enabled=1 AND channel_id IS NOT NULL""",
         )
 
         for user in users:
-            uid = user["user_id"]
+            uid        = user["user_id"]
+            tz_name    = user["timezone"] or "Asia/Bangkok"
+            digest_hour = int(user["digest_hour"] or 8)
+
+            # ── Compute user local time ────────────────────────────────────────
+            try:
+                local_tz  = pytz.timezone(tz_name)
+                local_now = now.astimezone(local_tz)
+            except Exception:
+                continue
+
+            # Only fire when user's local HH:MM == digest_hour:00
+            if local_now.hour != digest_hour or local_now.minute != 0:
+                continue
+
+            # ── Idempotency: in-memory guard ───────────────────────────────────
             if uid in self._digest_sent_today:
+                continue
+
+            # ── Idempotency: DB guard (survives restarts) ─────────────────────
+            today_local_str = local_now.strftime("%Y-%m-%d")
+            last_sent = user["last_digest_date"]
+            if last_sent == today_local_str:
+                self._digest_sent_today.add(uid)
                 continue
 
             channel = self.bot.get_channel(user["channel_id"])
             if not channel:
                 continue
 
-            lang    = user["lang"] or "th"
-            tz_name = user["timezone"] or "Asia/Bangkok"
+            lang = user["lang"] or "th"
 
             try:
-                local_tz   = pytz.timezone(tz_name)
-                local_now  = now.astimezone(local_tz)
-                day_start  = local_now.replace(hour=0, minute=0, second=0).astimezone(UTC).isoformat()
-                day_end    = local_now.replace(hour=23, minute=59, second=59).astimezone(UTC).isoformat()
-                upcoming_end = (local_now + timedelta(days=3)).replace(hour=23, minute=59, second=59).astimezone(UTC).isoformat()
-            except Exception:
-                continue
-
-            today_tasks = await db.afetchall(
-                """SELECT task_id, task, deadline, priority
-                   FROM tasks
-                   WHERE owner_id=$1 AND status='Pending'
-                     AND deadline BETWEEN $2 AND $3
-                   ORDER BY priority DESC, deadline ASC LIMIT 10""",
-                (uid, day_start, day_end),
-            )
-
-            overdue_row = await db.afetchone(
-                "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
-                (uid, now.isoformat()),
-            )
-            overdue_count = overdue_row["c"] if overdue_row else 0
-
-            pending_row = await db.afetchone(
-                "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
-                (uid,),
-            )
-            pending_total = pending_row["c"] if pending_row else 0
-
-            upcoming_tasks = await db.afetchall(
-                """SELECT task_id, task, deadline, priority
-                   FROM tasks
-                   WHERE owner_id=$1 AND status='Pending'
-                     AND deadline > $2 AND deadline <= $3
-                   ORDER BY deadline ASC LIMIT 3""",
-                (uid, day_end, upcoming_end),
-            )
-
-            # Motivational message & color
-            if overdue_count > 0:
-                motivational = t("digest_motivational_overdue", lang, overdue=overdue_count)
-                digest_color = 0xED4245
-            elif not today_tasks and pending_total == 0:
-                motivational = t("digest_motivational_clean", lang)
-                digest_color = 0x57F287
-            else:
-                motivational = t("digest_motivational_busy", lang, count=len(today_tasks))
-                digest_color = 0x5865F2
-
-            date_str = local_now.strftime('%d/%m/%Y')
-            embed = discord.Embed(
-                title=t("digest_title", lang, date=date_str),
-                description=f"> {motivational}\n\n{t('digest_stats_line', lang, pending=pending_total, overdue=overdue_count)}",
-                color=digest_color,
-            )
-
-            if today_tasks:
-                lines = [
-                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{format_deadline(r['deadline'], tz_name)}`  ·  ⏱️ `{time_left_str(r['deadline'])}`"
-                    for r in today_tasks
-                ]
-                embed.add_field(
-                    name=f"📅 {t('digest_today_tasks', lang)} ({len(today_tasks)})",
-                    value="\n".join(lines),
-                    inline=False,
-                )
-            else:
-                embed.add_field(
-                    name=f"📅 {t('digest_today_tasks', lang)}",
-                    value=f"> ✅ {t('digest_no_tasks', lang)}",
-                    inline=False,
-                )
-
-            if upcoming_tasks:
-                up_lines = [
-                    f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` **{r['task'][:50]}** — `{format_deadline(r['deadline'], tz_name)}`"
-                    for r in upcoming_tasks
-                ]
-                embed.add_field(
-                    name=t("digest_upcoming_title", lang),
-                    value="\n".join(up_lines),
-                    inline=False,
-                )
-
-            if overdue_count > 0:
-                embed.add_field(
-                    name=f"🚨 {t('tasks_filter_overdue', lang)}",
-                    value=f"**{overdue_count}** {t('cat_task_count', lang, count=overdue_count)} — `/overdue`",
-                    inline=False,
-                )
-
-            embed.set_footer(text=t("footer_text", lang))
-
-            try:
-                await channel.send(f"<@{uid}>", embed=embed)
+                embed = await _build_digest_embed(uid, lang, tz_name, local_now, now)
+                view  = DailyDigestView(lang)
+                await channel.send(f"<@{uid}>", embed=embed, view=view)
                 self._digest_sent_today.add(uid)
+
+                # Persist to DB — prevents double-send even after restart
+                db.bulk_writer.enqueue(
+                    "UPDATE users SET last_digest_date=$1 WHERE user_id=$2",
+                    (today_local_str, uid),
+                )
+                log.info("Daily digest sent: uid=%s tz=%s local=%s",
+                         uid, tz_name, local_now.strftime("%H:%M"))
+            except discord.Forbidden:
+                log.warning("Digest: no send permission in channel %s for user %s",
+                            user["channel_id"], uid)
             except Exception as exc:
-                log.error("Daily digest send error uid=%s: %s", uid, exc)
+                log.error("Daily digest error uid=%s: %s", uid, exc)
 
     @daily_digest_loop.before_loop
     async def before_digest(self) -> None:
         await self.bot.wait_until_ready()
+        # Sleep until the next whole minute (:00s) for precision alignment
+        now     = datetime.now(UTC)
+        wait_s  = 60 - now.second
+        if wait_s < 60:
+            await asyncio.sleep(wait_s)
 
     # ── Cache + rate-limiter cleanup ──────────────────────────────────────────
 

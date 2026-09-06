@@ -296,4 +296,64 @@ STRINGS = {
     "dm_reminder_field_time_left": "⏱️ Time Left",
     "digest_stats_line": "📊 **{pending}** pending  ·  🚨 **{overdue}** overdue",
     "help_overview_browse": "Use the dropdown menu below to view specific command guides:\n• **📝 Task Commands**: Adding, editing, completing, and organizing\n• **⚙️ Settings & Categories**: Timezone, language, categories\n• **💡 Tips & Shortcuts**: Best practices and smart features",
+
+    # ─── Productivity Analytics (/task-stats) ────────────────────────────────────
+    "taskstats_title":              "📊 Productivity Dashboard  ·  {username}",
+    "taskstats_overview_tab":       "📊 Overview",
+    "taskstats_speed_tab":          "⏱️ Speed & Timeliness",
+    "taskstats_refresh":            "🔄 Refresh",
+
+    # Overview section
+    "taskstats_score_label":        "🏆 Productivity Score",
+    "taskstats_score_value":        "{score}/100  {badge}",
+    "taskstats_completion_label":   "✅ Completion Rate",
+    "taskstats_completion_value":   "{rate}%  ({done}/{total} tasks)",
+    "taskstats_velocity_label":     "⚡ Velocity",
+    "taskstats_velocity_value":     "7 days: **{v7}** tasks  ·  30 days: **{v30}** tasks",
+    "taskstats_streak_label":       "🔥 Streak",
+    "taskstats_streak_value":       "{days} days in a row",
+    "taskstats_pending_overdue":    "⏳ Pending: **{pending}**  ·  🚨 Overdue: **{overdue}**",
+
+    # Speed / Timeliness section
+    "taskstats_speed_title":        "⏱️ Speed & Timeliness Analysis  ·  {username}",
+    "taskstats_ontime_label":       "✅ On-Time Completions",
+    "taskstats_ontime_value":       "{rate}%  ({count} tasks)",
+    "taskstats_late_label":         "⚠️ Late Completions",
+    "taskstats_late_value":         "{rate}%  ({count} tasks)",
+    "taskstats_turnaround_label":   "⏰ Avg Turnaround Time",
+    "taskstats_turnaround_value":   "{hours}",
+    "taskstats_lead_label":         "🚀 Avg Early Margin (on-time tasks)",
+    "taskstats_lead_value":         "{hours} before deadline",
+    "taskstats_lag_label":          "🐌 Avg Delay Margin (late tasks)",
+    "taskstats_lag_value":          "{hours} after deadline",
+    "taskstats_no_completed":       "No completed tasks yet — finish your first one today! 🚀",
+    "taskstats_tip_label":          "💡 Personalized Tip",
+
+    # Productivity Badges
+    "badge_master":    "🏆 Productivity Master",
+    "badge_pro":       "🎯 On-Time Pro",
+    "badge_achiever":  "🛡️ Steady Achiever",
+    "badge_rising":    "⚡ Rising Momentum",
+    "badge_pacing":    "🐢 Needs Focus",
+    "badge_new":       "🌱 Just Getting Started",
+
+    # Personalized tips
+    "tip_master":      "Outstanding! You are exceeding expectations. Try pushing your goals even higher!",
+    "tip_pro":         "Almost perfect! Try planning 10 minutes ahead each day to boost your score further.",
+    "tip_achiever":    "Good momentum! Try adding Sub-tasks to large tasks to speed up your workflow.",
+    "tip_rising":      "Warming up! Try sorting tasks by Priority to sharpen your focus.",
+    "tip_pacing":      "No worries! Try splitting big tasks into smaller ones and scheduling daily time blocks.",
+    "tip_new":         "Let's go! Add your first task with `/add` and complete it today! 💪",
+
+    # Duration format helper strings
+    "duration_days":   "{d}d {h}h",
+    "duration_hours":  "{h}h {m}m",
+    "duration_mins":   "{m}m",
+    "duration_na":     "No data yet",
+
+    # ─── On-Demand /digest command ───────────────────────────────────────────────
+    "digest_cmd_desc":  "☀️ View your today's task summary instantly",
+    "digest_btn_list":  "📋 View All Tasks",
+    "digest_btn_add":   "➕ Add New Task",
+    "digest_btn_refresh": "🔄 Refresh",
 }
