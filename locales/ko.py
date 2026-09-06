@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 설명",
     "task_detail_recurring": "🔄 반복",
     "task_detail_subtasks": "📊 하위 작업",
-    "task_detail_created": "📆 생성일",
-    "task_detail_updated": "🔄 마지막 업데이트",
     "task_not_found": "❌ 작업 #**{task_id}** 을(를) 찾을 수 없습니다.",
     "task_not_owned": "❌ 이 작업은 귀하의 것이 아닙니다.",
 
@@ -250,6 +248,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ 연기 확인",
     "snooze_confirm_desc": "이 작업의 마감일을 1일 연기하시겠습니까?\n> **{task_name}**\n📅 새 마감일: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ 연기 확인 (+1일)",
+    "task_snoozed": "⏰ 작업 마감일이 1일 연기되었습니다! 새 마감일: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 개요 및 빠른 시작",

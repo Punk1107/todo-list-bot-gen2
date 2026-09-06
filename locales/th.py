@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 รายละเอียด",
     "task_detail_recurring": "🔄 การทำซ้ำ",
     "task_detail_subtasks": "📊 Subtask",
-    "task_detail_created": "📆 วันที่สร้าง",
-    "task_detail_updated": "🔄 แก้ไขล่าสุด",
     "task_not_found": "❌ ไม่พบ Task ID #{task_id}",
     "task_not_owned": "❌ Task นี้ไม่ใช่ของคุณ",
 
@@ -257,6 +255,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ ยืนยันการเลื่อนเวลา",
     "snooze_confirm_desc": "คุณแน่ใจหรือไม่ว่าต้องการเลื่อนกำหนดส่งงานนี้ออกไป 1 วัน?\n> **{task_name}**\n📅 กำหนดส่งใหม่: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ ยืนยันเลื่อน (+1 วัน)",
+    "task_snoozed": "⏰ เลื่อนกำหนดส่งงานออกไป 1 วันแล้ว! กำหนดส่งใหม่: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 ภาพรวม & เริ่มต้นใช้งาน",

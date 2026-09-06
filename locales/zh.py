@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 描述",
     "task_detail_recurring": "🔄 重复",
     "task_detail_subtasks": "📊 子任务",
-    "task_detail_created": "📆 创建时间",
-    "task_detail_updated": "🔄 最后更新",
     "task_not_found": "❌ 任务 #**{task_id}** 未找到。",
     "task_not_owned": "❌ 此任务不属于您。",
 
@@ -250,6 +248,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ 确认推迟",
     "snooze_confirm_desc": "您确定要将此任务推迟 1 天吗？\n> **{task_name}**\n📅 新截止时间: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ 确认推迟 (+1天)",
+    "task_snoozed": "⏰ 任务已推迟 1 天！新截止时间：`{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 概览与快速入门",

@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 Description",
     "task_detail_recurring": "🔄 Recurring",
     "task_detail_subtasks": "📊 Subtasks",
-    "task_detail_created": "📆 Created",
-    "task_detail_updated": "🔄 Last Updated",
     "task_not_found": "❌ Task #**{task_id}** not found.",
     "task_not_owned": "❌ This task does not belong to you.",
 
@@ -257,6 +255,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ Confirm Snooze",
     "snooze_confirm_desc": "Are you sure you want to postpone this task by 1 day?\n> **{task_name}**\n📅 New deadline: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ Confirm (+1 Day)",
+    "task_snoozed": "⏰ Task postponed by 1 day! New deadline: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 Overview & Quick Start",

@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 説明",
     "task_detail_recurring": "🔄 繰り返し",
     "task_detail_subtasks": "📊 サブタスク",
-    "task_detail_created": "📆 作成日",
-    "task_detail_updated": "🔄 最終更新",
     "task_not_found": "❌ タスク #**{task_id}** が見つかりません。",
     "task_not_owned": "❌ このタスクはあなたのものではありません。",
 
@@ -250,6 +248,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ 延期の確認",
     "snooze_confirm_desc": "このタスクの期限を1日延期しますか？\n> **{task_name}**\n📅 新しい期限: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ 延期を確定 (+1日)",
+    "task_snoozed": "⏰ タスクを1日延期しました！新しい期限: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 概要とクイックスタート",

@@ -88,8 +88,6 @@ STRINGS = {
     "task_detail_desc": "📄 Описание",
     "task_detail_recurring": "🔄 Повторение",
     "task_detail_subtasks": "📊 Подзадачи",
-    "task_detail_created": "📆 Создано",
-    "task_detail_updated": "🔄 Обновлено",
     "task_not_found": "❌ Задача #**{task_id}** не найдена.",
     "task_not_owned": "❌ Эта задача вам не принадлежит.",
 
@@ -257,6 +255,7 @@ STRINGS = {
     "snooze_confirm_title": "⏰ Подтверждение переноса",
     "snooze_confirm_desc": "Вы уверены, что хотите отложить эту задачу на 1 день?\n> **{task_name}**\n📅 Новый срок: `{new_deadline}`",
     "btn_confirm_snooze": "⏰ Подтвердить (+1 день)",
+    "task_snoozed": "⏰ Задача отложена на 1 день! Новый срок: `{deadline}`",
 
     # ─── Help Categories (Interactive Select) ───────────────────────────────────
     "help_cat_overview": "🚀 Обзор и быстрый старт",
