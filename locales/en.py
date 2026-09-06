@@ -356,4 +356,39 @@ STRINGS = {
     "digest_btn_list":  "📋 View All Tasks",
     "digest_btn_add":   "➕ Add New Task",
     "digest_btn_refresh": "🔄 Refresh",
+
+    # ─── Conflict Resolution & Defensive Programming ──────────────────────────
+    # Deadline validation — enhanced
+    "task_past_deadline_detailed": (
+        "❌ Deadline must be in the future.\n"
+        "🕒 Your current time: **{current_time}**\n"
+        "📅 Time you entered: **{input_time}**"
+    ),
+    "task_invalid_year": "❌ The year specified is out of range (2000 – current year +10).",
+    # Subtask integrity
+    "subtask_deadline_exceeds_parent": (
+        "❌ Subtask deadline ({subtask_dl}) cannot be later than the parent task deadline ({parent_dl})."
+    ),
+    "subtask_parent_closed": "❌ Cannot add a subtask to a task that is already completed or cancelled.",
+    # Duplicate task conflict embed
+    "conflict_duplicate_title": "⚠️ Conflict Detected: Duplicate Task Name",
+    "conflict_duplicate_desc": (
+        "A pending task named **\"{existing_name}\"** (ID: **#{existing_id}**) already exists.\n"
+        "Existing deadline: **{existing_deadline}**\n\n"
+        "How would you like to proceed?"
+    ),
+    # Conflict resolution buttons
+    "btn_conflict_autorename": "🏷️ Save as \"{new_name}\"",
+    "btn_conflict_force":      "⚡ Create Anyway",
+    "btn_conflict_view":       "🔍 View Existing Task",
+    "btn_conflict_cancel":     "❌ Cancel",
+    # Conflict resolution outcomes
+    "conflict_cancelled":       "❌ Task creation cancelled.",
+    "conflict_autorename_done": "✅ Task saved as **\"{new_name}\"**! ID: **#{task_id}**",
+    # Edit validation
+    "edit_past_deadline_blocked": (
+        "❌ Cannot set the deadline to a time in the past.\n"
+        "🕒 Your current time: **{current_time}**\n"
+        "📅 Time you entered: **{input_time}**"
+    ),
 }

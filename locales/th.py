@@ -356,4 +356,39 @@ STRINGS = {
     "digest_btn_list":  "📋 ดูงานทั้งหมด",
     "digest_btn_add":   "➕ เพิ่มงานใหม่",
     "digest_btn_refresh": "🔄 รีเฟรช",
+
+    # ─── Conflict Resolution & Defensive Programming ──────────────────────────
+    # Deadline validation — enhanced
+    "task_past_deadline_detailed": (
+        "❌ กำหนดส่งต้องเป็นเวลาในอนาคต\n"
+        "🕒 เวลาปัจจุบันของคุณ: **{current_time}**\n"
+        "📅 เวลาที่คุณระบุ: **{input_time}**"
+    ),
+    "task_invalid_year": "❌ ปีที่ระบุไม่อยู่ในช่วงที่สมเหตุสมผล (ค.ศ. 2000 – ปัจจุบัน +10 ปี)",
+    # Subtask integrity
+    "subtask_deadline_exceeds_parent": (
+        "❌ กำหนดส่งของ Subtask ({subtask_dl}) ต้องไม่เกินกำหนดส่งของงานหลัก ({parent_dl})"
+    ),
+    "subtask_parent_closed": "❌ ไม่สามารถเพิ่ม Subtask ให้กับงานที่เสร็จสิ้นหรือถูกยกเลิกแล้ว",
+    # Duplicate task conflict embed
+    "conflict_duplicate_title": "⚠️ ตรวจพบข้อขัดแย้ง: ชื่องานซ้ำกัน",
+    "conflict_duplicate_desc": (
+        "มีงานที่กำลังรอดำเนินการชื่อ **\"{existing_name}\"** (ID: **#{existing_id}**) อยู่แล้ว\n"
+        "กำหนดส่งงานเดิม: **{existing_deadline}**\n\n"
+        "กรุณาเลือกวิธีดำเนินการ:"
+    ),
+    # Conflict resolution buttons
+    "btn_conflict_autorename": "🏷️ บันทึกเป็น \"{new_name}\"",
+    "btn_conflict_force":      "⚡ ยืนยันสร้างชื่อซ้ำ",
+    "btn_conflict_view":       "🔍 ดูงานเดิม",
+    "btn_conflict_cancel":     "❌ ยกเลิก",
+    # Conflict resolution outcomes
+    "conflict_cancelled":       "❌ ยกเลิกการสร้าง Task เรียบร้อยแล้ว",
+    "conflict_autorename_done": "✅ บันทึก Task ใหม่เป็น **\"{new_name}\"** สำเร็จ! ID: **#{task_id}**",
+    # Edit validation
+    "edit_past_deadline_blocked": (
+        "❌ ไม่สามารถแก้ไขกำหนดส่งเป็นเวลาในอดีตได้\n"
+        "🕒 เวลาปัจจุบันของคุณ: **{current_time}**\n"
+        "📅 เวลาที่คุณระบุ: **{input_time}**"
+    ),
 }

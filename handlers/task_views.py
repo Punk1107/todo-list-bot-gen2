@@ -6,6 +6,11 @@ Changes over v3:
   - AddTaskModal: INSERT ... RETURNING task_id (replaces cur.lastrowid)
   - TaskListView._fetch_page: ? → $N in dynamic query + LIMIT/OFFSET
   - LanguageView: UPDATE uses $1, $2 placeholders
+v5 additions (Conflict Resolution & Defensive Programming):
+  - validate_deadline_defensive: enhanced deadline checks with timezone-aware errors
+  - check_duplicate_task / suggest_unique_task_name: duplicate detection + auto-rename
+  - TaskConflictView: 4-option conflict resolution UI
+  - calculate_defensive_snooze: overdue-safe snooze
 """
 from __future__ import annotations
 
@@ -25,6 +30,13 @@ from utils.helpers import (
     get_user_lang, get_user_timezone, parse_deadline,
     build_task_embed, build_task_list_embed,
     ensure_user, format_deadline,
+)
+from utils.conflict_resolver import (
+    check_duplicate_task,
+    suggest_unique_task_name,
+    validate_deadline_defensive,
+    calculate_defensive_snooze,
+    DeadlineValidationError,
 )
 
 log = logging.getLogger(__name__)
@@ -157,7 +169,7 @@ class AddTaskModal(ui.Modal):
                 return
             description = desc_or_err
 
-        # ── Validate tags ────────────────────────────────────────────────────
+        # ── Validate tags ───────────────────────────────────────────────────────────────
         tags: Optional[str] = None
         if self.tags.value:
             ts = validator.sanitize(self.tags.value, 200)
@@ -166,24 +178,84 @@ class AddTaskModal(ui.Modal):
                 return
             tags = ts
 
-        # ── Validate deadline ────────────────────────────────────────────────
+        # ── Validate deadline (defensive: past + year range + subtask hierarchy) ────────────────
         tz_name = await get_user_timezone(uid)
-        dt = parse_deadline(self.deadline.value, tz_name)
-        if dt is None:
-            err_msg = t("task_invalid_deadline", lang)
-            await _safe_respond(interaction, err_msg)
-            await _send_dm(
-                interaction.user,
-                f"⚠️ **Invalid Deadline**\n{err_msg}\n"
-                "💡 Format: `DD/MM/YYYY HH:MM` e.g. `31/12/2026 23:59`",
+        # Fetch parent deadline for subtask hierarchy check
+        parent_deadline_iso: Optional[str] = None
+        if self.parent_task_id:
+            parent_row = await db.afetchone(
+                "SELECT deadline, status FROM tasks WHERE task_id=$1", (self.parent_task_id,)
             )
-            return
-        if dt < datetime.now(pytz.utc):
-            await _safe_respond(interaction, t("task_past_deadline", lang))
+            if parent_row:
+                if parent_row["status"] in ("Completed", "Cancelled"):
+                    await _safe_respond(interaction, t("subtask_parent_closed", lang))
+                    return
+                parent_deadline_iso = parent_row["deadline"]
+
+        try:
+            dt = validate_deadline_defensive(
+                self.deadline.value, tz_name,
+                parent_deadline_iso=parent_deadline_iso,
+            )
+        except DeadlineValidationError as e:
+            err_msg = t(e.i18n_key, lang, **e.kwargs)
+            await _safe_respond(interaction, err_msg)
+            if e.i18n_key == "task_invalid_deadline":
+                await _send_dm(
+                    interaction.user,
+                    f"⚠️ **Invalid Deadline**\n{err_msg}\n"
+                    "💡 Format: `DD/MM/YYYY HH:MM` e.g. `31/12/2026 23:59`",
+                )
             return
 
-        # ── Insert ───────────────────────────────────────────────────────────
+        # ── Duplicate task name check ──────────────────────────────────────────────────────────
         await ensure_user(uid, lang)
+        conflict_row = await check_duplicate_task(
+            uid, task_name, parent_task_id=self.parent_task_id
+        )
+        if conflict_row is not None:
+            # Show conflict resolution UI instead of inserting
+            suggested_name = await suggest_unique_task_name(
+                uid, task_name, parent_task_id=self.parent_task_id
+            )
+            conflict_view = TaskConflictView(
+                uid=uid,
+                lang=lang,
+                tz_name=tz_name,
+                task_name=task_name,
+                suggested_name=suggested_name,
+                validated_dt=dt,
+                priority=priority,
+                description=description,
+                tags=tags,
+                category_id=self.category_id,
+                parent_task_id=self.parent_task_id,
+                conflict_row=conflict_row,
+            )
+            existing_dl_str = format_deadline(conflict_row["deadline"], tz_name)
+            conflict_embed = discord.Embed(
+                title=t("conflict_duplicate_title", lang),
+                description=t(
+                    "conflict_duplicate_desc", lang,
+                    existing_name=conflict_row["task"],
+                    existing_id=conflict_row["task_id"],
+                    existing_deadline=existing_dl_str,
+                ),
+                color=0xFEE75C,
+            )
+            conflict_embed.set_footer(text="To-Do List Bot Gen 2")
+            if interaction.message:
+                await interaction.response.edit_message(
+                    content=None, embed=conflict_embed, view=conflict_view,
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=conflict_embed, view=conflict_view, ephemeral=True,
+                )
+            conflict_view.message = await interaction.original_response()
+            return
+
+        # ── Insert (no conflict, proceed directly) ───────────────────────────
         try:
             # RETURNING lets us get the new ID without lastrowid (not supported by asyncpg)
             row = await db.afetchone(
@@ -293,9 +365,12 @@ class EditTaskModal(ui.Modal):
         prio_val = int(prio_raw)
 
         tz_name = await get_user_timezone(uid)
-        dt = parse_deadline(self.deadline.value, tz_name)
-        if dt is None:
-            await _safe_respond(interaction, t("task_invalid_deadline", lang))
+        # Defensive deadline validation (blocks past deadlines on edit too)
+        try:
+            dt = validate_deadline_defensive(self.deadline.value, tz_name)
+        except DeadlineValidationError as e:
+            err_msg = t(e.i18n_key, lang, **e.kwargs)
+            await _safe_respond(interaction, err_msg)
             return
 
         description: Optional[str] = None
@@ -313,6 +388,29 @@ class EditTaskModal(ui.Modal):
                 await _safe_respond(interaction, t("err_suspicious", lang))
                 return
             tags = ts
+
+        # ── Duplicate name check (excluding current task) ────────────────────
+        conflict_row = await check_duplicate_task(
+            uid, name_or_err, exclude_task_id=self.task_id
+        )
+        if conflict_row is not None:
+            existing_dl_str = format_deadline(conflict_row["deadline"], tz_name)
+            conflict_embed = discord.Embed(
+                title=t("conflict_duplicate_title", lang),
+                description=t(
+                    "conflict_duplicate_desc", lang,
+                    existing_name=conflict_row["task"],
+                    existing_id=conflict_row["task_id"],
+                    existing_deadline=existing_dl_str,
+                ),
+                color=0xFEE75C,
+            )
+            conflict_embed.set_footer(text="To-Do List Bot Gen 2")
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=conflict_embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=conflict_embed, ephemeral=True)
+            return
 
         try:
             await db.aexecute(
@@ -489,6 +587,187 @@ class SnoozeConfirmView(ui.View):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TaskConflictView — Conflict Resolution UI (shown on duplicate task name)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TaskConflictView(ui.View):
+    """
+    Shown when a duplicate task name is detected during creation (/add or subtask).
+    Presents 4 resolution options:
+      1. 🏷️ Auto-Rename  — save with a unique suffix e.g. "Task (2)"
+      2. ⚡ Force Create — save with the original (duplicate) name
+      3. 🔍 View Existing — show the existing conflicting task embed
+      4. ❌ Cancel        — discard the new task
+    """
+
+    def __init__(
+        self,
+        uid: str,
+        lang: str,
+        tz_name: str,
+        task_name: str,
+        suggested_name: str,
+        validated_dt: datetime,
+        priority: int,
+        description: Optional[str],
+        tags: Optional[str],
+        category_id: Optional[int],
+        parent_task_id: Optional[int],
+        conflict_row: dict,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.uid            = uid
+        self.lang           = lang
+        self.tz_name        = tz_name
+        self.task_name      = task_name
+        self.suggested_name = suggested_name
+        self.validated_dt   = validated_dt
+        self.priority       = priority
+        self.description    = description
+        self.tags           = tags
+        self.category_id    = category_id
+        self.parent_task_id = parent_task_id
+        self.conflict_row   = conflict_row
+        self.message: Optional[discord.Message] = None
+
+        # Set dynamic button label for auto-rename (max 80 chars in Discord)
+        label = t("btn_conflict_autorename", lang, new_name=suggested_name)
+        self.btn_autorename.label = label[:80]
+        self.btn_force.label      = t("btn_conflict_force", lang)
+        self.btn_view.label       = t("btn_conflict_view", lang)
+        self.btn_cancel.label     = t("btn_conflict_cancel", lang)
+
+    async def _do_insert(
+        self,
+        interaction: discord.Interaction,
+        final_name: str,
+        success_msg_key: str = "task_created",
+        **success_kwargs,
+    ) -> None:
+        """Insert the task with the given name and show the result."""
+        lang     = self.lang
+        tz_name  = self.tz_name
+        uid      = self.uid
+        dt       = self.validated_dt
+        priority = self.priority
+
+        try:
+            row = await db.afetchone(
+                """INSERT INTO tasks
+                   (task, deadline, priority, description, tags,
+                    category_id, parent_task_id, owner_id)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                   RETURNING task_id""",
+                (final_name, dt.isoformat(), priority, self.description, self.tags,
+                 self.category_id, self.parent_task_id, uid),
+            )
+            task_id = row["task_id"]
+            await db.alog_action(uid, "task_created", str(task_id), final_name)
+            db.invalidate_stats(uid)
+        except Exception as exc:
+            log.error("TaskConflictView insert failed: %s", exc)
+            await interaction.followup.send(t("err_db", lang), ephemeral=True)
+            return
+
+        task_row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        embed    = build_task_embed(task_row, lang, tz_name)
+        view     = TaskActionView(task_id, uid, lang, current_priority=priority)
+        success_msg = t(success_msg_key, lang, task_id=task_id, **success_kwargs)
+        self.stop()
+        await interaction.edit_original_response(
+            content=success_msg, embed=embed, view=view,
+        )
+        dm_embed = discord.Embed(
+            title="✅ " + ("สร้าง Task สำเร็จ!" if lang == "th" else "Task Created!"),
+            description=f"**#{task_id} — {final_name[:80]}**",
+            color=0x57F287,
+        )
+        dm_embed.set_footer(text="To-Do List Bot Gen 2")
+        await _send_dm(interaction.user, embed=dm_embed)
+
+    async def on_timeout(self) -> None:
+        _disable_all(self)
+        if self.message:
+            try:
+                await self.message.edit(
+                    content=("⌛ หมดเวลา" if self.lang == "th" else "⌛ Timed out."),
+                    view=self,
+                )
+            except Exception:
+                pass
+
+    # ── Button 1: Auto-Rename ─────────────────────────────────────────────────
+
+    @ui.button(style=discord.ButtonStyle.primary, row=0, custom_id="conflict_autorename")
+    async def btn_autorename(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        await self._do_insert(
+            interaction,
+            final_name=self.suggested_name,
+            success_msg_key="conflict_autorename_done",
+            new_name=self.suggested_name,
+        )
+
+    # ── Button 2: Force Create (keep duplicate name) ──────────────────────────
+
+    @ui.button(style=discord.ButtonStyle.secondary, row=0, custom_id="conflict_force")
+    async def btn_force(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer()
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        await self._do_insert(
+            interaction,
+            final_name=self.task_name,
+            success_msg_key="task_created",
+        )
+
+    # ── Button 3: View Existing Task ──────────────────────────────────────────
+
+    @ui.button(style=discord.ButtonStyle.secondary, row=1, custom_id="conflict_view")
+    async def btn_view(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        lang    = self.lang
+        tz_name = self.tz_name
+        try:
+            row = await db.afetchone(
+                "SELECT * FROM tasks WHERE task_id=$1", (self.conflict_row["task_id"],)
+            )
+            if not row:
+                await interaction.followup.send(t("task_not_found", lang, task_id=self.conflict_row["task_id"]), ephemeral=True)
+                return
+            embed = build_task_embed(row, lang, tz_name)
+            view  = TaskActionView(row["task_id"], self.uid, lang,
+                                   current_priority=row["priority"])
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        except Exception as exc:
+            log.error("TaskConflictView.btn_view error: %s", exc)
+            await interaction.followup.send(t("err_generic", lang), ephemeral=True)
+
+    # ── Button 4: Cancel ──────────────────────────────────────────────────────
+
+    @ui.button(style=discord.ButtonStyle.danger, row=1, custom_id="conflict_cancel")
+    async def btn_cancel(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(
+            content=t("conflict_cancelled", self.lang),
+            embed=None, view=None,
+        )
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item) -> None:  # type: ignore[override]
+        log.error("TaskConflictView error: %s", error, exc_info=True)
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
+            else:
+                await interaction.response.send_message(t("err_generic", self.lang), ephemeral=True)
+        except Exception:
+            pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Priority constants — single source of truth for labels + colors
 # ─────────────────────────────────────────────────────────────────────────────
@@ -939,15 +1218,9 @@ class TaskActionView(ui.View):
             )
             return
         try:
-            from datetime import timedelta
-            dl_val = row["deadline"]
-            if isinstance(dl_val, datetime):
-                dt = dl_val
-            else:
-                dt = datetime.fromisoformat(dl_val)
-            if dt.tzinfo is None:
-                dt = pytz.utc.localize(dt)
-            new_dl = (dt + timedelta(days=1)).isoformat()
+            # Use defensive snooze: if task is overdue, snooze from now instead of
+            # from the (past) deadline so the new deadline is always in the future
+            new_dl = calculate_defensive_snooze(row["deadline"])
             tz_name = await get_user_timezone(self.uid)
             new_dl_fmt = format_deadline(new_dl, tz_name)
 
@@ -973,10 +1246,14 @@ class TaskActionView(ui.View):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
-            "SELECT parent_task_id FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT parent_task_id, status FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         if row and row["parent_task_id"] is not None:
             await interaction.response.send_message(t("subtask_no_nested", lang), ephemeral=True)
+            return
+        # Defensive: prevent adding subtasks to completed or cancelled parent tasks
+        if row and row["status"] in ("Completed", "Cancelled"):
+            await interaction.response.send_message(t("subtask_parent_closed", lang), ephemeral=True)
             return
 
         uid = str(interaction.user.id)
