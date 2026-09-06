@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 11   # bump when adding migrations below
+SCHEMA_VERSION = 12   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -547,6 +547,21 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE guild_settings ADD PRIMARY KEY (guild_id, key);
     INSERT INTO schema_version VALUES (11) ON CONFLICT (version) DO UPDATE SET version=11;
     """),
+
+    # ── v12: daily digest scheduling + productivity analytics support ─────────
+    (12, """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_digest_date TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_hour      INTEGER NOT NULL DEFAULT 8;
+    UPDATE tasks
+       SET completed_at = updated_at
+     WHERE status = 'Completed'
+       AND completed_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_completed_at
+        ON tasks(owner_id, status, completed_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_productivity
+        ON tasks(owner_id, status, deadline, completed_at, created_at);
+    INSERT INTO schema_version VALUES (12) ON CONFLICT (version) DO UPDATE SET version=12;
+    """),
 ]
 
 
@@ -850,6 +865,148 @@ class DatabaseManager:
         """Call this after any task mutation to keep stats fresh."""
         self.stats_cache.invalidate(uid)
         self.query_cache.invalidate_all()  # also bust L1 query cache
+
+    # ── Productivity analytics (for /task-stats) ──────────────────────────────
+
+    async def get_user_productivity_analytics(self, uid: str) -> dict:
+        """
+        Compute rich productivity metrics for /task-stats:
+        - Completion counts, pending, overdue
+        - Velocity: tasks completed in last 7d / 30d
+        - Turnaround time: avg hours from created_at → completed_at
+        - Timeliness: on-time rate, late rate
+        - Lead/lag margin: avg hours early (on-time tasks) / avg hours late
+        - Streak days
+        Results are cached in StatsCache for 60 seconds.
+        """
+        cache_key = f"analytics:{uid}"
+        cached = self.stats_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # ── 1. Basic counts ───────────────────────────────────────────────────
+        base_row = await self.afetchone(
+            """SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN status='Pending'   THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN status='Cancelled' THEN 1 ELSE 0 END) AS cancelled,
+                SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue,
+                SUM(CASE WHEN is_pinned=1 THEN 1 ELSE 0 END) AS pinned
+               FROM tasks WHERE owner_id=$2""",
+            (now_iso, uid),
+        )
+        base = {k: int(base_row[k] or 0) for k in
+                ("total", "completed", "pending", "cancelled", "overdue", "pinned")} \
+               if base_row else {"total": 0, "completed": 0, "pending": 0,
+                                 "cancelled": 0, "overdue": 0, "pinned": 0}
+
+        # ── 2. Velocity: tasks completed in last 7d / 30d ─────────────────────
+        velocity_row = await self.afetchone(
+            """SELECT
+                SUM(CASE WHEN completed_at >= NOW() - INTERVAL '7 days'  THEN 1 ELSE 0 END) AS done_7d,
+                SUM(CASE WHEN completed_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END) AS done_30d
+               FROM tasks
+               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL""",
+            (uid,),
+        )
+        done_7d  = int(velocity_row["done_7d"]  or 0) if velocity_row else 0
+        done_30d = int(velocity_row["done_30d"] or 0) if velocity_row else 0
+
+        # ── 3. Timeliness: on-time vs late (using completed_at vs deadline) ───
+        timeliness_row = await self.afetchone(
+            """SELECT
+                SUM(CASE WHEN completed_at <= deadline::TIMESTAMP WITH TIME ZONE THEN 1 ELSE 0 END) AS on_time,
+                SUM(CASE WHEN completed_at >  deadline::TIMESTAMP WITH TIME ZONE THEN 1 ELSE 0 END) AS late
+               FROM tasks
+               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL AND deadline IS NOT NULL""",
+            (uid,),
+        )
+        on_time_count = int(timeliness_row["on_time"] or 0) if timeliness_row else 0
+        late_count    = int(timeliness_row["late"]    or 0) if timeliness_row else 0
+        timed_total   = on_time_count + late_count
+        on_time_rate  = round(on_time_count / timed_total * 100, 1) if timed_total > 0 else 0.0
+        late_rate     = round(late_count    / timed_total * 100, 1) if timed_total > 0 else 0.0
+
+        # ── 4. Turnaround time: avg hours from created_at → completed_at ──────
+        turnaround_row = await self.afetchone(
+            """SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600.0) AS avg_hours
+               FROM tasks
+               WHERE owner_id=$1 AND status='Completed'
+                 AND completed_at IS NOT NULL AND created_at IS NOT NULL""",
+            (uid,),
+        )
+        avg_turnaround_hours = float(turnaround_row["avg_hours"] or 0.0) if turnaround_row else 0.0
+
+        # ── 5. Lead margin: avg hours EARLY for on-time tasks ─────────────────
+        lead_row = await self.afetchone(
+            """SELECT AVG(EXTRACT(EPOCH FROM (deadline::TIMESTAMP WITH TIME ZONE - completed_at)) / 3600.0) AS avg_lead
+               FROM tasks
+               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL
+                 AND deadline IS NOT NULL
+                 AND completed_at <= deadline::TIMESTAMP WITH TIME ZONE""",
+            (uid,),
+        )
+        avg_lead_hours = float(lead_row["avg_lead"] or 0.0) if lead_row else 0.0
+
+        # ── 6. Lag margin: avg hours LATE for overdue-completed tasks ─────────
+        lag_row = await self.afetchone(
+            """SELECT AVG(EXTRACT(EPOCH FROM (completed_at - deadline::TIMESTAMP WITH TIME ZONE)) / 3600.0) AS avg_lag
+               FROM tasks
+               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL
+                 AND deadline IS NOT NULL
+                 AND completed_at > deadline::TIMESTAMP WITH TIME ZONE""",
+            (uid,),
+        )
+        avg_lag_hours = float(lag_row["avg_lag"] or 0.0) if lag_row else 0.0
+
+        # ── 7. Streak days from users table ───────────────────────────────────
+        streak_row = await self.afetchone(
+            "SELECT streak_days FROM users WHERE user_id=$1", (uid,)
+        )
+        streak_days = int(streak_row["streak_days"] or 0) if streak_row else 0
+
+        # ── 8. Productivity Score (0–100) ─────────────────────────────────────
+        #  Weighted formula:
+        #    40% on-time rate  (max 40 pts)
+        #    30% completion rate vs total non-cancelled (max 30 pts)
+        #    20% velocity score: done_7d capped at 20 (1 pt/task, max 20 pts)
+        #    10% consistency bonus: on_time_count >= 5 → full 10 pts
+        total_eligible = base["completed"] + base["pending"] + base["overdue"]
+        completion_rate = base["completed"] / total_eligible * 100 if total_eligible > 0 else 0.0
+
+        score_ontime     = on_time_rate * 0.40
+        score_completion = min(completion_rate, 100) * 0.30
+        score_velocity   = min(done_7d * 5, 20)        # 4 tasks/week = full score
+        score_consistency = 10 if on_time_count >= 5 else (on_time_count / 5 * 10)
+        productivity_score = round(min(score_ontime + score_completion + score_velocity + score_consistency, 100), 1)
+
+        result = {
+            # Basic counts
+            **base,
+            # Velocity
+            "done_7d":  done_7d,
+            "done_30d": done_30d,
+            # Timeliness
+            "on_time_count":  on_time_count,
+            "late_count":     late_count,
+            "on_time_rate":   on_time_rate,
+            "late_rate":      late_rate,
+            # Turnaround
+            "avg_turnaround_hours": round(avg_turnaround_hours, 1),
+            # Lead/lag
+            "avg_lead_hours": round(avg_lead_hours, 1),
+            "avg_lag_hours":  round(avg_lag_hours, 1),
+            # Streak
+            "streak_days":    streak_days,
+            # Score
+            "productivity_score": productivity_score,
+            "completion_rate":    round(completion_rate, 1),
+        }
+        self.stats_cache.set(cache_key, result)
+        return result
 
     # ── Cache maintenance ─────────────────────────────────────────────────────
 

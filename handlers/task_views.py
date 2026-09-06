@@ -815,7 +815,7 @@ class TaskActionView(ui.View):
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
         await db.aexecute(
-            "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1",
+            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
             (self.task_id,),
         )
         await db.alog_action(self.uid, "task_completed", str(self.task_id))

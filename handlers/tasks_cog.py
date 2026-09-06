@@ -24,7 +24,7 @@ from locales.i18n import t
 from utils.helpers import (
     get_user_lang, get_user_timezone, ensure_user,
     build_task_embed, build_task_list_embed, build_stats_embed, build_csv_export,
-    format_deadline, time_left_str,
+    format_deadline, time_left_str, build_task_stats_embed,
 )
 from handlers.task_views import (
     AddTaskModal, TaskActionView, TaskListView, DeleteConfirmView,
@@ -295,7 +295,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
 
         await db.aexecute(
-            "UPDATE tasks SET status='Completed', updated_at=NOW() WHERE task_id=$1 AND owner_id=$2",
+            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1 AND owner_id=$2",
             (task_id, uid),
         )
         await db.alog_action(uid, "task_completed", str(task_id))
@@ -536,6 +536,140 @@ class TasksCog(commands.Cog, name="Tasks"):
             t("export_success", lang, filename=fname),
             file=discord.File(csv_bytes, filename=fname),
             ephemeral=True,
+        )
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # /task-stats
+    # ───────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="task-stats",
+        description="📊 Productivity Dashboard — ดูสถิติประสิทธิภาพการทำงานของคุณ",
+    )
+    @rate_limit_check("command")
+    async def task_stats(self, interaction: discord.Interaction) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+        await interaction.response.defer(thinking=True)
+
+        data       = await db.get_user_productivity_analytics(uid)
+        avatar_url = interaction.user.display_avatar.url if interaction.user.display_avatar else None
+        username   = interaction.user.display_name
+
+        embed = build_task_stats_embed(data, lang, username, avatar_url, view_mode="overview")
+        view  = TaskStatsView(data, lang, username, avatar_url)
+        await interaction.followup.send(embed=embed, view=view)
+        await db.alog_action(uid, "task_stats_viewed")
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # /digest
+    # ───────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="digest",
+        description="☀️ ดูสรุป Task วันนี้ทันที / View your today's task summary instantly",
+    )
+    @rate_limit_check("command")
+    async def digest(self, interaction: discord.Interaction) -> None:
+        """On-demand Daily Digest — shows what the scheduled digest would send."""
+        from handlers.reminders_cog import _build_digest_embed, DailyDigestView
+        import pytz as _pytz
+
+        uid     = str(interaction.user.id)
+        lang    = await get_user_lang(uid)
+        tz_name = await get_user_timezone(uid)
+        await ensure_user(uid, lang)
+        await interaction.response.defer(thinking=True, ephemeral=True)
+
+        _UTC = _pytz.utc
+        now  = datetime.now(timezone.utc)
+        try:
+            local_tz  = _pytz.timezone(tz_name)
+            local_now = now.astimezone(local_tz)
+        except Exception:
+            import pytz
+            local_now = now.astimezone(pytz.utc)
+            tz_name   = "UTC"
+
+        try:
+            embed = await _build_digest_embed(uid, lang, tz_name, local_now, now)
+            view  = DailyDigestView(lang)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            await db.alog_action(uid, "digest_viewed_ondemand")
+        except Exception as exc:
+            log.error("On-demand digest error uid=%s: %s", uid, exc)
+            await interaction.followup.send(
+                f"❌ เกิดข้อผิดพลาด กรุณาลองใหม่\n`{exc}`",
+                ephemeral=True,
+            )
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# TaskStatsView — interactive tab switcher for /task-stats
+# ───────────────────────────────────────────────────────────────────────────
+
+class TaskStatsView(discord.ui.View):
+    """
+    Interactive View for /task-stats:
+      📊 Overview tab | ⏱️ Speed & Timeliness tab | 🔄 Refresh button
+    """
+
+    def __init__(
+        self,
+        data: dict,
+        lang: str,
+        username: str,
+        avatar_url: Optional[str],
+    ) -> None:
+        super().__init__(timeout=300)
+        self._data       = data
+        self._lang       = lang
+        self._username   = username
+        self._avatar_url = avatar_url
+        self._view_mode  = "overview"  # current active tab
+
+    @discord.ui.button(label="📊 Overview", style=discord.ButtonStyle.primary,
+                       custom_id="stats_overview")
+    async def btn_overview(self, interaction: discord.Interaction,
+                           button: discord.ui.Button) -> None:
+        self._view_mode = "overview"
+        embed = build_task_stats_embed(
+            self._data, self._lang, self._username,
+            self._avatar_url, view_mode="overview",
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="⏱️ Speed & Timeliness",
+                       style=discord.ButtonStyle.secondary,
+                       custom_id="stats_speed")
+    async def btn_speed(self, interaction: discord.Interaction,
+                        button: discord.ui.Button) -> None:
+        self._view_mode = "speed"
+        embed = build_task_stats_embed(
+            self._data, self._lang, self._username,
+            self._avatar_url, view_mode="speed",
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary,
+                       custom_id="stats_refresh")
+    async def btn_refresh(self, interaction: discord.Interaction,
+                          button: discord.ui.Button) -> None:
+        uid = str(interaction.user.id)
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        # Invalidate cache so we get fresh data
+        db.stats_cache.invalidate(f"analytics:{uid}")
+        fresh_data = await db.get_user_productivity_analytics(uid)
+        self._data = fresh_data
+        embed = build_task_stats_embed(
+            fresh_data, self._lang, self._username,
+            self._avatar_url, view_mode=self._view_mode,
+        )
+        # Edit original message with fresh embed + updated view
+        await interaction.message.edit(embed=embed, view=self)
+        await interaction.followup.send(
+            "🔄 รีเฟรชข้อมูลเรียบร้อยแล้ว ✅", ephemeral=True
         )
 
 

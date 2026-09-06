@@ -296,4 +296,64 @@ STRINGS = {
     "dm_reminder_field_time_left": "⏱️ เวลาที่เหลือ",
     "digest_stats_line": "📊 **{pending}** งานค้าง  ·  🚨 **{overdue}** เกินกำหนด",
     "help_overview_browse": "ใช้เมนูด้านล่างเพื่อเลือกดูคำสั่งตามหมวดหมู่:\n• **📝 คำสั่งจัดการ Task**: การสร้าง, แก้ไข, ทำเสร็จ, และจัดระเบียบ\n• **⚙️ ตั้งค่า & หมวดหมู่**: Timezone, ภาษา, และหมวดหมู่\n• **💡 เคล็ดลับ & ทางลัด**: ฟีเจอร์เด็ดและการใช้งานให้คุ้มค่า",
+
+    # ─── Productivity Analytics (/task-stats) ────────────────────────────────────
+    "taskstats_title":              "📊 Productivity Dashboard  ·  {username}",
+    "taskstats_overview_tab":       "📊 ภาพรวม",
+    "taskstats_speed_tab":          "⏱️ เจาะลึกความเร็ว",
+    "taskstats_refresh":            "🔄 รีเฟรช",
+
+    # Overview section
+    "taskstats_score_label":        "🏆 Productivity Score",
+    "taskstats_score_value":        "{score}/100  {badge}",
+    "taskstats_completion_label":   "✅ อัตราความสำเร็จ",
+    "taskstats_completion_value":   "{rate}%  ({done}/{total} งาน)",
+    "taskstats_velocity_label":     "⚡ Velocity (ความเร็ว)",
+    "taskstats_velocity_value":     "7 วัน: **{v7}** งาน  ·  30 วัน: **{v30}** งาน",
+    "taskstats_streak_label":       "🔥 Streak",
+    "taskstats_streak_value":       "{days} วันต่อเนื่อง",
+    "taskstats_pending_overdue":    "⏳ ค้างอยู่: **{pending}**  ·  🚨 เกินกำหนด: **{overdue}**",
+
+    # Speed / Timeliness section
+    "taskstats_speed_title":        "⏱️ Speed & Timeliness Analysis  ·  {username}",
+    "taskstats_ontime_label":       "✅ เสร็จตรงเวลา",
+    "taskstats_ontime_value":       "{rate}%  ({count} งาน)",
+    "taskstats_late_label":         "⚠️ เสร็จช้ากว่ากำหนด",
+    "taskstats_late_value":         "{rate}%  ({count} งาน)",
+    "taskstats_turnaround_label":   "⏰ เวลาเฉลี่ยต่องาน",
+    "taskstats_turnaround_value":   "{hours}",
+    "taskstats_lead_label":         "🚀 ล่วงหน้าเฉลี่ย (งานที่เสร็จทัน)",
+    "taskstats_lead_value":         "{hours} ก่อนกำหนด",
+    "taskstats_lag_label":          "🐌 ล่าช้าเฉลี่ย (งานที่เสร็จช้า)",
+    "taskstats_lag_value":          "{hours} หลังกำหนด",
+    "taskstats_no_completed":       "ยังไม่มีงานที่เสร็จสมบูรณ์ เริ่มทำงานแรกกันเลย! 🚀",
+    "taskstats_tip_label":          "💡 คำแนะนำสำหรับคุณ",
+
+    # Productivity Badges
+    "badge_master":    "🏆 Productivity Master",
+    "badge_pro":       "🎯 On-Time Pro",
+    "badge_achiever":  "🛡️ Steady Achiever",
+    "badge_rising":    "⚡ Rising Momentum",
+    "badge_pacing":    "🐢 Needs Focus",
+    "badge_new":       "🌱 Just Getting Started",
+
+    # Personalized tips
+    "tip_master":      "เยี่ยมมาก! คุณทำได้ดีเกินคาด ลองตั้งเป้าสูงขึ้นอีกสักนิดดีไหม?",
+    "tip_pro":         "เกือบสมบูรณ์แบบแล้ว! ลองวางแผนล่วงหน้าสัก 10 นาทีต่อวันเพื่อดันคะแนนขึ้นอีก",
+    "tip_achiever":    "ไปได้ดี! ลองตั้ง Sub-task สำหรับงานใหญ่ๆ เพื่อเร่งความเร็วในการทำงาน",
+    "tip_rising":      "กำลังอุ่นเครื่อง! ลองจัดลำดับความสำคัญงานด้วย Priority เพื่อเพิ่ม Focus",
+    "tip_pacing":      "ไม่เป็นไร! ลองแบ่งงานใหญ่เป็นงานย่อยๆ และตั้งเวลาทุกวันเพื่อสร้างนิสัยดีๆ",
+    "tip_new":         "เริ่มต้นได้เลย! เพิ่มงานแรกด้วย `/add` แล้วทำมันให้เสร็จวันนี้เลย! 💪",
+
+    # Duration format helper strings
+    "duration_days":   "{d} วัน {h} ชั่วโมง",
+    "duration_hours":  "{h} ชั่วโมง {m} นาที",
+    "duration_mins":   "{m} นาที",
+    "duration_na":     "ยังไม่มีข้อมูล",
+
+    # ─── On-Demand /digest command ───────────────────────────────────────────────
+    "digest_cmd_desc":  "☀️ ดูสรุปภาพรวม Task วันนี้ทันที",
+    "digest_btn_list":  "📋 ดูงานทั้งหมด",
+    "digest_btn_add":   "➕ เพิ่มงานใหม่",
+    "digest_btn_refresh": "🔄 รีเฟรช",
 }

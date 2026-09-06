@@ -664,6 +664,205 @@ def build_task_list_embed(
     return embed
 
 
+def format_duration(hours: float, lang: str) -> str:
+    """Convert a floating-point number of hours to a human-readable duration string."""
+    if hours <= 0:
+        return t("duration_na", lang)
+    total_mins = int(round(hours * 60))
+    d = total_mins // (60 * 24)
+    remaining = total_mins % (60 * 24)
+    h = remaining // 60
+    m = remaining % 60
+    if d > 0:
+        return t("duration_days", lang, d=d, h=h)
+    if h > 0:
+        return t("duration_hours", lang, h=h, m=m)
+    return t("duration_mins", lang, m=max(m, 1))
+
+
+def get_productivity_badge_tip(score: float, lang: str) -> tuple[str, str]:
+    """Return (badge_text, tip_text) based on Productivity Score."""
+    if score >= 90:
+        return t("badge_master", lang), t("tip_master", lang)
+    if score >= 75:
+        return t("badge_pro", lang), t("tip_pro", lang)
+    if score >= 60:
+        return t("badge_achiever", lang), t("tip_achiever", lang)
+    if score >= 40:
+        return t("badge_rising", lang), t("tip_rising", lang)
+    if score > 0:
+        return t("badge_pacing", lang), t("tip_pacing", lang)
+    return t("badge_new", lang), t("tip_new", lang)
+
+
+def build_task_stats_embed(
+    data: dict,
+    lang: str,
+    username: str,
+    avatar_url: Optional[str] = None,
+    view_mode: str = "overview",
+) -> discord.Embed:
+    """
+    Build a premium Productivity Analytics embed for /task-stats.
+
+    view_mode:
+      "overview" — Completion rate, velocity, streak, pending/overdue
+      "speed"    — On-time rate, turnaround, lead/lag margins
+    """
+    score  = data.get("productivity_score", 0.0)
+    badge, tip = get_productivity_badge_tip(score, lang)
+
+    if view_mode == "speed":
+        # ── Speed & Timeliness tab ─────────────────────────────────────────────
+        completed = data.get("completed", 0)
+        on_time   = data.get("on_time_count", 0)
+        late      = data.get("late_count", 0)
+        on_rate   = data.get("on_time_rate", 0.0)
+        late_rate = data.get("late_rate", 0.0)
+        turn_hrs  = data.get("avg_turnaround_hours", 0.0)
+        lead_hrs  = data.get("avg_lead_hours", 0.0)
+        lag_hrs   = data.get("avg_lag_hours", 0.0)
+
+        # Color based on on-time rate
+        if on_rate >= 80:
+            color = _C_FINE
+        elif on_rate >= 50:
+            color = _C_UPCOMING
+        elif completed == 0:
+            color = 0x5865F2
+        else:
+            color = _C_CRITICAL
+
+        embed = discord.Embed(
+            title=t("taskstats_speed_title", lang, username=username),
+            color=color,
+        )
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        if completed == 0:
+            embed.description = f"> {t('taskstats_no_completed', lang)}"
+        else:
+            # Build a timeliness bar
+            bar = progress_bar(on_time, on_time + late)
+            embed.description = f"> **{badge}**\n{bar}"
+
+            embed.add_field(
+                name=t("taskstats_ontime_label", lang),
+                value=t("taskstats_ontime_value", lang, rate=on_rate, count=on_time),
+                inline=True,
+            )
+            embed.add_field(
+                name=t("taskstats_late_label", lang),
+                value=t("taskstats_late_value", lang, rate=late_rate, count=late),
+                inline=True,
+            )
+            embed.add_field(name="\u200B", value="\u200B", inline=True)  # spacer
+
+            embed.add_field(
+                name=t("taskstats_turnaround_label", lang),
+                value=t("taskstats_turnaround_value", lang,
+                        hours=format_duration(turn_hrs, lang)),
+                inline=True,
+            )
+            if lead_hrs > 0:
+                embed.add_field(
+                    name=t("taskstats_lead_label", lang),
+                    value=t("taskstats_lead_value", lang,
+                            hours=format_duration(lead_hrs, lang)),
+                    inline=True,
+                )
+            if lag_hrs > 0:
+                embed.add_field(
+                    name=t("taskstats_lag_label", lang),
+                    value=t("taskstats_lag_value", lang,
+                            hours=format_duration(lag_hrs, lang)),
+                    inline=True,
+                )
+
+        embed.add_field(
+            name=t("taskstats_tip_label", lang),
+            value=f"> {tip}",
+            inline=False,
+        )
+
+    else:
+        # ── Overview tab (default) ─────────────────────────────────────────────
+        total   = data.get("total", 0)
+        done    = data.get("completed", 0)
+        pending = data.get("pending", 0)
+        overdue = data.get("overdue", 0)
+        v7      = data.get("done_7d", 0)
+        v30     = data.get("done_30d", 0)
+        streak  = data.get("streak_days", 0)
+        comp_rate = data.get("completion_rate", 0.0)
+
+        # Dynamic color from score
+        if score >= 80:
+            color = _C_FINE
+        elif score >= 50:
+            color = _C_UPCOMING
+        elif overdue > 0:
+            color = _C_CRITICAL
+        else:
+            color = 0x5865F2
+
+        embed = discord.Embed(
+            title=t("taskstats_title", lang, username=username),
+            color=color,
+        )
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        # Score + badge as description
+        embed.description = (
+            f"> {t('taskstats_score_label', lang)}: "
+            f"**{score}/100**  {badge}\n"
+            f"{progress_bar(int(score), 100)}"
+        )
+
+        # Completion rate
+        embed.add_field(
+            name=t("taskstats_completion_label", lang),
+            value=t("taskstats_completion_value", lang,
+                    rate=comp_rate, done=done, total=total),
+            inline=True,
+        )
+
+        # Streak
+        embed.add_field(
+            name=t("taskstats_streak_label", lang),
+            value=t("taskstats_streak_value", lang, days=streak),
+            inline=True,
+        )
+        embed.add_field(name="\u200B", value="\u200B", inline=True)  # spacer
+
+        # Velocity
+        embed.add_field(
+            name=t("taskstats_velocity_label", lang),
+            value=t("taskstats_velocity_value", lang, v7=v7, v30=v30),
+            inline=False,
+        )
+
+        # Pending / Overdue status bar
+        embed.add_field(
+            name="\u200B",
+            value=t("taskstats_pending_overdue", lang,
+                    pending=pending, overdue=overdue),
+            inline=False,
+        )
+
+        # Personalized tip
+        embed.add_field(
+            name=t("taskstats_tip_label", lang),
+            value=f"> {tip}",
+            inline=False,
+        )
+
+    embed.set_footer(text=t("footer_text", lang))
+    return embed
+
+
 def build_stats_embed(stats: dict[str, int], lang: str, username: str,
                       avatar_url: Optional[str] = None) -> discord.Embed:
     """Build a premium stats embed with progress bar, dynamic header, and breakdown."""
