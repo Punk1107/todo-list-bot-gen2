@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 12   # bump when adding migrations below
+SCHEMA_VERSION = 13   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -561,6 +561,76 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_tasks_productivity
         ON tasks(owner_id, status, deadline, completed_at, created_at);
     INSERT INTO schema_version VALUES (12) ON CONFLICT (version) DO UPDATE SET version=12;
+    """),
+
+    # ── v13: Shared Projects (Collaboration) system ───────────────────────────
+    # Data Scope design:
+    #   Personal Tasks: project_id IS NULL, guild_id IS NULL (unchanged, backward-compatible)
+    #   Shared Tasks:   project_id = <int>, guild_id = <TEXT>  (guild-tenancy isolated)
+    (13, """
+    CREATE TABLE IF NOT EXISTS projects (
+        project_id  SERIAL PRIMARY KEY,
+        guild_id    TEXT      NOT NULL,
+        name        TEXT      NOT NULL,
+        description TEXT,
+        owner_id    TEXT      NOT NULL REFERENCES users(user_id),
+        status      TEXT      NOT NULL DEFAULT 'active'
+                              CHECK(status IN ('active','archived','completed')),
+        color       TEXT      NOT NULL DEFAULT '#5865F2',
+        emoji       TEXT      NOT NULL DEFAULT '📁',
+        channel_id  BIGINT,
+        role_id     BIGINT,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_guild
+        ON projects(guild_id);
+    CREATE INDEX IF NOT EXISTS idx_projects_guild_status
+        ON projects(guild_id, status);
+    CREATE INDEX IF NOT EXISTS idx_projects_owner
+        ON projects(owner_id);
+
+    CREATE TABLE IF NOT EXISTS project_members (
+        project_id  INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+        user_id     TEXT    NOT NULL REFERENCES users(user_id),
+        role        TEXT    NOT NULL DEFAULT 'member'
+                            CHECK(role IN ('lead','member','viewer')),
+        joined_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (project_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_proj_members_user
+        ON project_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_proj_members_project
+        ON project_members(project_id);
+
+    CREATE TABLE IF NOT EXISTS project_activity_log (
+        activity_id SERIAL PRIMARY KEY,
+        project_id  INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+        guild_id    TEXT    NOT NULL,
+        user_id     TEXT    NOT NULL,
+        action      TEXT    NOT NULL,
+        detail      TEXT,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_proj_activity_project
+        ON project_activity_log(project_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_proj_activity_user
+        ON project_activity_log(user_id);
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(project_id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS guild_id   TEXT;
+    CREATE INDEX IF NOT EXISTS idx_tasks_project
+        ON tasks(project_id)
+        WHERE project_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_guild_project
+        ON tasks(guild_id, project_id)
+        WHERE guild_id IS NOT NULL;
+
+    ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+    ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
+        CHECK(status IN ('Pending','In_Progress','Completed','Cancelled'));
+
+    INSERT INTO schema_version VALUES (13) ON CONFLICT (version) DO UPDATE SET version=13;
     """),
 ]
 

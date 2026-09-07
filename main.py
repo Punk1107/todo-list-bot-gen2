@@ -57,6 +57,7 @@ COGS = [
     "handlers.settings_cog",
     "handlers.reminders_cog",
     "handlers.monitoring_cog",   # admin /health /errors /cmdstats
+    "collaboration.cog",         # /project group — Shared Projects (Collaboration)
 ]
 
 

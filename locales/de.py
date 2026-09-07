@@ -395,4 +395,66 @@ STRINGS = {
         "🕒 Deine aktuelle Zeit: **{current_time}**\n"
         "📅 Eingegebene Zeit: **{input_time}**"
     ),
+
+    # ─── Shared Projects (Collaboration) ───────────────────────────────────────
+    "proj_guild_only":              "❌ Dieser Befehl kann nur in einem Discord-Server verwendet werden.",
+    "proj_not_found":               "❌ Projekt **#{project_id}** wurde in diesem Server nicht gefunden.",
+    "proj_no_permission":           "❌ Du hast keine Berechtigung für diese Aktion. Benötigte Rolle: **Projektleiter** oder Server-Administrator.",
+    "proj_not_active":              "❌ Dieses Projekt ist **{status}** und kann keine neuen Aufgaben annehmen.",
+
+    "proj_list_title":              "📁 Gemeinsame Projekte — {guild}",
+    "proj_list_empty":              "Keine Projekte gefunden. Erstelle eines mit `/project create`!",
+    "proj_footer":                  "{count} Projekt(e) gefunden",
+
+    "proj_create_modal_title":      "🎉 Neues Projekt erstellen",
+    "proj_name_label":              "Projektname",
+    "proj_name_placeholder":        "z.B. Website-Redesign, Eventplanung",
+    "proj_desc_label":              "Beschreibung (optional)",
+    "proj_desc_placeholder":        "Worum geht es in diesem Projekt?",
+    "proj_color_label":             "Farbe (Hex, optional)",
+    "proj_emoji_label":             "Emoji / Symbol (optional)",
+    "proj_created_success":         "🎉 Projekt **{name}** erfolgreich erstellt!",
+
+    "proj_progress":                "📈 Fortschritt",
+    "proj_pending":                 "Ausstehend",
+    "proj_in_progress":             "In Bearbeitung",
+    "proj_completed":               "Abgeschlossen",
+    "proj_cancelled":               "Abgebrochen",
+    "proj_overdue":                 "Überfällig",
+    "proj_members":                 "Mitglieder",
+    "proj_status_label":            "Status",
+    "proj_leaderboard":             "Top-Mitwirkende",
+    "proj_lb_tasks":                "Aufgabe(n)",
+    "proj_footer_id":               "Projekt #{project_id}",
+    "proj_tasks_done":              "erledigt",
+
+    "proj_board_select_col":        "Spalte wechseln...",
+    "proj_board_empty_col":         "Keine Aufgaben in **{column}** momentan.",
+    "proj_board_more":              "...und {count} weitere Aufgabe(n). Nutze /project board.",
+
+    "proj_no_claimable":            "✅ Alle verfügbaren Aufgaben wurden bereits beansprucht!",
+    "proj_claim_select_title":      "🙋 Aufgabe übernehmen",
+    "proj_claim_select_desc":       "Wähle eine Aufgabe aus der Liste, um sie zu übernehmen. Sie wird auf **In Bearbeitung** gesetzt.",
+    "proj_claim_select_placeholder":"Aufgabe zum Übernehmen wählen...",
+    "proj_claimed_title":           "✅ Aufgabe übernommen!",
+    "proj_claimed_desc":            "Du hast **#{task_id} — {name}** übernommen. Viel Erfolg! 💪",
+    "proj_claimed_footer":          "Die Aufgabe ist jetzt In Bearbeitung und dir zugewiesen.",
+
+    "proj_task_not_found":          "❌ Aufgabe **#{task_id}** wurde in diesem Projekt nicht gefunden.",
+    "proj_add_task_modal_title":    "➕ Aufgabe hinzufügen — {name}",
+    "proj_task_added":              "✅ Aufgabe **#{task_id} — {name}** zum Projekt hinzugefügt!",
+
+    "proj_members_title":           "Mitglieder",
+    "proj_members_empty":           "Noch keine Mitglieder.",
+    "proj_members_count":           "{count} Mitglied(er)",
+
+    "proj_activity_title":          "Aktivitätsfeed",
+    "proj_activity_empty":          "Noch keine Aktivitäten aufgezeichnet.",
+
+    "proj_my_tasks_title":          "🙋 Zugewiesene Aufgaben von {user}",
+    "proj_my_tasks_empty":          "Du hast keine zugewiesenen Aufgaben in diesem Server. Nutze `/project board` zum Übernehmen!",
+    "proj_my_tasks_footer":         "{count} aktive Aufgabe(n) zugewiesen",
+
+    "proj_archived_success":        "📦 Projekt **{name}** wurde archiviert.",
+    "proj_completed_success":       "✅ Projekt **{name}** wurde als abgeschlossen markiert. Gut gemacht! 🏆",
 }
