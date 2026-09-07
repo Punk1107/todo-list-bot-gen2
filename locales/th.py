@@ -390,4 +390,76 @@ STRINGS = {
         "🕒 เวลาปัจจุบันของคุณ: **{current_time}**\n"
         "📅 เวลาที่คุณระบุ: **{input_time}**"
     ),
+
+    # ─── Shared Projects (Collaboration) ───────────────────────────────────────
+    "proj_guild_only":              "❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์ Discord เท่านั้น",
+    "proj_not_found":               "❌ ไม่พบโปรเจกต์ **#{project_id}** ในเซิร์ฟเวอร์นี้",
+    "proj_no_permission":           "❌ คุณไม่มีสิทธิ์ดำเนินการนี้ ต้องการบทบาท **Project Lead** หรือผู้ดูแลเซิร์ฟเวอร์",
+    "proj_not_active":              "❌ โปรเจกต์นี้อยู่ในสถานะ **{status}** ไม่สามารถเพิ่มงานใหม่ได้",
+
+    # Project list
+    "proj_list_title":              "📁 โปรเจกต์ร่วมกัน — {guild}",
+    "proj_list_empty":              "ยังไม่มีโปรเจกต์ ใช้ `/project create` เพื่อเริ่มต้น!",
+    "proj_footer":                  "พบ {count} โปรเจกต์",
+
+    # Project creation
+    "proj_create_modal_title":      "🎉 สร้างโปรเจกต์ใหม่",
+    "proj_name_label":              "ชื่อโปรเจกต์",
+    "proj_name_placeholder":        "เช่น ออกแบบเว็บไซต์ใหม่, วางแผนอีเวนต์",
+    "proj_desc_label":              "รายละเอียด (ไม่บังคับ)",
+    "proj_desc_placeholder":        "โปรเจกต์นี้เกี่ยวกับอะไร?",
+    "proj_color_label":             "สี (hex, ไม่บังคับ)",
+    "proj_emoji_label":             "อิโมจิ / ไอคอน (ไม่บังคับ)",
+    "proj_created_success":         "🎉 สร้างโปรเจกต์ **{name}** สำเร็จแล้ว!",
+
+    # Dashboard
+    "proj_progress":                "📈 ความคืบหน้า",
+    "proj_pending":                 "รอดำเนินการ",
+    "proj_in_progress":             "กำลังทำ",
+    "proj_completed":               "เสร็จแล้ว",
+    "proj_cancelled":               "ยกเลิก",
+    "proj_overdue":                 "เกินกำหนด",
+    "proj_members":                 "สมาชิก",
+    "proj_status_label":            "สถานะ",
+    "proj_leaderboard":             "ผู้ร่วมงานเด่น",
+    "proj_lb_tasks":                "งาน",
+    "proj_footer_id":               "โปรเจกต์ #{project_id}",
+    "proj_tasks_done":              "เสร็จ",
+
+    # Board
+    "proj_board_select_col":        "เปลี่ยนคอลัมน์...",
+    "proj_board_empty_col":         "ไม่มีงานใน **{column}** ตอนนี้",
+    "proj_board_more":              "...และอีก {count} งาน ใช้ /project board เพื่อดูทั้งหมด",
+
+    # Claim
+    "proj_no_claimable":            "✅ งานที่ว่างทั้งหมดถูกเคลมไปแล้ว!",
+    "proj_claim_select_title":      "🙋 เคลมงาน",
+    "proj_claim_select_desc":       "เลือกงานจากรายการด้านล่างเพื่อรับผิดชอบ คุณจะถูกเพิ่มเป็นผู้รับผิดชอบและงานจะเปลี่ยนเป็น **กำลังทำ**",
+    "proj_claim_select_placeholder":"เลือกงานที่ต้องการเคลม...",
+    "proj_claimed_title":           "✅ เคลมงานสำเร็จ!",
+    "proj_claimed_desc":            "คุณได้รับผิดชอบงาน **#{task_id} — {name}** แล้ว โชคดีนะ! 💪",
+    "proj_claimed_footer":          "งานนี้ถูกย้ายเป็น 'กำลังทำ' และมอบหมายให้คุณแล้ว",
+
+    # Task
+    "proj_task_not_found":          "❌ ไม่พบงาน **#{task_id}** ในโปรเจกต์นี้",
+    "proj_add_task_modal_title":    "➕ เพิ่มงาน — {name}",
+    "proj_task_added":              "✅ เพิ่มงาน **#{task_id} — {name}** เข้าโปรเจกต์สำเร็จ!",
+
+    # Members
+    "proj_members_title":           "สมาชิก",
+    "proj_members_empty":           "ยังไม่มีสมาชิก",
+    "proj_members_count":           "{count} คน",
+
+    # Activity
+    "proj_activity_title":          "ฟีดกิจกรรม",
+    "proj_activity_empty":          "ยังไม่มีกิจกรรมที่บันทึกไว้",
+
+    # My Tasks
+    "proj_my_tasks_title":          "🙋 งานที่มอบหมายให้ {user}",
+    "proj_my_tasks_empty":          "คุณยังไม่มีงานที่ได้รับมอบหมายในเซิร์ฟเวอร์นี้ ใช้ `/project board` เพื่อเคลมงาน!",
+    "proj_my_tasks_footer":         "{count} งานที่ยังค้างอยู่",
+
+    # Archive / complete
+    "proj_archived_success":        "📦 โปรเจกต์ **{name}** ถูกเก็บเข้ากรุแล้ว",
+    "proj_completed_success":       "✅ โปรเจกต์ **{name}** ปิดสำเร็จแล้ว ยอดเยี่ยมมาก! 🏆",
 }

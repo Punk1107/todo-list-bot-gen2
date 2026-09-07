@@ -390,4 +390,76 @@ STRINGS = {
         "🕒 Your current time: **{current_time}**\n"
         "📅 Time you entered: **{input_time}**"
     ),
+
+    # ─── Shared Projects (Collaboration) ───────────────────────────────────────
+    "proj_guild_only":              "❌ This command can only be used inside a Discord server.",
+    "proj_not_found":               "❌ Project **#{project_id}** was not found in this server.",
+    "proj_no_permission":           "❌ You do not have permission to perform this action. Required role: **Project Lead** or server admin.",
+    "proj_not_active":              "❌ This project is **{status}** and cannot accept new tasks.",
+
+    # Project list
+    "proj_list_title":              "📁 Shared Projects — {guild}",
+    "proj_list_empty":              "No projects found. Use `/project create` to start one!",
+    "proj_footer":                  "{count} project(s) found",
+
+    # Project creation
+    "proj_create_modal_title":      "🎉 Create New Project",
+    "proj_name_label":              "Project Name",
+    "proj_name_placeholder":        "e.g. Website Redesign, Event Planning",
+    "proj_desc_label":              "Description (optional)",
+    "proj_desc_placeholder":        "What is this project about?",
+    "proj_color_label":             "Color (hex, optional)",
+    "proj_emoji_label":             "Emoji / Icon (optional)",
+    "proj_created_success":         "🎉 Project **{name}** created successfully!",
+
+    # Dashboard
+    "proj_progress":                "📈 Progress",
+    "proj_pending":                 "To Do",
+    "proj_in_progress":             "In Progress",
+    "proj_completed":               "Completed",
+    "proj_cancelled":               "Cancelled",
+    "proj_overdue":                 "Overdue",
+    "proj_members":                 "Members",
+    "proj_status_label":            "Status",
+    "proj_leaderboard":             "Top Contributors",
+    "proj_lb_tasks":                "task(s)",
+    "proj_footer_id":               "Project #{project_id}",
+    "proj_tasks_done":              "done",
+
+    # Board
+    "proj_board_select_col":        "Switch column...",
+    "proj_board_empty_col":         "No tasks in **{column}** right now.",
+    "proj_board_more":              "...and {count} more task(s). Use /project board to see all.",
+
+    # Claim
+    "proj_no_claimable":            "✅ All available tasks have already been claimed!",
+    "proj_claim_select_title":      "🙋 Claim a Task",
+    "proj_claim_select_desc":       "Select a task from the list below to claim it. You will be added as its assignee and it will move to **In Progress**.",
+    "proj_claim_select_placeholder":"Select a task to claim...",
+    "proj_claimed_title":           "✅ Task Claimed!",
+    "proj_claimed_desc":            "You've claimed **#{task_id} — {name}**. Good luck! 💪",
+    "proj_claimed_footer":          "The task is now In Progress and assigned to you.",
+
+    # Task
+    "proj_task_not_found":          "❌ Task **#{task_id}** was not found in this project.",
+    "proj_add_task_modal_title":    "➕ Add Task — {name}",
+    "proj_task_added":              "✅ Task **#{task_id} — {name}** added to project!",
+
+    # Members
+    "proj_members_title":           "Members",
+    "proj_members_empty":           "No members yet.",
+    "proj_members_count":           "{count} member(s)",
+
+    # Activity
+    "proj_activity_title":          "Activity Feed",
+    "proj_activity_empty":          "No activity recorded yet.",
+
+    # My Tasks
+    "proj_my_tasks_title":          "🙋 {user}'s Assigned Tasks",
+    "proj_my_tasks_empty":          "You have no assigned tasks in this server. Use `/project board` to claim one!",
+    "proj_my_tasks_footer":         "{count} active task(s) assigned to you",
+
+    # Archive / complete
+    "proj_archived_success":        "📦 Project **{name}** has been archived.",
+    "proj_completed_success":       "✅ Project **{name}** has been marked as completed. Well done! 🏆",
 }
