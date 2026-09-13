@@ -326,6 +326,69 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         embed.set_footer(text=t("proj_footer_id", lang, project_id=project.project_id))
         await interaction.followup.send(embed=embed)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project set-channel
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="set-channel",
+        description="🔔 ตั้งช่องสำหรับรับแจ้งเตือน Realtime / Set the notification channel for a project",
+    )
+    @app_commands.describe(
+        project_id="Project ID to configure",
+        channel="Discord channel to receive task completion announcements",
+    )
+    @rate_limit_check("command")
+    async def project_set_channel(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        channel: discord.TextChannel,
+    ) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+        try:
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=project_id), ephemeral=True
+            )
+            return
+
+        # Only lead/owner/admin can configure notification channel
+        try:
+            await service.require_role(project, uid, "lead", is_guild_admin=is_admin)
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        # Persist to DB
+        from core.database import db
+        await db.execute(
+            "UPDATE projects SET notification_channel_id=$1 WHERE project_id=$2 AND guild_id=$3",
+            (channel.id, project_id, guild_id),
+        )
+        db.query_cache.invalidate_all()
+
+        embed = discord.Embed(
+            title=t("proj_channel_set_title", lang),
+            description=t(
+                "proj_channel_set_body", lang,
+                project_emoji=project.emoji,
+                project_name=project.name,
+                channel=channel.mention,
+            ),
+            color=0x57F287,
+        )
+        embed.set_footer(text=t("proj_footer_id", lang, project_id=project_id))
+        await interaction.followup.send(embed=embed)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(CollaborationCog(bot))

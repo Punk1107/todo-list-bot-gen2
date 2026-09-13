@@ -58,6 +58,7 @@ COGS = [
     "handlers.reminders_cog",
     "handlers.monitoring_cog",   # admin /health /errors /cmdstats
     "collaboration.cog",         # /project group — Shared Projects (Collaboration)
+    "storage.cog",               # /attach /attachments — Task File Storage
 ]
 
 
@@ -145,6 +146,20 @@ class TodoBot(commands.Bot):
         except Exception as exc:
             log.error("Slash command sync failed: %s", exc)
 
+        # ── Supabase Storage — ensure bucket exists ────────────────────────────────
+        try:
+            from storage import service as storage_svc
+            await storage_svc.initialize()
+        except Exception as exc:
+            log.warning("Storage initialisation warning (non-fatal): %s", exc)
+
+        # ── Supabase Realtime — start WebSocket listener ────────────────────────
+        try:
+            from realtime.service import setup_realtime
+            await setup_realtime(self)
+        except Exception as exc:
+            log.warning("Realtime startup warning (non-fatal): %s", exc)
+
     async def close(self) -> None:
         """Graceful shutdown: stop monitoring, flush BulkWriter, stop webserver."""
         # Stop monitoring tasks first (they may be writing logs)
@@ -162,6 +177,20 @@ class TodoBot(commands.Bot):
         from core.database import db
         log.info("Flushing BulkWriter before shutdown...")
         await db.close()  # also stops BulkWriter
+
+        # Stop Supabase Realtime WebSocket listener
+        try:
+            from realtime.service import stop_realtime
+            await stop_realtime()
+        except Exception as exc:
+            log.warning("Realtime shutdown error: %s", exc)
+
+        # Close Supabase Storage aiohttp session
+        try:
+            from storage import service as storage_svc
+            await storage_svc.close_client()
+        except Exception as exc:
+            log.warning("Storage shutdown error: %s", exc)
 
         if self._webserver_runner:
             await self._webserver_runner.cleanup()

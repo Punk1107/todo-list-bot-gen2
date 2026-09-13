@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 13   # bump when adding migrations below
+SCHEMA_VERSION = 14   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -631,6 +631,63 @@ MIGRATIONS: list[tuple[int, str]] = [
         CHECK(status IN ('Pending','In_Progress','Completed','Cancelled'));
 
     INSERT INTO schema_version VALUES (13) ON CONFLICT (version) DO UPDATE SET version=13;
+    """),
+
+    # ── v14: task_attachments + realtime publication setup ──────────────────────────────
+    # Scope: new table for file attachments linked to tasks/projects;
+    #        new columns on projects for live dashboard tracking;
+    #        register tables with Supabase Realtime publication.
+    (14, """
+    CREATE TABLE IF NOT EXISTS task_attachments (
+        attachment_id SERIAL PRIMARY KEY,
+        task_id       INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        project_id    INTEGER REFERENCES projects(project_id) ON DELETE SET NULL,
+        file_name     TEXT    NOT NULL,
+        file_size     BIGINT  NOT NULL,
+        file_type     TEXT    NOT NULL,
+        storage_path  TEXT    NOT NULL,
+        public_url    TEXT    NOT NULL,
+        uploader_id   TEXT    NOT NULL REFERENCES users(user_id),
+        created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_task     ON task_attachments(task_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_project  ON task_attachments(project_id)
+        WHERE project_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_attachments_uploader ON task_attachments(uploader_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_created  ON task_attachments(created_at);
+
+    -- Track which Discord message is currently displaying the live project dashboard
+    -- so the Realtime listener can edit it in-place on task changes.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS active_dashboard_msg_id  BIGINT;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS active_dashboard_chan_id  BIGINT;
+
+    -- Track which Discord channel receives task-complete broadcast for this project.
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS notification_channel_id  BIGINT;
+
+    -- Enable Realtime CDC for the tables the bot listens to.
+    -- Wrapped in DO block: silently ignored if publication doesn't exist or tables are
+    -- already added (idempotent).
+    DO $rt$
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE tasks;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END $rt$;
+    DO $rt2$
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE project_activity_log;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END $rt2$;
+    DO $rt3$
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE task_attachments;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END $rt3$;
+
+    -- Full replica identity so old/new values are available in change events.
+    ALTER TABLE tasks REPLICA IDENTITY FULL;
+    ALTER TABLE task_attachments REPLICA IDENTITY FULL;
+
+    INSERT INTO schema_version VALUES (14) ON CONFLICT (version) DO UPDATE SET version=14;
     """),
 ]
 

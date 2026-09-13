@@ -199,6 +199,79 @@ class MonitoringConfig:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Supabase Realtime config
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class SupabaseRealtimeConfig:
+    enabled: bool
+    url: str                # Project URL  e.g. https://<ref>.supabase.co
+    key: str                # anon or service_role key
+    heartbeat_sec: int      # Phoenix WS heartbeat interval
+    debounce_sec: float     # Dashboard update debounce window
+    reconnect_base_sec: float   # Base delay for exponential backoff
+    max_reconnect_attempts: int # 0 = infinite
+
+    @classmethod
+    def from_env(cls) -> "SupabaseRealtimeConfig":
+        url = _env("SUPABASE_URL", None)
+        key = _env("SUPABASE_KEY", None)
+        enabled = _env_bool("SUPABASE_REALTIME_ENABLED", True) and bool(url and key)
+        if _env_bool("SUPABASE_REALTIME_ENABLED", True) and not (url and key):
+            log.warning(
+                "SUPABASE_REALTIME_ENABLED=true but SUPABASE_URL or SUPABASE_KEY is missing — "
+                "Realtime disabled.  Add both to .env to enable."
+            )
+        return cls(
+            enabled=enabled,
+            url=url or "",
+            key=key or "",
+            heartbeat_sec=_env_int("SUPABASE_REALTIME_HEARTBEAT_SEC", 30),
+            debounce_sec=_env_float("SUPABASE_REALTIME_DEBOUNCE_SEC", 1.5),
+            reconnect_base_sec=_env_float("SUPABASE_REALTIME_RECONNECT_BASE_SEC", 1.0),
+            max_reconnect_attempts=_env_int("SUPABASE_REALTIME_MAX_RECONNECT", 0),
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Supabase Storage config
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class SupabaseStorageConfig:
+    enabled: bool
+    url: str                # Project URL  e.g. https://<ref>.supabase.co
+    key: str                # service_role key (needed for bucket management)
+    bucket: str             # Storage bucket name
+    max_file_size_mb: int   # Per-file size limit
+    allowed_extensions: tuple  # Allowed file types
+
+    @classmethod
+    def from_env(cls) -> "SupabaseStorageConfig":
+        url = _env("SUPABASE_URL", None)
+        key = _env("SUPABASE_KEY", None)
+        enabled = _env_bool("SUPABASE_STORAGE_ENABLED", True) and bool(url and key)
+        if _env_bool("SUPABASE_STORAGE_ENABLED", True) and not (url and key):
+            log.warning(
+                "SUPABASE_STORAGE_ENABLED=true but SUPABASE_URL or SUPABASE_KEY is missing — "
+                "Storage disabled.  Add both to .env to enable."
+            )
+        raw_ext = _env(
+            "SUPABASE_STORAGE_ALLOWED_EXT",
+            "png,jpg,jpeg,gif,webp,pdf,docx,xlsx,pptx,txt,csv,md,zip",
+        )
+        allowed = tuple(e.strip().lower() for e in raw_ext.split(",") if e.strip())
+        return cls(
+            enabled=enabled,
+            url=url or "",
+            key=key or "",
+            bucket=_env("SUPABASE_STORAGE_BUCKET", "task-attachments"),
+            max_file_size_mb=_env_int("MAX_ATTACHMENT_SIZE_MB", 15),
+            allowed_extensions=allowed,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Root config — single point of truth
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -210,6 +283,8 @@ class AppConfig:
     notifications: NotificationConfig
     webserver: WebserverConfig
     monitoring: MonitoringConfig
+    realtime: SupabaseRealtimeConfig
+    storage: SupabaseStorageConfig
 
     @classmethod
     def load(cls) -> "AppConfig":
@@ -220,6 +295,8 @@ class AppConfig:
             notifications=NotificationConfig.from_env(),
             webserver=WebserverConfig.from_env(),
             monitoring=MonitoringConfig.from_env(),
+            realtime=SupabaseRealtimeConfig.from_env(),
+            storage=SupabaseStorageConfig.from_env(),
         )
         log.info("Configuration loaded successfully")
         return cfg

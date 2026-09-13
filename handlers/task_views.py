@@ -1266,6 +1266,33 @@ class TaskActionView(ui.View):
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    # ── File Attachments ──────────────────────────────────────────────────────
+
+    @ui.button(label="📎 Files", style=discord.ButtonStyle.secondary, row=1, custom_id="files")
+    async def view_files(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        """Open the file attachments view for this task."""
+        await interaction.response.defer(ephemeral=True)
+        lang = await get_user_lang(interaction.user.id)
+
+        from core.config import config as bot_config
+        if not bot_config.storage.enabled:
+            await interaction.followup.send(t("storage_disabled", lang), ephemeral=True)
+            return
+
+        from storage import service as storage_svc
+        from storage.views import build_attachments_embed, TaskAttachmentsView
+
+        task_row = await db.afetchone(
+            "SELECT task FROM tasks WHERE task_id=$1", (self.task_id,)
+        )
+        task_name = task_row["task"] if task_row else f"Task #{self.task_id}"
+        uid = str(interaction.user.id)
+
+        files = await storage_svc.get_attachments(self.task_id)
+        embed = build_attachments_embed(self.task_id, task_name, files, lang)
+        view  = TaskAttachmentsView(self.task_id, task_name, files, uid, lang)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Task Filter Select
