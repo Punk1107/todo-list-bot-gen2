@@ -427,4 +427,13 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 週次レポートを生成中...",
+    "analytics_snapshot_desc": "過去7日間のデータを取得中です。まもなくDMで届きます！",
+    "analytics_snapshot_sent": "✅ 週次生産性レポートをDMに送信しました！",
+    "analytics_snapshot_failed": "❌ レポートを生成できませんでした: {error}",
+    "analytics_snapshot_dm_disabled": "⚠️ レポートは生成されましたが、DMを送信できませんでした。サーバーメンバーからのDMを許可してください。",
+    "analytics_weekly_enabled": "✅ 週次ダイジェストを**有効**にしました！毎週月曜日の朝にレポートが届きます。",
+    "analytics_weekly_disabled": "🔕 週次ダイジェストを**無効**にしました。",
+    "analytics_not_configured": "⚠️ Analyticsはこのボットインスタンスで設定されていません。",
 }

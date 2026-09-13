@@ -1,0 +1,23 @@
+{
+  "name": "weekly-analytics",
+  "version": "1.0.0",
+  "description": "Weekly productivity analytics Edge Function for To-Do List Bot Gen 2",
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.0"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window"],
+    "allowImportingTsExtensions": true
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "singleQuote": false
+  }
+}

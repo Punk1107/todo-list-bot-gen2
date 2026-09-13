@@ -427,4 +427,13 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 正在生成您的周报...",
+    "analytics_snapshot_desc": "正在获取过去7天的数据，报告即将发送至您的私信！",
+    "analytics_snapshot_sent": "✅ 您的每周生产力报告已发送至您的私信！",
+    "analytics_snapshot_failed": "❌ 无法生成报告：{error}",
+    "analytics_snapshot_dm_disabled": "⚠️ 报告已生成，但无法发送私信。请允许服务器成员向您发私信。",
+    "analytics_weekly_enabled": "✅ 每周摘要已**启用**！您将在每周一上午收到报告。",
+    "analytics_weekly_disabled": "🔕 每周摘要已**禁用**。",
+    "analytics_not_configured": "⚠️ 此机器人实例未配置Analytics功能。",
 }

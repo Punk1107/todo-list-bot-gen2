@@ -434,4 +434,13 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 Генерация еженедельного отчёта...",
+    "analytics_snapshot_desc": "Загружаю статистику за последние 7 дней. Отчёт скоро придёт в личные сообщения!",
+    "analytics_snapshot_sent": "✅ Еженедельный отчёт о продуктивности отправлен в личные сообщения!",
+    "analytics_snapshot_failed": "❌ Не удалось создать отчёт: {error}",
+    "analytics_snapshot_dm_disabled": "⚠️ Отчёт создан, но не удалось отправить личное сообщение. Разрешите получение ЛС от участников сервера.",
+    "analytics_weekly_enabled": "✅ Еженедельный дайджест **включён**! Отчёт будет приходить каждый понедельник утром.",
+    "analytics_weekly_disabled": "🔕 Еженедельный дайджест **отключён**.",
+    "analytics_not_configured": "⚠️ Аналитика не настроена на данном экземпляре бота.",
 }

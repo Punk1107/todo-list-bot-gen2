@@ -484,4 +484,14 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 Generating your weekly report...",
+    "analytics_snapshot_desc": "Fetching stats from the last 7 days. Your DM will arrive shortly!",
+    "analytics_snapshot_sent": "✅ Your weekly productivity report has been sent to your DMs!",
+    "analytics_snapshot_failed": "❌ Could not generate report: {error}",
+    "analytics_snapshot_dm_disabled": "⚠️ Report was generated but I couldn't send you a DM. Please enable DMs from server members.",
+    "analytics_weekly_enabled": "✅ Weekly productivity digest **enabled**! You'll receive a summary every Monday morning.",
+    "analytics_weekly_disabled": "🔕 Weekly productivity digest **disabled**.",
+    "analytics_not_configured": "⚠️ Analytics is not configured on this bot instance. Ask the bot owner to set `SUPABASE_URL` and `SUPABASE_KEY`.",
 }

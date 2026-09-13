@@ -479,4 +479,13 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 Dein Wochenbericht wird erstellt...",
+    "analytics_snapshot_desc": "Statistiken der letzten 7 Tage werden abgerufen. Dein Bericht kommt gleich per DM!",
+    "analytics_snapshot_sent": "✅ Dein wöchentlicher Produktivitätsbericht wurde an deine DMs gesendet!",
+    "analytics_snapshot_failed": "❌ Bericht konnte nicht erstellt werden: {error}",
+    "analytics_snapshot_dm_disabled": "⚠️ Bericht erstellt, aber DM konnte nicht gesendet werden. Bitte erlaube DMs von Servermitgliedern.",
+    "analytics_weekly_enabled": "✅ Wöchentliche Zusammenfassung **aktiviert**! Du erhältst jeden Montagmorgen einen Bericht.",
+    "analytics_weekly_disabled": "🔕 Wöchentliche Zusammenfassung **deaktiviert**.",
+    "analytics_not_configured": "⚠️ Analytics ist auf dieser Bot-Instanz nicht konfiguriert.",
 }

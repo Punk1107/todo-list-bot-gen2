@@ -427,4 +427,13 @@ STRINGS = {
     "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
     "proj_channel_set_title": "Notification Channel Set",
     "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title": "📊 주간 보고서 생성 중...",
+    "analytics_snapshot_desc": "지난 7일간의 데이터를 가져오는 중입니다. 곧 DM으로 보고서가 전달됩니다!",
+    "analytics_snapshot_sent": "✅ 주간 생산성 보고서가 DM으로 전송되었습니다!",
+    "analytics_snapshot_failed": "❌ 보고서를 생성할 수 없습니다: {error}",
+    "analytics_snapshot_dm_disabled": "⚠️ 보고서는 생성되었지만 DM을 보낼 수 없었습니다. 서버 멤버로부터 DM을 허용해 주세요.",
+    "analytics_weekly_enabled": "✅ 주간 다이제스트가 **활성화**되었습니다! 매주 월요일 아침에 보고서를 받게 됩니다.",
+    "analytics_weekly_disabled": "🔕 주간 다이제스트가 **비활성화**되었습니다.",
+    "analytics_not_configured": "⚠️ 이 봇 인스턴스에서 Analytics가 구성되지 않았습니다.",
 }
