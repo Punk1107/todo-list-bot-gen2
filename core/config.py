@@ -215,7 +215,7 @@ class SupabaseRealtimeConfig:
     @classmethod
     def from_env(cls) -> "SupabaseRealtimeConfig":
         url = _env("SUPABASE_URL", None)
-        key = _env("SUPABASE_KEY", None)
+        key = _env("SUPABASE_KEY", None) or _env("SUPABASE_SECRET_KEY", None) or _env("SUPABASE_SERVICE_ROLE_KEY", None)
         enabled = _env_bool("SUPABASE_REALTIME_ENABLED", True) and bool(url and key)
         if _env_bool("SUPABASE_REALTIME_ENABLED", True) and not (url and key):
             log.warning(
@@ -249,7 +249,7 @@ class SupabaseStorageConfig:
     @classmethod
     def from_env(cls) -> "SupabaseStorageConfig":
         url = _env("SUPABASE_URL", None)
-        key = _env("SUPABASE_KEY", None)
+        key = _env("SUPABASE_KEY", None) or _env("SUPABASE_SECRET_KEY", None) or _env("SUPABASE_SERVICE_ROLE_KEY", None)
         enabled = _env_bool("SUPABASE_STORAGE_ENABLED", True) and bool(url and key)
         if _env_bool("SUPABASE_STORAGE_ENABLED", True) and not (url and key):
             log.warning(
