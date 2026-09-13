@@ -692,6 +692,92 @@ MIGRATIONS: list[tuple[int, str]] = [
 ]
 
 
+def _split_sql_statements(sql: str) -> list[str]:
+    """
+    Split a SQL script into individual executable statements by semicolon.
+    Respects single-quoted string literals ('...') and dollar-quoted blocks
+    ($$...$$ or $tag$...$tag$) as well as SQL line/block comments so that
+    internal semicolons inside PL/pgSQL blocks or default values do not split statements.
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    i = 0
+    n = len(sql)
+    in_single_quote = False
+    dollar_tag: Optional[str] = None
+
+    while i < n:
+        ch = sql[i]
+
+        # 1. Line comments (-- ...) - preserve until newline (when outside quotes)
+        if not in_single_quote and dollar_tag is None and ch == "-" and i + 1 < n and sql[i + 1] == "-":
+            eol = sql.find("\n", i)
+            if eol == -1:
+                current.append(sql[i:])
+                break
+            current.append(sql[i : eol + 1])
+            i = eol + 1
+            continue
+
+        # 2. Block comments (/* ... */) (when outside quotes)
+        if not in_single_quote and dollar_tag is None and ch == "/" and i + 1 < n and sql[i + 1] == "*":
+            eob = sql.find("*/", i + 2)
+            if eob == -1:
+                current.append(sql[i:])
+                break
+            current.append(sql[i : eob + 2])
+            i = eob + 2
+            continue
+
+        # 3. Single-quote string literals (when outside dollar-quotes)
+        if dollar_tag is None:
+            if ch == "'":
+                if in_single_quote and i + 1 < n and sql[i + 1] == "'":
+                    current.append("''")
+                    i += 2
+                    continue
+                in_single_quote = not in_single_quote
+                current.append(ch)
+                i += 1
+                continue
+
+        # 4. Dollar quotes ($$...$$ or $tag$...$tag$) (when outside single-quotes)
+        if not in_single_quote:
+            if ch == "$":
+                tag_end = sql.find("$", i + 1)
+                if tag_end != -1:
+                    tag = sql[i : tag_end + 1]
+                    name = tag[1:-1]
+                    if all(c.isalnum() or c == "_" for c in name):
+                        if dollar_tag is None:
+                            dollar_tag = tag
+                            current.append(tag)
+                            i = tag_end + 1
+                            continue
+                        elif dollar_tag == tag:
+                            dollar_tag = None
+                            current.append(tag)
+                            i = tag_end + 1
+                            continue
+
+            # 5. Statement delimiter ';' (only when outside all quotes and blocks)
+            if ch == ";" and not in_single_quote and dollar_tag is None:
+                stmt = "".join(current).strip()
+                if stmt:
+                    statements.append(stmt)
+                current = []
+                i += 1
+                continue
+
+        current.append(ch)
+        i += 1
+
+    stmt = "".join(current).strip()
+    if stmt:
+        statements.append(stmt)
+    return statements
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DatabaseManager  (asyncpg-backed, PostgreSQL / Supabase)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -779,7 +865,7 @@ class DatabaseManager:
             for version, sql in MIGRATIONS:
                 if version > current:
                     log.info("Applying DB migration v%d", version)
-                    statements = [s.strip() for s in sql.split(";") if s.strip()]
+                    statements = _split_sql_statements(sql)
                     # Wrap each version in a transaction for atomicity
                     async with conn.transaction():
                         for stmt in statements:

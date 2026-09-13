@@ -415,14 +415,11 @@ STRINGS = {
 
     # Realtime & Storage
     "rt_task_completed_title": "Task Completed!",
-    "rt_task_completed_body": "{user} completed **#{task_id} - {task_name}
-Project {project_emoji} **{project_name}**",
+    "rt_task_completed_body": "{user} completed **#{task_id} - {task_name}**\nProject {project_emoji} **{project_name}**",
     "rt_task_claimed_title": "Task Claimed!",
-    "rt_task_claimed_body": "{user} claimed **#{task_id} - {task_name}**
-Project {project_emoji} **{project_name}**",
+    "rt_task_claimed_body": "{user} claimed **#{task_id} - {task_name}**\nProject {project_emoji} **{project_name}**",
     "rt_attachment_uploaded_title": "New Attachment!",
-    "rt_attachment_uploaded_body": "{user} uploaded **{file_name}** ({file_size})
-To task **#{task_id} - {task_name}**",
+    "rt_attachment_uploaded_body": "{user} uploaded **{file_name}** ({file_size})\nTo task **#{task_id} - {task_name}**",
     "storage_attachments_title": "Attachments for Task #{task_id}",
     "storage_no_attachments": "No files attached yet. Use /attach to upload one.",
     "storage_more_files": "and {count} more file(s)...",
