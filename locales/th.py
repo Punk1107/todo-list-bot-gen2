@@ -488,4 +488,14 @@ STRINGS = {
     # ─── Project Set-Channel ────────────────────────────────────────────────────
     "proj_channel_set_title":           "🔔 ตั้งช่องแจ้งเตือนสำเร็จ",
     "proj_channel_set_body":            "โปรเจกต์ {project_emoji} **{project_name}** จะส่งการแจ้งเตือนไปที่ {channel}",
+
+    # ─── Analytics ─────────────────────────────────────────────────────────────
+    "analytics_snapshot_title":         "📊 กำลังสร้างรายงานสรุปประจำสัปดาห์...",
+    "analytics_snapshot_desc":          "กำลังดึงข้อมูลย้อนหลัง 7 วัน รอรับรายงานใน DM ของคุณเลย!",
+    "analytics_snapshot_sent":          "✅ ส่งรายงานผลงานประจำสัปดาห์ไปยัง DM ของคุณแล้ว!",
+    "analytics_snapshot_failed":        "❌ ไม่สามารถสร้างรายงานได้: {error}",
+    "analytics_snapshot_dm_disabled":   "⚠️ สร้างรายงานสำเร็จ แต่ไม่สามารถส่ง DM ได้ กรุณาเปิดการรับ DM จากสมาชิกในเซิร์ฟเวอร์ก่อน",
+    "analytics_weekly_enabled":         "✅ เปิดใช้งานสรุปงานรายสัปดาห์แล้ว! คุณจะได้รับรายงานทุกวันจันทร์ตอนเช้า",
+    "analytics_weekly_disabled":        "🔕 ปิดใช้งานสรุปงานรายสัปดาห์แล้ว",
+    "analytics_not_configured":         "⚠️ ฟีเจอร์ Analytics ยังไม่ได้ตั้งค่า กรุณาติดต่อเจ้าของบอทให้ตั้งค่า `SUPABASE_URL` และ `SUPABASE_KEY`",
 }
