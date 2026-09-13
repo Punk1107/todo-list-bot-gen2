@@ -405,5 +405,29 @@ STRINGS = {
     'proj_my_tasks_footer':          '{count} 件のアクティブなタスクが割り当てられています',
     'proj_archived_success':         '📦 プロジェクト **{name}** をアーカイブしました。',
     'proj_completed_success':        '✅ プロジェクト **{name}** を完了としてマークしました。お疲れ様でした！🏆',
-}
 
+    # Realtime & Storage
+    "rt_task_completed_title": "Task Completed!",
+    "rt_task_completed_body": "{user} completed **#{task_id} - {task_name}
+Project {project_emoji} **{project_name}**",
+    "rt_task_claimed_title": "Task Claimed!",
+    "rt_task_claimed_body": "{user} claimed **#{task_id} - {task_name}**
+Project {project_emoji} **{project_name}**",
+    "rt_attachment_uploaded_title": "New Attachment!",
+    "rt_attachment_uploaded_body": "{user} uploaded **{file_name}** ({file_size})
+To task **#{task_id} - {task_name}**",
+    "storage_attachments_title": "Attachments for Task #{task_id}",
+    "storage_no_attachments": "No files attached yet. Use /attach to upload one.",
+    "storage_more_files": "and {count} more file(s)...",
+    "storage_file_count": "{count} file(s) attached",
+    "storage_upload_success_title": "Upload Successful!",
+    "storage_upload_success": "**{filename}** ({filesize}) has been attached to task **#{task_id}**.",
+    "storage_deleted_success": "File deleted successfully.",
+    "storage_delete_no_permission": "You can only delete files you uploaded, or you must be an admin.",
+    "storage_not_found": "Attachment not found. It may have already been deleted.",
+    "storage_disabled": "File storage is disabled on this bot instance.",
+    "storage_file_too_large": "File too large! Maximum allowed size is {max_mb} MB.",
+    "storage_invalid_extension": "File type not allowed. Allowed types: {allowed}",
+    "proj_channel_set_title": "Notification Channel Set",
+    "proj_channel_set_body": "Project {project_emoji} **{project_name}** will send notifications to {channel}.",
+}

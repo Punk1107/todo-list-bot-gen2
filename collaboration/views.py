@@ -352,10 +352,40 @@ class AddProjectTaskModal(ui.Modal):
 # Views
 # ─────────────────────────────────────────────────────────────────────────────
 
+async def _register_live_dashboard(
+    view: "ProjectDashboardView",
+    interaction: discord.Interaction,
+) -> None:
+    """
+    Register the interaction message as the live dashboard for this project.
+    Called after every Dashboard tab click so the Realtime listener can
+    auto-update it in-place without user having to re-run /project view.
+    """
+    try:
+        msg = await interaction.original_response()
+        from realtime.dashboard_tracker import dashboard_tracker
+        dashboard_tracker.register(
+            project_id=view.project_id,
+            guild_id=view.guild_id,
+            channel_id=msg.channel.id,
+            message_id=msg.id,
+            lang=view.lang,
+        )
+        await dashboard_tracker.persist(view.project_id)
+    except Exception as exc:
+        log.debug("Could not register live dashboard (non-fatal): %s", exc)
+
+
 class ProjectDashboardView(ui.View):
     """Main project dashboard with navigation buttons."""
 
-    def __init__(self, project_id: int, guild_id: str, lang: str, user: discord.User | discord.Member) -> None:
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        user: Optional[discord.User | discord.Member],
+    ) -> None:
         super().__init__(timeout=300)
         self.project_id = project_id
         self.guild_id   = guild_id
@@ -373,6 +403,8 @@ class ProjectDashboardView(ui.View):
             return
         embed = build_project_dashboard_embed(stats, lang)
         await interaction.message.edit(embed=embed, view=self)
+        # Register this message as the live dashboard so Realtime can auto-update it
+        await _register_live_dashboard(self, interaction)
 
     @ui.button(label="📋 Board", style=discord.ButtonStyle.secondary, custom_id="proj_dash_board")
     async def btn_board(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -424,6 +456,51 @@ class ProjectDashboardView(ui.View):
             return
         modal = AddProjectTaskModal(project, lang)
         await interaction.response.send_modal(modal)
+
+    @ui.button(label="📎 Files", style=discord.ButtonStyle.secondary, custom_id="proj_dash_files")
+    async def btn_files(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        """Show attachments across all project tasks."""
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        from storage import service as storage_svc
+        from core.config import config as bot_config
+        if not bot_config.storage.enabled:
+            await interaction.followup.send(t("storage_disabled", lang), ephemeral=True)
+            return
+        # Fetch all tasks belonging to this project, then list attachments
+        from core.database import db
+        task_rows = await db.fetchall(
+            "SELECT task_id, task FROM tasks WHERE project_id=$1 AND guild_id=$2 ORDER BY task_id",
+            (self.project_id, self.guild_id),
+        )
+        if not task_rows:
+            await interaction.followup.send(t("storage_no_attachments", lang), ephemeral=True)
+            return
+        # Gather attachments for all tasks in project
+        all_attachments = []
+        for tr in task_rows:
+            atts = await storage_svc.get_attachments(tr["task_id"])
+            all_attachments.extend(atts)
+        if not all_attachments:
+            await interaction.followup.send(t("storage_no_attachments", lang), ephemeral=True)
+            return
+        from storage.views import build_attachments_embed, TaskAttachmentsView
+        uid = str(interaction.user.id) if interaction.user else ""
+        embed = build_attachments_embed(
+            task_id=self.project_id,
+            task_name=f"Project #{self.project_id} — All Files",
+            attachments=all_attachments,
+            lang=lang,
+        )
+        view = TaskAttachmentsView(
+            task_id=self.project_id,
+            task_name="",
+            attachments=all_attachments,
+            uid=uid,
+            lang=lang,
+        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
 
 
 class BoardColumnSelect(ui.Select):

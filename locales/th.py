@@ -462,4 +462,30 @@ STRINGS = {
     # Archive / complete
     "proj_archived_success":        "📦 โปรเจกต์ **{name}** ถูกเก็บเข้ากรุแล้ว",
     "proj_completed_success":       "✅ โปรเจกต์ **{name}** ปิดสำเร็จแล้ว ยอดเยี่ยมมาก! 🏆",
+
+    # ─── Realtime Collaboration ─────────────────────────────────────────────────
+    "rt_task_completed_title":      "✅ งานเสร็จสมบูรณ์!",
+    "rt_task_completed_body":       "{user} ทำ **#{task_id} — {task_name}** เสร็จเรียบร้อยแล้ว\nโปรเจกต์ {project_emoji} **{project_name}**",
+    "rt_task_claimed_title":        "🙋 มีคนรับงานแล้ว!",
+    "rt_task_claimed_body":         "{user} รับงาน **#{task_id} — {task_name}**\nโปรเจกต์ {project_emoji} **{project_name}**",
+    "rt_attachment_uploaded_title": "📎 มีไฟล์แนบใหม่!",
+    "rt_attachment_uploaded_body":  "{user} อัปโหลด **{file_name}** ({file_size})\nในงาน **#{task_id} — {task_name}**",
+
+    # ─── Storage (File Attachments) ────────────────────────────────────────────
+    "storage_attachments_title":        "📂 ไฟล์แนบของงาน #{task_id}",
+    "storage_no_attachments":           "ยังไม่มีไฟล์แนบสำหรับงานนี้ ใช้ `/attach` เพื่ออัปโหลด",
+    "storage_more_files":               "และอีก {count} ไฟล์...",
+    "storage_file_count":               "รวม {count} ไฟล์",
+    "storage_upload_success_title":     "✅ อัปโหลดสำเร็จ!",
+    "storage_upload_success":           "ไฟล์ **{filename}** ({filesize}) ถูกแนบกับงาน **#{task_id}** เรียบร้อยแล้ว",
+    "storage_deleted_success":          "🗑️ ลบไฟล์เรียบร้อยแล้ว",
+    "storage_delete_no_permission":     "❌ คุณสามารถลบได้เฉพาะไฟล์ที่คุณอัปโหลดเอง หรือต้องเป็น admin",
+    "storage_not_found":                "❌ ไม่พบไฟล์นี้ อาจถูกลบไปแล้ว",
+    "storage_disabled":                 "❌ ระบบจัดการไฟล์ถูกปิดใช้งานในบอทนี้",
+    "storage_file_too_large":           "❌ ไฟล์ใหญ่เกินไป! ขนาดสูงสุดที่อนุญาตคือ {max_mb} MB",
+    "storage_invalid_extension":        "❌ ไม่รองรับประเภทไฟล์นี้\nประเภทที่รองรับ: {allowed}",
+
+    # ─── Project Set-Channel ────────────────────────────────────────────────────
+    "proj_channel_set_title":           "🔔 ตั้งช่องแจ้งเตือนสำเร็จ",
+    "proj_channel_set_body":            "โปรเจกต์ {project_emoji} **{project_name}** จะส่งการแจ้งเตือนไปที่ {channel}",
 }
