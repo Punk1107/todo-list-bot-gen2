@@ -262,7 +262,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         """
         now            = datetime.now(UTC)
         soon_threshold = (now + timedelta(hours=24)).isoformat()
-        remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).isoformat()
+        remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).replace(tzinfo=None)
 
         rows = await db.afetchall(
             """SELECT t.task_id, t.task, t.deadline, t.is_pinned, t.priority,
