@@ -44,6 +44,17 @@ def test_de_keys_match_en(all_locales):
     assert not extra, f"German has extra keys not present in English: {extra}"
 
 
+def test_all_locales_keys_match_en(all_locales):
+    """Ensure ALL supported languages have all keys present in English."""
+    en_keys = set(all_locales["en"].keys())
+    for lang in SUPPORTED_LANGS:
+        lang_keys = set(all_locales[lang].keys())
+        missing = en_keys - lang_keys
+        extra = lang_keys - en_keys
+        assert not missing, f"{lang} is missing keys present in English: {missing}"
+        assert not extra, f"{lang} has extra keys not present in English: {extra}"
+
+
 def test_no_duplicate_keys_in_ast():
     """Ensure no locale file contains duplicate dictionary keys in its AST definition."""
     for lang in SUPPORTED_LANGS:
@@ -77,6 +88,25 @@ def test_de_placeholders_match_en(all_locales):
             mismatches.append((key, en_vars, de_vars))
 
     assert not mismatches, f"Placeholder variable mismatches found between EN and DE: {mismatches}"
+
+
+def test_all_locales_placeholders_match_en(all_locales):
+    """Ensure all format variables ({name}, {task_id}, etc.) match between EN and ALL locales."""
+    en_strings = all_locales["en"]
+    placeholder_re = re.compile(r"\{([a-zA-Z0-9_]+)(?::[^}]*)?\}")
+
+    for lang in SUPPORTED_LANGS:
+        if lang == "en":
+            continue
+        lang_strings = all_locales[lang]
+        mismatches = []
+        for key, en_val in en_strings.items():
+            val = lang_strings.get(key, "")
+            en_vars = set(placeholder_re.findall(en_val))
+            val_vars = set(placeholder_re.findall(val))
+            if en_vars != val_vars:
+                mismatches.append((key, en_vars, val_vars))
+        assert not mismatches, f"Placeholder variable mismatches found between EN and {lang}: {mismatches}"
 
 
 def test_conflict_resolution_keys_in_de(all_locales):

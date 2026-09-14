@@ -154,10 +154,88 @@ async def _fetch_task_name(task_id: int) -> Optional[dict]:
     return await db.fetchone("SELECT task FROM tasks WHERE task_id=$1", (task_id,))
 
 
+class AttachmentDeleteSelect(ui.Select):
+    """Dropdown to delete an attachment (supports up to 25 files)."""
+
+    def __init__(
+        self,
+        attachments: list[TaskAttachment],
+        task_id: int,
+        uid: str,
+        lang: str,
+        row: int = 0,
+    ) -> None:
+        self.task_id = task_id
+        self.uid = uid
+        self.lang = lang
+
+        options = [
+            discord.SelectOption(
+                label=f"{a.icon_emoji} {a.display_name[:40]}",
+                value=str(a.attachment_id),
+                description=f"{a.size_human} · {a.created_at.strftime('%d/%m/%Y')}",
+            )
+            for a in attachments[:25]
+        ]
+        if not options:
+            options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
+
+        super().__init__(
+            placeholder=t("storage_delete_select_placeholder", lang),
+            options=options,
+            min_values=1, max_values=1,
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        val = self.values[0]
+        if val == "0":
+            return
+        att_id = int(val)
+        actor_id = str(interaction.user.id)
+        is_admin = (
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
+        await interaction.response.defer(ephemeral=True)
+
+        from storage.service import delete_attachment, get_attachments
+        from storage.service import AttachmentPermissionError, AttachmentNotFoundError
+
+        try:
+            await delete_attachment(att_id, actor_id, is_guild_admin=is_admin)
+        except AttachmentPermissionError:
+            await interaction.followup.send(
+                t("storage_delete_no_permission", self.lang), ephemeral=True
+            )
+            return
+        except AttachmentNotFoundError:
+            await interaction.followup.send(
+                t("storage_not_found", self.lang), ephemeral=True
+            )
+            return
+        except Exception as exc:
+            log.error("Attachment delete failed: %s", exc, exc_info=True)
+            await interaction.followup.send(t("err_db", self.lang), ephemeral=True)
+            return
+
+        remaining = await get_attachments(self.task_id)
+        task_row  = await _fetch_task_name(self.task_id)
+        task_name = task_row.get("task", f"Task #{self.task_id}") if task_row else f"Task #{self.task_id}"
+        embed     = build_attachments_embed(self.task_id, task_name, remaining, self.lang)
+        view      = TaskAttachmentsView(self.task_id, task_name, remaining, actor_id, self.lang)
+
+        await interaction.followup.send(t("storage_deleted_success", self.lang), ephemeral=True)
+        try:
+            await interaction.message.edit(embed=embed, view=view)
+        except Exception:
+            pass
+
+
 class TaskAttachmentsView(ui.View):
     """
     Interactive view for managing task attachments.
-    Shows delete buttons for each file (up to 4 per page due to Discord's row limit).
+    Uses AttachmentDeleteSelect dropdown for up to 25 files + Close button.
     """
 
     def __init__(
@@ -174,11 +252,10 @@ class TaskAttachmentsView(ui.View):
         self.lang       = lang
         self.uid        = uid
 
-        # Add delete buttons (max 4 — rows 0-3; row 4 reserved for Close)
-        for i, att in enumerate(attachments[:4]):
-            self.add_item(AttachmentDeleteButton(att, task_id, uid, lang, row_index=i))
+        if attachments:
+            self.add_item(AttachmentDeleteSelect(attachments, task_id, uid, lang, row=0))
 
-    @ui.button(label="✖ Close", style=discord.ButtonStyle.secondary, custom_id="att_close", row=4)
+    @ui.button(label="✖ Close", style=discord.ButtonStyle.secondary, custom_id="att_close", row=1)
     async def close_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
         self.stop()
         try:

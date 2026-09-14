@@ -30,6 +30,7 @@ from collaboration.views import (
     ProjectDashboardView,
     ProjectBoardView,
     build_project_list_embed,
+    ProjectListView,
     build_project_dashboard_embed,
     build_board_embed,
     build_members_embed,
@@ -117,7 +118,8 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         projects    = await service.get_guild_projects(guild_id, status=status_arg)
         guild_name  = interaction.guild.name
         embed       = build_project_list_embed(projects, guild_name, lang)
-        await interaction.followup.send(embed=embed)
+        view        = ProjectListView(projects, uid, lang) if projects else None
+        await interaction.followup.send(embed=embed, view=view)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project view

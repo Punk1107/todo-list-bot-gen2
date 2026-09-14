@@ -488,4 +488,49 @@ STRINGS = {
     "recommend_scope_personal":     "📋 Личные задачи",
     "recommend_scope_guild":        "🏛️ Задачи сервера",
     "recommend_weights_info": "Веса по умолчанию: Приоритет {priority}% · Срочность {urgency}% · Просрочено {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ На сколько отложить?",
+    "snooze_preset_1h":           "⏰ +1 час",
+    "snooze_preset_3h":           "⏰ +3 часа",
+    "snooze_preset_1d":           "📅 +1 день (в то же время)",
+    "snooze_preset_3d":           "📅 +3 дня",
+    "snooze_preset_next_week":    "📅 Следующий понедельник",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ Быстрое действие с задачей...",
+    "quickaction_done":           "✅ Отметить выполненной",
+    "quickaction_pin":            "📌 Закрепить / Открепить",
+    "quickaction_snooze":         "⏰ Отложить на +1 день",
+    "quickaction_detail":         "🔍 Посмотреть подробности",
+    "quickaction_select_hint":    "Выберите задачу для выполнения действия.",
+    "quickaction_none":           "— Выберите задачу —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ Добавить задачу",
+    "btn_view_all":               "📋 Все задачи",
+    "today_view_title":           "📅 Задачи на сегодня",
+    "overdue_view_title":         "🚨 Просроченные задачи",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 Открыть / действие с результатом...",
+    "recommend_action_placeholder": "⚡ Действие с рекомендацией...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ Выберите файл для удаления...",
+    "storage_upload_hint":               "Используйте `/attach [task_id] [файл]`, чтобы загрузить больше файлов.",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 Совместная работа",
+    "help_cat_search":            "🔍 Поиск и аналитика",
+    "help_cat_files":             "📎 Файлы и хранилище",
+    "help_cat_advanced":          "💡 Советы и горячие клавиши",
+    "help_collab_desc":           "Команды совместной работы над проектами",
+    "help_search_desc":           "Поиск задач, рекомендации и аналитика продуктивности",
+    "help_files_desc":            "Загрузка и управление прикреплёнными файлами",
+    "help_advanced_desc":         "Советы для опытных пользователей и сокращения",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ Задача **{task_name}** создана! ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ Приоритет должен быть от 0 (Обычный) до 7 (Критический).",
 }

@@ -42,8 +42,8 @@ STRINGS = {
     "task_add_title": "➕ Add New Task",
     "task_name_label": "Task Name",
     "task_name_placeholder": "e.g. Submit report, Team meeting",
-    "task_deadline_label": "Deadline (DD/MM/YYYY HH:MM)",
-    "task_deadline_placeholder": "e.g. 25/12/2025 18:00",
+    "task_deadline_label": "Deadline",
+    "task_deadline_placeholder": "e.g. 25/12 18:00 · today 18:00 · tomorrow · +2h · +3d",
     "task_priority_label": "⚡ Priority",
     "task_priority_placeholder": "0–7  (0=Normal, 3=Medium, 5=Important, 7=Critical)",
     "task_desc_label": "Description (optional)",
@@ -51,7 +51,7 @@ STRINGS = {
     "task_tags_label": "Tags (optional)",
     "task_tags_placeholder": "e.g. work, urgent, home",
     "task_created": "✅ Task created successfully! ID: **#{task_id}**",
-    "task_invalid_deadline": "❌ Invalid date format. Please use: `DD/MM/YYYY HH:MM`\nExample: `25/12/2025 18:00`",
+    "task_invalid_deadline": "❌ Invalid deadline. Supported formats:\n`25/12/2025 18:00` · `25/12` · `today 18:00` · `tomorrow` · `+2h` · `+3d`",
     "task_past_deadline": "❌ Deadline must be in the future.",
     "task_invalid_priority": "❌ Priority must be a number between 0 and 7.",
     "task_name_too_long": "❌ Task name is too long (max 200 characters).",
@@ -543,4 +543,49 @@ STRINGS = {
     "recommend_scope_guild":           "🏛️ Guild Tasks",
     # Weights info line
     "recommend_weights_info": "Using default weights: Priority {priority}% · Urgency {urgency}% · Overdue {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ Snooze for how long?",
+    "snooze_preset_1h":           "⏰ +1 Hour",
+    "snooze_preset_3h":           "⏰ +3 Hours",
+    "snooze_preset_1d":           "📅 +1 Day (same time)",
+    "snooze_preset_3d":           "📅 +3 Days",
+    "snooze_preset_next_week":    "📅 Next Monday",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ Quick action on a task...",
+    "quickaction_done":           "✅ Mark Done",
+    "quickaction_pin":            "📌 Pin / Unpin",
+    "quickaction_snooze":         "⏰ Snooze +1 Day",
+    "quickaction_detail":         "🔍 View Full Detail",
+    "quickaction_select_hint":    "Select a task to perform an action on it.",
+    "quickaction_none":           "— Select a task —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ Add Task",
+    "btn_view_all":               "📋 View All Tasks",
+    "today_view_title":           "📅 Today's Tasks",
+    "overdue_view_title":         "🚨 Overdue Tasks",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 Open / action on a search result...",
+    "recommend_action_placeholder": "⚡ Quick action on recommendation...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ Select a file to delete...",
+    "storage_upload_hint":               "Use `/attach [task_id] [file]` to upload more files.",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 Collaboration",
+    "help_cat_search":            "🔍 Search & Analytics",
+    "help_cat_files":             "📎 Files & Storage",
+    "help_cat_advanced":          "💡 Tips & Shortcuts",
+    "help_collab_desc":           "Shared project collaboration commands",
+    "help_search_desc":           "Search, recommendations, and productivity analytics",
+    "help_files_desc":            "File attachment upload and management",
+    "help_advanced_desc":         "Power-user tips and shorthand tricks",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ Task **{task_name}** created! ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ Priority must be between 0 (Normal) and 7 (Critical).",
 }

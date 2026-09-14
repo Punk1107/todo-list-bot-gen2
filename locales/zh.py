@@ -481,4 +481,49 @@ STRINGS = {
     "recommend_scope_personal":     "📋 个人任务",
     "recommend_scope_guild":        "🏛️ 服务器任务",
     "recommend_weights_info": "默认权重: 优先级 {priority}% · 紧迫性 {urgency}% · 逾期 {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ 想要延期多久？",
+    "snooze_preset_1h":           "⏰ +1 小时",
+    "snooze_preset_3h":           "⏰ +3 小时",
+    "snooze_preset_1d":           "📅 +1 天 (相同时间)",
+    "snooze_preset_3d":           "📅 +3 天",
+    "snooze_preset_next_week":    "📅 下周一",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ 快速操作任务...",
+    "quickaction_done":           "✅ 标记完成",
+    "quickaction_pin":            "📌 置顶 / 取消置顶",
+    "quickaction_snooze":         "⏰ 延期 1 天",
+    "quickaction_detail":         "🔍 查看完整详情",
+    "quickaction_select_hint":    "选择一个任务以对其执行操作。",
+    "quickaction_none":           "— 选择任务 —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ 添加任务",
+    "btn_view_all":               "📋 查看所有任务",
+    "today_view_title":           "📅 今日任务",
+    "overdue_view_title":         "🚨 逾期任务",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 打开 / 操作搜索结果...",
+    "recommend_action_placeholder": "⚡ 快速操作推荐任务...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ 选择要删除的文件...",
+    "storage_upload_hint":               "使用 `/attach [task_id] [文件]` 上传更多文件。",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 协作功能",
+    "help_cat_search":            "🔍 搜索与分析",
+    "help_cat_files":             "📎 文件与存储",
+    "help_cat_advanced":          "💡 技巧与快捷键",
+    "help_collab_desc":           "共享项目团队协作命令",
+    "help_search_desc":           "任务搜索、智能推荐与生产力分析",
+    "help_files_desc":            "任务附件上传与管理",
+    "help_advanced_desc":         "高级用户技巧与快捷格式",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ 任务 **{task_name}** 创建成功！ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ 优先级必须在 0（普通）到 7（紧急）之间。",
 }

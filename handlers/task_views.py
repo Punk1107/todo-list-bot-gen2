@@ -1195,11 +1195,10 @@ class TaskActionView(ui.View):
             embed=confirm_embed, view=confirm, ephemeral=True,
         )
 
-    # ── Snooze (+1 Day) ───────────────────────────────────────────────────────
+    # ── Snooze — Preset Selector ──────────────────────────────────────────────
 
-    @ui.button(label="⏰ Snooze (+1 Day)", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
+    @ui.button(label="⏰ Snooze", style=discord.ButtonStyle.secondary, row=1, custom_id="snz")
     async def snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        # Defer immediately so Discord doesn't time out while we query the DB
         await interaction.response.defer(ephemeral=True)
         lang = await get_user_lang(interaction.user.id)
         if not self._check_owner(interaction):
@@ -1218,27 +1217,20 @@ class TaskActionView(ui.View):
             )
             return
         try:
-            # Use defensive snooze: if task is overdue, snooze from now instead of
-            # from the (past) deadline so the new deadline is always in the future
-            new_dl = calculate_defensive_snooze(row["deadline"])
             tz_name = await get_user_timezone(self.uid)
-            new_dl_fmt = format_deadline(new_dl, tz_name)
-
-            confirm_view = SnoozeConfirmView(self.task_id, self.uid, lang, new_dl, tz_name)
-            confirm_embed = discord.Embed(
-                title=t("snooze_confirm_title", lang),
-                description=t("snooze_confirm_desc", lang, task_name=row["task"], new_deadline=new_dl_fmt),
-                color=0x5865F2,
+            preset_view = SnoozePresetView(self.task_id, self.uid, lang, row["deadline"], tz_name)
+            await interaction.followup.send(
+                t("snooze_confirm_title", lang),
+                view=preset_view,
+                ephemeral=True,
             )
-            confirm_embed.set_footer(text=t("footer_text", lang))
-            await interaction.followup.send(embed=confirm_embed, view=confirm_view, ephemeral=True)
         except Exception as exc:
             log.error("Snooze failed task_id=%d: %s", self.task_id, exc)
             await interaction.followup.send(t("err_generic", lang), ephemeral=True)
 
     # ── Add Subtask ───────────────────────────────────────────────────────────
 
-    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=4, custom_id="sub")
+    @ui.button(label="➕ Subtask", style=discord.ButtonStyle.secondary, row=0, custom_id="sub")
     async def add_subtask(self, interaction: discord.Interaction, button: ui.Button) -> None:
         # Fetch data BEFORE responding (send_message must be the first response)
         lang = await get_user_lang(interaction.user.id)
@@ -1440,6 +1432,14 @@ class TaskListView(ui.View):
                 elif cid == "lv_refresh":
                     item.label = t("btn_refresh", self.lang)
 
+    def _update_quickaction(self, tasks: list) -> None:
+        """Update or insert the TaskQuickActionSelect dropdown on row 1."""
+        for item in list(self.children):
+            if isinstance(item, TaskQuickActionSelect):
+                self.remove_item(item)
+        if tasks:
+            self.add_item(TaskQuickActionSelect(tasks, self.uid, self.lang, self.tz_name, row=1))
+
     async def update_message(self, interaction: discord.Interaction) -> None:
         tasks, page, total_pages = await self._fetch_page()
         fs = self.filter_status
@@ -1471,6 +1471,7 @@ class TaskListView(ui.View):
             total_count=total_count, overdue_count=overdue_count,
         )
         self._update_nav_buttons(page, total_pages)
+        self._update_quickaction(tasks)
         await interaction.edit_original_response(embed=embed, view=self)
 
     @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
@@ -1580,6 +1581,419 @@ class LanguageView(ui.View):
         except Exception:
             pass
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Snooze Preset View  (replaces single-step +1 Day confirm)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _SnoozePresetSelect(ui.Select):
+    """Dropdown with snooze duration options (1h / 3h / 1d / 3d / next Monday)."""
+
+    def __init__(self, task_id: int, uid: str, lang: str, current_deadline: str, tz_name: str) -> None:
+        from datetime import datetime, timedelta
+        import pytz as _pytz
+
+        self.task_id   = task_id
+        self.uid       = uid
+        self.lang      = lang
+        self.tz_name   = tz_name
+        self.current_deadline = current_deadline
+
+        # Pre-compute preset values
+        try:
+            cur_dt = datetime.fromisoformat(current_deadline)
+            if cur_dt.tzinfo is None:
+                cur_dt = _pytz.utc.localize(cur_dt)
+        except Exception:
+            cur_dt = datetime.now(_pytz.utc)
+        now = datetime.now(_pytz.utc)
+        base = max(cur_dt, now)   # if overdue, snooze from now
+
+        def _next_monday(dt):
+            days = (7 - dt.weekday()) % 7
+            if days == 0:
+                days = 7
+            return dt + timedelta(days=days)
+
+        self._presets = {
+            "1h":   base + timedelta(hours=1),
+            "3h":   base + timedelta(hours=3),
+            "1d":   base + timedelta(days=1),
+            "3d":   base + timedelta(days=3),
+            "mon":  _next_monday(now).replace(
+                        hour=base.astimezone(_pytz.timezone(tz_name)).hour,
+                        minute=base.astimezone(_pytz.timezone(tz_name)).minute,
+                    ),
+        }
+
+        options = [
+            discord.SelectOption(label=t("snooze_preset_1h",   lang), value="1h",  emoji="⏰"),
+            discord.SelectOption(label=t("snooze_preset_3h",   lang), value="3h",  emoji="⏰"),
+            discord.SelectOption(label=t("snooze_preset_1d",   lang), value="1d",  emoji="📅"),
+            discord.SelectOption(label=t("snooze_preset_3d",   lang), value="3d",  emoji="📅"),
+            discord.SelectOption(label=t("snooze_preset_next_week", lang), value="mon", emoji="📅"),
+        ]
+        super().__init__(
+            placeholder=t("snooze_preset_placeholder", lang),
+            options=options,
+            min_values=1, max_values=1, row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+
+        preset = self.values[0]
+        new_dl = self._presets[preset]
+        try:
+            await db.aexecute(
+                "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
+                (new_dl.isoformat(), self.task_id, self.uid),
+            )
+            await db.alog_action(self.uid, "task_snoozed", str(self.task_id), f"preset={preset}")
+            db.invalidate_stats(self.uid)
+        except Exception as exc:
+            log.error("Snooze preset failed task_id=%d: %s", self.task_id, exc)
+            await interaction.followup.send(t("err_db", self.lang), ephemeral=True)
+            return
+
+        new_dl_str = format_deadline(new_dl.isoformat(), self.tz_name)
+        self.view.stop()
+        await interaction.edit_original_response(
+            content=t("task_snoozed", self.lang, deadline=new_dl_str),
+            embed=None, view=None,
+        )
+
+
+class SnoozePresetView(ui.View):
+    """View shown when user clicks 'Snooze' in TaskActionView — shows preset options."""
+
+    def __init__(self, task_id: int, uid: str, lang: str, current_deadline: str, tz_name: str) -> None:
+        super().__init__(timeout=60)
+        self._select = _SnoozePresetSelect(task_id, uid, lang, current_deadline, tz_name)
+        self.add_item(self._select)
+
+    async def on_timeout(self) -> None:
+        _disable_all(self)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quick Action Select for TaskListView / TodayView / OverdueView
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TaskQuickActionSelect(ui.Select):
+    """
+    Dropdown for quick actions on tasks shown in a list view.
+    Options: Mark Done · Pin/Unpin · Snooze +1d · View Detail
+    """
+
+    def __init__(self, tasks: list, uid: str, lang: str, tz_name: str, row: int = 0) -> None:
+        self.uid     = uid
+        self.lang    = lang
+        self.tz_name = tz_name
+
+        options = [
+            discord.SelectOption(
+                label=f"#{r['task_id']} — {r['task'][:40]}",
+                value=str(r["task_id"]),
+                description=format_deadline(r.get("deadline"), tz_name)[:50] if r.get("deadline") else "",
+            )
+            for r in tasks[:25]
+        ]
+        if not options:
+            options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
+
+        super().__init__(
+            placeholder=t("quickaction_placeholder", lang),
+            options=options,
+            min_values=1, max_values=1,
+            row=row,
+        )
+        self._tasks_by_id = {str(r["task_id"]): r for r in tasks}
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        task_id_str = self.values[0]
+        if task_id_str == "0":
+            await _safe_respond(interaction, t("quickaction_select_hint", self.lang))
+            return
+
+        task_id = int(task_id_str)
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", self.lang, task_id=task_id))
+            return
+
+        # Build a sub-menu ephemeral message with 4 buttons for the chosen task
+        action_view = _QuickActionButtons(task_id, self.uid, self.lang, self.tz_name, row)
+        embed = discord.Embed(
+            title=f"⚡ {row['task'][:60]}",
+            description=t("quickaction_select_hint", self.lang),
+            color=0x5865F2,
+        )
+        embed.set_footer(text=t("footer_text", self.lang))
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, view=action_view, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, view=action_view, ephemeral=True)
+
+
+class _QuickActionButtons(ui.View):
+    """Ephemeral view with 4 quick-action buttons for a selected task."""
+
+    def __init__(self, task_id: int, uid: str, lang: str, tz_name: str, row_data) -> None:
+        super().__init__(timeout=60)
+        self.task_id  = task_id
+        self.uid      = uid
+        self.lang     = lang
+        self.tz_name  = tz_name
+        self.row_data = row_data
+
+    @ui.button(label="✅ Done", style=discord.ButtonStyle.success)
+    async def quick_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        r = await db.afetchone("SELECT task, status FROM tasks WHERE task_id=$1", (self.task_id,))
+        if not r or r["status"] == "Completed":
+            await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
+            return
+        await db.aexecute(
+            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
+            (self.task_id,),
+        )
+        await db.alog_action(self.uid, "task_completed", str(self.task_id))
+        db.invalidate_stats(self.uid)
+        self.stop()
+        await interaction.followup.send(
+            t("task_done_with_name", self.lang, task_id=self.task_id, task_name=r["task"]),
+            ephemeral=True,
+        )
+
+    @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary)
+    async def quick_pin(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        pin_row = await db.afetchone("SELECT is_pinned FROM tasks WHERE task_id=$1", (self.task_id,))
+        if not pin_row:
+            return
+        new_val = 0 if pin_row["is_pinned"] else 1
+        await db.aexecute("UPDATE tasks SET is_pinned=$1 WHERE task_id=$2", (new_val, self.task_id))
+        await db.alog_action(self.uid, "task_pinned" if new_val else "task_unpinned", str(self.task_id))
+        msg_key = "task_pinned" if new_val else "task_unpinned"
+        await interaction.followup.send(t(msg_key, self.lang, task_id=self.task_id), ephemeral=True)
+
+    @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary)
+    async def quick_snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        r = await db.afetchone("SELECT deadline FROM tasks WHERE task_id=$1", (self.task_id,))
+        if not r:
+            return
+        new_dl = calculate_defensive_snooze(r["deadline"])
+        await db.aexecute(
+            "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2",
+            (new_dl, self.task_id),
+        )
+        await db.alog_action(self.uid, "task_snoozed", str(self.task_id))
+        db.invalidate_stats(self.uid)
+        await interaction.followup.send(
+            t("task_snoozed", self.lang, deadline=format_deadline(new_dl, self.tz_name)),
+            ephemeral=True,
+        )
+
+    @ui.button(label="🔍 Detail", style=discord.ButtonStyle.blurple)
+    async def quick_detail(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if str(interaction.user.id) != self.uid:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
+        from utils.helpers import build_task_embed
+        r = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
+        if not r:
+            await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
+            return
+        embed = build_task_embed(r, self.lang, self.tz_name)
+        view  = TaskActionView(self.task_id, self.uid, self.lang,
+                               is_pinned=bool(r.get("is_pinned", 0)),
+                               current_priority=r.get("priority", 0))
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TodayView — interactive /today embed with Refresh + Quick Actions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TodayView(ui.View):
+    """Interactive view for /today — refresh + quick action dropdown."""
+
+    def __init__(self, uid: str, lang: str, tz_name: str, tasks: list) -> None:
+        super().__init__(timeout=300)
+        self.uid     = uid
+        self.lang    = lang
+        self.tz_name = tz_name
+        self._tasks  = tasks
+        if tasks:
+            self.add_item(TaskQuickActionSelect(tasks, uid, lang, tz_name, row=0))
+
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=1)
+    async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        await interaction.response.defer()
+        embed, new_view = await _build_today_embed_and_view(self.uid, self.lang, self.tz_name)
+        await interaction.edit_original_response(embed=embed, view=new_view)
+
+    @ui.button(label="📋 View All", style=discord.ButtonStyle.blurple, row=1)
+    async def view_all(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        await interaction.response.defer(ephemeral=True)
+        from utils.helpers import build_task_list_embed
+        view = TaskListView(self.uid, self.lang, self.tz_name, "today")
+        tasks, page, tot = await view._fetch_page()
+        embed = build_task_list_embed(tasks, page, tot, self.lang, self.tz_name,
+                                      t("tasks_filter_today", self.lang))
+        view._update_nav_buttons(page, tot)
+        view._update_quickaction(tasks)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        view._message = await interaction.original_response()
+
+    async def on_timeout(self) -> None:
+        _disable_all(self)
+
+
+async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
+    """Helper that (re-)builds the Today embed + TodayView."""
+    from utils.helpers import format_deadline, time_left_str
+    now_utc  = datetime.now(pytz.utc)
+    local_tz = pytz.timezone(tz_name)
+    local_now = now_utc.astimezone(local_tz)
+    start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
+    end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
+
+    tasks = await db.afetchall(
+        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline BETWEEN $2 AND $3 ORDER BY deadline ASC",
+        (uid, start, end),
+    )
+    overdue_row = await db.afetchone(
+        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+        (uid, now_utc.isoformat()),
+    )
+    overdue_c = overdue_row["c"] if overdue_row else 0
+
+    from locales.i18n import t as _t
+    color = 0xED4245 if overdue_c > 0 else (0xE67E22 if any(r["priority"] >= 4 for r in tasks) else 0x5865F2)
+    local_date = local_now.strftime("%d/%m/%Y")
+    embed = discord.Embed(
+        title=f"📅 {_t('today_view_title', lang)} — {local_date}",
+        color=color,
+    )
+    if not tasks:
+        embed.description = "> " + _t("tasks_empty", lang)
+    else:
+        lines = [f"**{_t('today_summary', lang, count=len(tasks), overdue=overdue_c)}**\n"]
+        for r in tasks:
+            try:
+                dt = datetime.fromisoformat(r["deadline"])
+                if dt.tzinfo is None:
+                    dt = pytz.utc.localize(dt)
+                is_overdue = dt < now_utc
+            except Exception:
+                is_overdue = False
+            icon = "🚨" if is_overdue else "⏳"
+            tl   = time_left_str(r["deadline"])
+            dl   = format_deadline(r["deadline"], tz_name)
+            lines.append(f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{dl}`  ·  ⏱️ `{tl}`")
+        embed.description = "\n".join(lines)
+        embed.set_footer(text=f"{len(tasks)} task(s) today  |  {_t('footer_text', lang)}")
+
+    view = TodayView(uid, lang, tz_name, list(tasks))
+    return embed, view
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OverdueView — interactive /overdue embed with Refresh + Quick Actions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class OverdueView(ui.View):
+    """Interactive view for /overdue — refresh + quick action dropdown."""
+
+    def __init__(self, uid: str, lang: str, tz_name: str, tasks: list) -> None:
+        super().__init__(timeout=300)
+        self.uid     = uid
+        self.lang    = lang
+        self.tz_name = tz_name
+        self._tasks  = tasks
+        if tasks:
+            self.add_item(TaskQuickActionSelect(tasks, uid, lang, tz_name, row=0))
+
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, row=1)
+    async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        await interaction.response.defer()
+        embed, new_view = await _build_overdue_embed_and_view(self.uid, self.lang, self.tz_name)
+        await interaction.edit_original_response(embed=embed, view=new_view)
+
+    @ui.button(label="📋 View All", style=discord.ButtonStyle.blurple, row=1)
+    async def view_all(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
+        await interaction.response.defer(ephemeral=True)
+        from utils.helpers import build_task_list_embed
+        view = TaskListView(self.uid, self.lang, self.tz_name, "overdue")
+        tasks, page, tot = await view._fetch_page()
+        embed = build_task_list_embed(tasks, page, tot, self.lang, self.tz_name,
+                                      t("tasks_filter_overdue", self.lang))
+        view._update_nav_buttons(page, tot)
+        view._update_quickaction(tasks)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        view._message = await interaction.original_response()
+
+    async def on_timeout(self) -> None:
+        _disable_all(self)
+
+
+async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
+    """Helper that (re-)builds the Overdue embed + OverdueView."""
+    from utils.helpers import format_deadline, time_left_str
+    from locales.i18n import t as _t
+    now = datetime.now(pytz.utc).isoformat()
+    tasks = await db.afetchall(
+        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2 ORDER BY deadline ASC",
+        (uid, now),
+    )
+    embed = discord.Embed(title=f"🚨 {_t('overdue_view_title', lang)}", color=0xED4245)
+    if not tasks:
+        embed.description = "> ✅ " + _t("overdue_none", lang)
+    else:
+        summary = _t("overdue_summary", lang, total=len(tasks))
+        note    = _t("overdue_note", lang)
+        lines   = [f"**{summary}**\n> *{note}*\n"]
+        for r in tasks:
+            lines.append(
+                f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
+                f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
+            )
+        embed.description = "\n".join(lines)
+        embed.set_footer(text=f"⚠️ {len(tasks)} overdue  |  {_t('footer_text', lang)}")
+    view = OverdueView(uid, lang, tz_name, list(tasks))
+    return embed, view
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -158,6 +158,17 @@ class SearchResultsView(ui.View):
         self._message: Optional[discord.Message] = None
 
         self._update_buttons()
+        self._update_select()
+
+    def _update_select(self) -> None:
+        """Update or insert the TaskSelectFromSearch dropdown on row 2."""
+        for item in list(self.children):
+            if isinstance(item, TaskSelectFromSearch):
+                self.remove_item(item)
+        if self.current_result.items:
+            self.add_item(TaskSelectFromSearch(
+                self.current_result.items, self.uid, self.lang, self.tz_name, row=2
+            ))
 
     def _update_buttons(self) -> None:
         """Enable/disable nav buttons based on current page."""
@@ -194,6 +205,7 @@ class SearchResultsView(ui.View):
             log.error("SearchResultsView pagination error: %s", exc)
 
         self._update_buttons()
+        self._update_select()
         embed = build_search_embed(
             self.current_result, self.lang, self.tz_name,
             self.scope_label, self.active_filters
@@ -263,6 +275,60 @@ class SearchResultsView(ui.View):
             return
         await interaction.response.defer()
         await self._go_to_page(interaction, self.current_result.page)
+
+
+class TaskSelectFromSearch(ui.Select):
+    """Dropdown on SearchResultsView to inspect or act on a searched task."""
+
+    def __init__(self, items: list, uid: str, lang: str, tz_name: str, row: int = 2) -> None:
+        self.uid = uid
+        self.lang = lang
+        self.tz_name = tz_name
+        options = [
+            discord.SelectOption(
+                label=f"#{item.task_id} — {item.task[:40]}",
+                value=str(item.task_id),
+                description=format_deadline(str(item.deadline), tz_name)[:50] if item.deadline else "",
+            )
+            for item in items[:25]
+        ]
+        if not options:
+            options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
+        super().__init__(
+            placeholder=t("search_action_placeholder", lang),
+            options=options,
+            min_values=1, max_values=1,
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        task_id_str = self.values[0]
+        if task_id_str == "0":
+            return
+        task_id = int(task_id_str)
+        from core.database import db
+        from handlers.task_views import TaskActionView
+        from handlers.tasks_cog import _async_build_task_embed
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        if not row:
+            await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
+            return
+        categories = await db.afetchall(
+            "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
+            (self.uid,),
+        )
+        embed = await _async_build_task_embed(row, self.lang, self.tz_name)
+        view = TaskActionView(
+            task_id, self.uid, self.lang,
+            is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
+            categories=list(categories),
+            current_cat_id=row["category_id"],
+            current_priority=row["priority"] if "priority" in row.keys() else 0,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -369,6 +435,17 @@ class RecommendationView(ui.View):
         self.weights         = weights
         self.scope_label     = scope_label
         self._message: Optional[discord.Message] = None
+        self._update_select()
+
+    def _update_select(self) -> None:
+        """Update or insert the TaskQuickActionFromRecommend dropdown on row 1."""
+        for item in list(self.children):
+            if isinstance(item, TaskQuickActionFromRecommend):
+                self.remove_item(item)
+        if self.recommendations:
+            self.add_item(TaskQuickActionFromRecommend(
+                self.recommendations, self.uid, self.lang, self.tz_name, row=1
+            ))
 
     async def on_timeout(self) -> None:
         for child in self.children:
@@ -399,8 +476,63 @@ class RecommendationView(ui.View):
         except Exception as exc:
             log.error("RecommendationView refresh error: %s", exc)
 
+        self._update_select()
         embed = build_recommendation_embed(
             self.recommendations, self.lang, self.tz_name,
             self.scope_label, self.weights
         )
         await interaction.edit_original_response(embed=embed, view=self)
+
+
+class TaskQuickActionFromRecommend(ui.Select):
+    """Dropdown on RecommendationView to act on recommended tasks."""
+
+    def __init__(self, recs: list[TaskRecommendation], uid: str, lang: str, tz_name: str, row: int = 1) -> None:
+        self.uid = uid
+        self.lang = lang
+        self.tz_name = tz_name
+        options = [
+            discord.SelectOption(
+                label=f"#{r.task_id} — {r.task[:40]}",
+                value=str(r.task_id),
+                description=f"Score {r.total_score} · {format_deadline(r.deadline, tz_name)[:30]}",
+            )
+            for r in recs[:25]
+        ]
+        if not options:
+            options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
+        super().__init__(
+            placeholder=t("recommend_action_placeholder", lang),
+            options=options,
+            min_values=1, max_values=1,
+            row=row,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        task_id_str = self.values[0]
+        if task_id_str == "0":
+            return
+        task_id = int(task_id_str)
+        from core.database import db
+        from handlers.task_views import TaskActionView
+        from handlers.tasks_cog import _async_build_task_embed
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        if not row:
+            await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
+            return
+        categories = await db.afetchall(
+            "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
+            (self.uid,),
+        )
+        embed = await _async_build_task_embed(row, self.lang, self.tz_name)
+        view = TaskActionView(
+            task_id, self.uid, self.lang,
+            is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
+            categories=list(categories),
+            current_cat_id=row["category_id"],
+            current_priority=row["priority"] if "priority" in row.keys() else 0,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)

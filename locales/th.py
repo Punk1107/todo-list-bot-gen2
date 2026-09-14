@@ -42,8 +42,8 @@ STRINGS = {
     "task_add_title": "➕ เพิ่ม Task ใหม่",
     "task_name_label": "ชื่อ Task",
     "task_name_placeholder": "เช่น: ส่งรายงาน, ประชุมทีม",
-    "task_deadline_label": "กำหนดส่ง (วัน/เดือน/ปี ชั่วโมง:นาที)",
-    "task_deadline_placeholder": "เช่น: 25/12/2025 18:00",
+    "task_deadline_label": "กำหนดส่ง",
+    "task_deadline_placeholder": "เช่น: 25/12 18:00 · today 18:00 · tomorrow · +2h · +3d",
     "task_priority_label": "⚡ ความสำคัญ",
     "task_priority_placeholder": "0–7  (0=ปกติ, 3=สำคัญ, 5=เร่งด่วน, 7=วิกฤต)",
     "task_desc_label": "รายละเอียด (ไม่บังคับ)",
@@ -51,7 +51,7 @@ STRINGS = {
     "task_tags_label": "แท็ก (ไม่บังคับ)",
     "task_tags_placeholder": "เช่น: งาน, เร่งด่วน, บ้าน",
     "task_created": "✅ สร้าง Task สำเร็จ! ID: **#{task_id}**",
-    "task_invalid_deadline": "❌ รูปแบบวันที่ไม่ถูกต้อง กรุณาใช้: `วว/ดด/ปปปป ชช:นน`\nตัวอย่าง: `25/12/2025 18:00`",
+    "task_invalid_deadline": "❌ กำหนดส่งไม่ถูกต้อง รูปแบบที่รองรับ:\n`25/12/2025 18:00` · `25/12` · `today 18:00` · `tomorrow` · `+2h` · `+3d`",
     "task_past_deadline": "❌ กำหนดส่งต้องเป็นเวลาในอนาคต",
     "task_invalid_priority": "❌ ความสำคัญต้องเป็นตัวเลข 0–7 เท่านั้น",
     "task_name_too_long": "❌ ชื่อ Task ยาวเกินไป (สูงสุด 200 ตัวอักษร)",
@@ -544,4 +544,49 @@ STRINGS = {
     "recommend_scope_personal":         "📋 Task ส่วนตัว",
     "recommend_scope_guild":            "🏛️ Task ใน Guild",
     "recommend_weights_info": "น้ำหนักเริ่มต้น: Priority {priority}% · Urgency {urgency}% · Overdue {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ เลื่อนนานแค่ไหน?",
+    "snooze_preset_1h":           "⏰ +1 ชั่วโมง",
+    "snooze_preset_3h":           "⏰ +3 ชั่วโมง",
+    "snooze_preset_1d":           "📅 +1 วัน (เวลาเดิม)",
+    "snooze_preset_3d":           "📅 +3 วัน",
+    "snooze_preset_next_week":    "📅 จันทร์หน้า",
+
+    # ─── Quick Action Dropdown ───────────────────────────────────────────────────
+    "quickaction_placeholder":    "⚡ ทำอะไรกับ Task นี้...",
+    "quickaction_done":           "✅ ทำเสร็จแล้ว",
+    "quickaction_pin":            "📌 ปักหมุด / เอาออก",
+    "quickaction_snooze":         "⏰ เลื่อน +1 วัน",
+    "quickaction_detail":         "🔍 ดูรายละเอียด",
+    "quickaction_select_hint":    "เลือก Task แล้วกดดำเนินการ",
+    "quickaction_none":           "— เลือก Task —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ เพิ่ม Task",
+    "btn_view_all":               "📋 ดู Task ทั้งหมด",
+    "today_view_title":           "📅 Task วันนี้",
+    "overdue_view_title":         "🚨 Task ที่เกินกำหนด",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 เปิด / จัดการผลการค้นหา...",
+    "recommend_action_placeholder": "⚡ ดำเนินการกับที่แนะนำ...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ เลือกไฟล์ที่ต้องการลบ...",
+    "storage_upload_hint":               "ใช้ `/attach [task_id] [ไฟล์]` เพื่ออัปโหลดไฟล์เพิ่ม",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 Collaboration",
+    "help_cat_search":            "🔍 Search & Analytics",
+    "help_cat_files":             "📎 ไฟล์และพื้นที่เก็บข้อมูล",
+    "help_cat_advanced":          "💡 เทคนิคและทางลัด",
+    "help_collab_desc":           "คำสั่งสำหรับโปรเจกต์ร่วมกัน",
+    "help_search_desc":           "ค้นหา, แนะนำ และวิเคราะห์ประสิทธิภาพ",
+    "help_files_desc":            "จัดการไฟล์แนบและพื้นที่เก็บข้อมูล",
+    "help_advanced_desc":         "เทคนิคสำหรับผู้ใช้ขั้นสูง",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ Task **{task_name}** สร้างสำเร็จ! ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ ความสำคัญต้องอยู่ระหว่าง 0 (ปกติ) ถึง 7 (วิกฤต)",
 }

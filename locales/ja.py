@@ -481,4 +481,49 @@ STRINGS = {
     "recommend_scope_personal":     "📋 個人タスク",
     "recommend_scope_guild":        "🏛️ サーバータスク",
     "recommend_weights_info": "デフォルト重み: 優先度 {priority}% · 緊急度 {urgency}% · 超過 {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ どのくらい延期しますか？",
+    "snooze_preset_1h":           "⏰ +1時間",
+    "snooze_preset_3h":           "⏰ +3時間",
+    "snooze_preset_1d":           "📅 +1日 (同時刻)",
+    "snooze_preset_3d":           "📅 +3日",
+    "snooze_preset_next_week":    "📅 来週の月曜日",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ タスクのクイック操作...",
+    "quickaction_done":           "✅ 完了にする",
+    "quickaction_pin":            "📌 ピン留め / 解除",
+    "quickaction_snooze":         "⏰ +1日延期",
+    "quickaction_detail":         "🔍 詳細を確認",
+    "quickaction_select_hint":    "操作を行うタスクを選択してください。",
+    "quickaction_none":           "— タスクを選択 —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ タスクを追加",
+    "btn_view_all":               "📋 すべてのタスクを表示",
+    "today_view_title":           "📅 本日のタスク",
+    "overdue_view_title":         "🚨 期限超過のタスク",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 検索結果を開く / 操作...",
+    "recommend_action_placeholder": "⚡ おすすめタスクの操作...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ 削除するファイルを選択...",
+    "storage_upload_hint":               "`/attach [task_id] [ファイル]` でファイルを追加アップロードできます。",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 コラボレーション",
+    "help_cat_search":            "🔍 検索と分析",
+    "help_cat_files":             "📎 ファイルとストレージ",
+    "help_cat_advanced":          "💡 ヒントとショートカット",
+    "help_collab_desc":           "共有プロジェクトの共同作業コマンド",
+    "help_search_desc":           "タスク検索・おすすめ・生産性分析",
+    "help_files_desc":            "添付ファイルのアップロードと管理",
+    "help_advanced_desc":         "上級者向けの便利なショートカットと入力方法",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ タスク **{task_name}** を作成しました！ ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ 優先度は 0（通常）から 7（緊急）の間で指定してください。",
 }
