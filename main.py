@@ -56,9 +56,10 @@ COGS = [
     "handlers.tasks_cog",
     "handlers.settings_cog",
     "handlers.reminders_cog",
-    "handlers.monitoring_cog",   # admin /health /errors /cmdstats
-    "collaboration.cog",         # /project group — Shared Projects (Collaboration)
-    "storage.cog",               # /attach /attachments — Task File Storage
+    "handlers.monitoring_cog",              # admin /health /errors /cmdstats
+    "collaboration.cog",                    # /project group — Shared Projects (Collaboration)
+    "storage.cog",                          # /attach /attachments — Task File Storage
+    "search_recommendation.cog",            # /search (FTS) + /recommend (task prioritization)
 ]
 
 

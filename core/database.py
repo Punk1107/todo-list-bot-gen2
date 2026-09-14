@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 14   # bump when adding migrations below
+SCHEMA_VERSION = 15   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -688,6 +688,33 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE task_attachments REPLICA IDENTITY FULL;
 
     INSERT INTO schema_version VALUES (14) ON CONFLICT (version) DO UPDATE SET version=14;
+    """),
+
+    # ── v15: Full Text Search support ─────────────────────────────────────────
+    # Adds a generated tsvector column combining all searchable text fields with
+    # weighted importance (A=task title, B=tags, C=description, D=note).
+    # Uses 'simple' dictionary for multi-language support (Thai, EN, etc.).
+    # GIN index enables fast ts_rank_cd() full text ranking queries.
+    # Composite B-Tree index for filter+sort without FTS for non-text queries.
+    (15, """
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS search_vector tsvector
+        GENERATED ALWAYS AS (
+            setweight(to_tsvector('simple', COALESCE(task, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(tags, '')), 'B') ||
+            setweight(to_tsvector('simple', COALESCE(description, '')), 'C') ||
+            setweight(to_tsvector('simple', COALESCE(note, '')), 'D')
+        ) STORED;
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_search_vector
+        ON tasks USING gin(search_vector);
+
+    -- Composite index for fast filter-only searches (no FTS)
+    -- Covers: guild_id + owner_id scope, status filter, priority sort, deadline sort
+    CREATE INDEX IF NOT EXISTS idx_tasks_search_filter
+        ON tasks(guild_id, owner_id, status, priority DESC, deadline ASC)
+        WHERE status != 'Cancelled';
+
+    INSERT INTO schema_version VALUES (15) ON CONFLICT (version) DO UPDATE SET version=15;
     """),
 ]
 

@@ -424,7 +424,13 @@ class TasksCog(commands.Cog, name="Tasks"):
         )
 
     # ─────────────────────────────────────────────────────────────────────────
-    # /search  (BUG FIX: COALESCE prevents NULL from matching)
+    # /search  — Delegated to PostgreSQL Full Text Search engine (v2)
+    #
+    # The legacy LIKE-based implementation has been replaced by the
+    # search_recommendation.FtsEngine which uses tsvector + GIN index with
+    # ts_rank_cd ranking.  This command retains its simple 1-argument UX;
+    # the advanced /search command (in search_recommendation/cog.py) offers
+    # full filter + sort + pagination controls.
     # ─────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="search", description="🔍 ค้นหา Task / Search tasks")
@@ -435,65 +441,49 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang    = await get_user_lang(uid)
         tz_name = await get_user_timezone(uid)
 
-        q = validator.sanitize(query, 100)
+        q = validator.sanitize(query, 200)
         if validator.is_suspicious(q):
             await interaction.response.send_message(t("err_suspicious", lang), ephemeral=True)
             return
         await interaction.response.defer()
 
-        # FIX: COALESCE ensures NULL columns don't prevent matches
-        tasks = await db.afetchall(
-            """SELECT * FROM tasks
-               WHERE owner_id=$1
-                 AND (task LIKE $2
-                      OR COALESCE(tags, '') LIKE $2
-                      OR COALESCE(description, '') LIKE $2)
-               ORDER BY is_pinned DESC, priority DESC, deadline ASC LIMIT 20""",
-            (uid, f"%{q}%"),
+        # Delegate to FTS engine (replaces legacy LIKE query — ranked + paginated)
+        from search_recommendation.service import search_svc
+        from search_recommendation.models import SearchFilter, SearchQuery, SortBy
+        from search_recommendation.views import SearchResultsView, build_search_embed
+
+        search_query = SearchQuery(
+            text=q,
+            filter=SearchFilter(owner_id=uid),
+            sort_by=SortBy.RELEVANCE,
+            page=1,
+            page_size=10,
         )
+        try:
+            result_page = await search_svc.search(search_query)
+        except Exception as exc:
+            log.error("search command FTS error: %s", exc)
+            await interaction.followup.send(t("err_db", lang), ephemeral=True)
+            return
 
-        title_text = f"🔍 {t('search_title', lang, query=q)}"
-        if tasks:
-            title_text += f" — {len(tasks)} {t('cat_task_count', lang, count=len(tasks))}"
-        embed = discord.Embed(title=title_text, color=0x5865F2)
-        if not tasks:
-            embed.description = "> " + t("search_empty", lang, query=q)
-        else:
-            now   = datetime.now(pytz.utc)
-            lines = [f"> *{t('search_results_count', lang, query=q, count=len(tasks))}*\n"]
-            escaped_q = re.escape(q)
-            for row in tasks:
-                try:
-                    dt = datetime.fromisoformat(row["deadline"])
-                    if dt.tzinfo is None:
-                        dt = pytz.utc.localize(dt)
-                    is_overdue = dt < now and row["status"] == "Pending"
-                    is_done    = row["status"] == "Completed"
-                except Exception:
-                    is_overdue = False
-                    is_done    = False
+        active_filters = [f"🔍 \"{q[:30]}\""] if q else []
+        embed = build_search_embed(
+            result_page, lang, tz_name,
+            t("recommend_scope_personal", lang),
+            active_filters,
+        )
+        view = SearchResultsView(
+            uid=uid,
+            lang=lang,
+            tz_name=tz_name,
+            query=search_query,
+            initial_result=result_page,
+            scope_label=t("recommend_scope_personal", lang),
+            active_filters=active_filters,
+        )
+        await interaction.followup.send(embed=embed, view=view)
+        view._message = await interaction.original_response()
 
-                if is_overdue:
-                    icon = "🚨"
-                elif is_done:
-                    icon = "✅"
-                else:
-                    icon = "⏳"
-
-                pin  = " 📌" if row.get("is_pinned") else ""
-                name = row["task"][:60]
-                highlighted_name = re.sub(
-                    f"({escaped_q})", r"__**\1**__", name, flags=re.IGNORECASE
-                )
-                dl_fmt = format_deadline(row["deadline"], tz_name)
-                tl     = time_left_str(row["deadline"])
-                lines.append(
-                    f"{icon} `#{row['task_id']}`{pin} {highlighted_name}\n"
-                    f"   ╰ 📅 `{dl_fmt}`  ·  ⏱️ `{tl}`"
-                )
-            embed.description = "\n".join(lines)
-        embed.set_footer(text=t("footer_text", lang))
-        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /stats

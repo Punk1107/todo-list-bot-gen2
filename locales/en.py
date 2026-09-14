@@ -200,12 +200,31 @@ STRINGS = {
     "export_empty": "📭 No data to export.",
     "export_rate_limited": "⏳ You have exceeded the export limit ({limit}/day). Try again tomorrow.",
 
-    # ─── Search ─────────────────────────────────────────────────────────────────
     "search_title": "🔍 Search Results: `{query}`",
     "search_results_count": "🔍 Search: **{query}** — {count} result(s) found",
     "search_empty": "🔍 No tasks matching `{query}` found.",
     "search_query_label": "Search Query",
     "search_query_placeholder": "Type task name or tag...",
+    # FTS-enhanced search strings
+    "search_fts_title": "🔍 Task Search",
+    "search_fts_empty": "No tasks found matching your search or filters.",
+    "search_fts_total": "{total} result(s) found",
+    "search_fts_powered": "Powered by PostgreSQL Full Text Search",
+    "search_sort_relevance":    "📊 Best Match",
+    "search_sort_deadline_asc": "📅 Earliest Deadline",
+    "search_sort_deadline_desc":"📅 Latest Deadline",
+    "search_sort_priority":     "🔴 Highest Priority",
+    "search_sort_created":      "🆕 Newest First",
+    "search_filter_label":      "Filters",
+    "search_filter_status":     "Status: {status}",
+    "search_filter_priority":   "Priority: P{min}–P{max}",
+    "search_filter_scope_guild":"Scope: Guild",
+    "search_filter_scope_personal": "Scope: Personal",
+    "search_btn_prev":   "◀ Prev",
+    "search_btn_next":   "Next ▶",
+    "search_btn_refresh":"🔄 Refresh",
+    "search_page_indicator": "📄 {page} / {total}",
+
 
     # ─── Stats ──────────────────────────────────────────────────────────────────
     "stats_title": "📊 Your Statistics",
@@ -494,4 +513,34 @@ STRINGS = {
     "analytics_weekly_enabled": "✅ Weekly productivity digest **enabled**! You'll receive a summary every Monday morning.",
     "analytics_weekly_disabled": "🔕 Weekly productivity digest **disabled**.",
     "analytics_not_configured": "⚠️ Analytics is not configured on this bot instance. Ask the bot owner to set `SUPABASE_URL` and `SUPABASE_KEY`.",
+
+    # ─── Search & Recommendation ────────────────────────────────────────────────
+    "recommend_title":           "🎯 Task Recommendations",
+    "recommend_desc":            "Your top {count} priority task(s) based on deadline, priority, and status:",
+    "recommend_empty":           "🎉 No pending tasks to recommend! You're all caught up.",
+    "recommend_rank":            "#{rank} — {task}",
+    "recommend_score":           "Score: **{score}/100**",
+    "recommend_deadline_label": "⏰ Deadline",
+    "recommend_priority_label": "Priority",
+    "recommend_why":             "Why recommended:",
+    "recommend_footer":          "Recommendation Engine v1 · Rule-based · AI-ready",
+    # Action hints
+    "recommend_action_finish":         "✅ Finish this — already in progress!",
+    "recommend_action_overdue":        "🚨 Overdue — complete immediately!",
+    "recommend_action_urgent":         "⚡ Due soon — tackle this next!",
+    "recommend_action_high_priority":  "🔴 High priority — schedule time for this.",
+    "recommend_action_start":          "▶️ Start working on this.",
+    # Score breakdown field labels
+    "recommend_breakdown_title":       "📊 Score Breakdown",
+    "recommend_breakdown_priority":    "Priority",
+    "recommend_breakdown_urgency":     "Urgency",
+    "recommend_breakdown_overdue":     "Overdue",
+    "recommend_breakdown_age":         "Age",
+    "recommend_breakdown_assignment":  "Assignment",
+    "recommend_breakdown_status":      "Status",
+    # Scope labels for /recommend
+    "recommend_scope_personal":        "📋 Personal Tasks",
+    "recommend_scope_guild":           "🏛️ Guild Tasks",
+    # Weights info line
+    "recommend_weights_info": "Using default weights: Priority {priority}% · Urgency {urgency}% · Overdue {overdue}%",
 }
