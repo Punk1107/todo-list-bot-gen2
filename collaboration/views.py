@@ -57,6 +57,61 @@ def build_project_list_embed(projects: list[Project], guild_name: str, lang: str
     return embed
 
 
+class ProjectSelectDropdown(ui.Select):
+    """Dropdown for choosing a project from the project list."""
+
+    def __init__(self, projects: list[Project], uid: str, lang: str) -> None:
+        self.uid  = uid
+        self.lang = lang
+        options = [
+            discord.SelectOption(
+                label=f"#{p.project_id} {p.name[:40]}",
+                value=str(p.project_id),
+                description=p.description[:50] if p.description else "",
+            )
+            for p in projects[:25]
+        ]
+        if not options:
+            options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
+        placeholder = "📂 เลือกดู Dashboard โปรเจกต์..." if lang == "th" else "📂 Select project dashboard to view..."
+        super().__init__(
+            placeholder=placeholder,
+            options=options,
+            min_values=1, max_values=1,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        proj_id_str = self.values[0]
+        if proj_id_str == "0":
+            return
+        proj_id = int(proj_id_str)
+        guild_id = str(interaction.guild_id) if interaction.guild_id else ""
+        from collaboration import service
+        try:
+            stats = await service.get_project_stats(proj_id, guild_id)
+        except Exception:
+            await interaction.response.send_message(
+                t("proj_not_found", self.lang, project_id=proj_id), ephemeral=True
+            )
+            return
+
+        embed = build_project_dashboard_embed(stats, self.lang)
+        view  = ProjectDashboardView(stats.project, str(interaction.user.id), self.lang, stats)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class ProjectListView(ui.View):
+    """Interactive view for /project list with project select dropdown."""
+
+    def __init__(self, projects: list[Project], uid: str, lang: str) -> None:
+        super().__init__(timeout=300)
+        self.uid = uid
+        self.lang = lang
+        if projects:
+            self.add_item(ProjectSelectDropdown(projects, uid, lang))
+
+
 def build_project_dashboard_embed(stats: ProjectStats, lang: str) -> discord.Embed:
     p = stats.project
     color = int(p.color.lstrip("#"), 16) if p.color.startswith("#") else 0x5865F2

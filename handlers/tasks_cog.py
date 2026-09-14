@@ -26,10 +26,12 @@ from utils.helpers import (
     build_task_embed, build_task_list_embed, build_stats_embed, build_csv_export,
     format_deadline, time_left_str, build_task_stats_embed,
 )
+from utils.conflict_resolver import validate_deadline_defensive, DeadlineValidationError
 from handlers.task_views import (
     AddTaskModal, TaskActionView, TaskListView, DeleteConfirmView,
-    PrioritySelectView,
     TASKS_PER_PAGE, _send_dm,
+    TodayView, OverdueView, SnoozePresetView,
+    _build_today_embed_and_view, _build_overdue_embed_and_view,
 )
 
 log = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
 
     # Fetch subtasks (non-cancelled only)
     subtasks = await db.afetchall(
-        "SELECT status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled'",
+        "SELECT task_id, task, status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled' ORDER BY task_id ASC",
         (task_id,),
     )
 
@@ -58,30 +60,140 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
                             category=category)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Autocomplete helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def task_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[int]]:
+    """Autocomplete pending tasks for task_id parameters.
+    Returns up to 25 matching choices in format: '#ID — Task name (time_left)'.
+    """
+    uid = str(interaction.user.id)
+    try:
+        rows = await db.afetchall(
+            """SELECT task_id, task, deadline, status
+               FROM tasks
+               WHERE owner_id=$1
+                 AND status IN ('Pending', 'Overdue')
+                 AND parent_task_id IS NULL
+               ORDER BY
+                 CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
+                 deadline ASC NULLS LAST
+               LIMIT 25""",
+            (uid,),
+        )
+    except Exception:
+        return []
+
+    choices = []
+    for row in rows:
+        tid   = row["task_id"]
+        name  = row["task"][:50]
+        tl    = time_left_str(row["deadline"])
+        label = f"#{tid} — {name} ({tl})"
+        if current and current.lower() not in label.lower() and current not in str(tid):
+            continue
+        choices.append(app_commands.Choice(name=label[:100], value=tid))
+    return choices[:25]
+
+
 class TasksCog(commands.Cog, name="Tasks"):
     """All task-related slash commands."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # /add
-    # ─────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────
+    # /add  — 1-step quick add OR modal
+    # ─────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="add", description="➕ เพิ่ม Task ใหม่ / Add a new task")
+    @app_commands.describe(
+        task="Task name (skip to open full modal)",
+        deadline="Deadline: 25/12 18:00 · today 18:00 · tomorrow · +2h · +3d",
+        priority="Priority 0–7 (0=Normal, 3=Medium, 5=Important, 7=Critical)",
+    )
     @rate_limit_check("command")
-    async def add(self, interaction: discord.Interaction) -> None:
-        uid  = str(interaction.user.id)
-        lang = await get_user_lang(uid)
+    async def add(
+        self,
+        interaction: discord.Interaction,
+        task: Optional[str] = None,
+        deadline: Optional[str] = None,
+        priority: Optional[int] = None,
+    ) -> None:
+        uid     = str(interaction.user.id)
+        lang    = await get_user_lang(uid)
+        tz_name = await get_user_timezone(uid)
         await ensure_user(uid, lang)
 
-        # Step 1: priority dropdown — opens AddTaskModal after selection
-        view  = PrioritySelectView(uid, lang)
-        embed = PrioritySelectView.build_embed(lang)
-        # Send a public message (so everyone sees 'User used /add')
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
-        # Store message in view so it can edit out the dropdown on timeout (optional, see on_timeout)
-        view.message = await interaction.original_response()
+        # ── 1-step quick add: task name provided as slash param ────────────────────────
+        if task is not None:
+            # Validate inputs
+            ok, name_or_err = validator.validate_task_name(task)
+            if not ok:
+                await interaction.response.send_message(t(name_or_err, lang), ephemeral=True)
+                return
+            task_name = name_or_err
+
+            if priority is not None and not (0 <= priority <= 7):
+                await interaction.response.send_message(
+                    t("add_invalid_priority_choice", lang), ephemeral=True
+                )
+                return
+
+            # Validate deadline if given; default to +1 day end-of-day if omitted
+            deadline_str = deadline or "+1d"
+            try:
+                dt = validate_deadline_defensive(deadline_str, tz_name)
+            except DeadlineValidationError as e:
+                await interaction.response.send_message(
+                    t(e.i18n_key, lang, **e.kwargs), ephemeral=True
+                )
+                return
+
+            # Rate limit
+            if rate_limiter.check_task_creation(uid):
+                secs = rate_limiter.remaining_block_seconds(uid)
+                await interaction.response.send_message(
+                    t("task_rate_limited", lang,
+                      limit=config.rate_limit.tasks_per_hour, seconds=secs),
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.defer(thinking=False)
+
+            prio = priority if priority is not None else 0
+            try:
+                row = await db.afetchone(
+                    """INSERT INTO tasks (task, deadline, priority, owner_id)
+                       VALUES ($1,$2,$3,$4) RETURNING task_id""",
+                    (task_name, dt.isoformat(), prio, uid),
+                )
+                task_id = row["task_id"]
+                await db.alog_action(uid, "task_created", str(task_id), task_name)
+                db.invalidate_stats(uid)
+            except Exception as exc:
+                log.error("Quick-add insert failed: %s", exc)
+                await interaction.followup.send(t("err_db", lang), ephemeral=True)
+                return
+
+            full_row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+            embed = build_task_embed(full_row, lang, tz_name)
+            view  = TaskActionView(task_id, uid, lang, current_priority=prio)
+            tl    = time_left_str(dt.isoformat())
+            await interaction.followup.send(
+                t("add_quick_created", lang, task_name=task_name, task_id=task_id, time_left=tl),
+                embed=embed, view=view,
+            )
+            return
+
+        # ── Modal path: no args — open AddTaskModal directly (priority defaults to 0) ───
+        modal = AddTaskModal(lang, priority=priority or 0)
+        await interaction.response.send_modal(modal)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /list
@@ -116,6 +228,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             total_count=total_count, overdue_count=overdue_count,
         )
         view._update_nav_buttons(page, tot)
+        view._update_quickaction(tasks)
         await interaction.response.send_message(embed=embed, view=view)
         # Store message so on_timeout can edit it with disabled buttons
         view._message = await interaction.original_response()
@@ -132,63 +245,8 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await ensure_user(uid, lang)
         await interaction.response.defer()
-
-        # Compute today's boundaries in the user's local timezone, then convert to UTC
-        now_utc   = datetime.now(pytz.utc)
-        local_tz  = pytz.timezone(tz_name)
-        local_now = now_utc.astimezone(local_tz)
-        start = local_now.replace(hour=0,  minute=0,  second=0,  microsecond=0).astimezone(pytz.utc).isoformat()
-        end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
-
-        tasks = await db.afetchall(
-            """SELECT * FROM tasks
-               WHERE owner_id=$1 AND status='Pending'
-                 AND deadline BETWEEN $2 AND $3
-               ORDER BY deadline ASC""",
-            (uid, start, end),
-        )
-
-        overdue_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
-            (uid, now_utc.isoformat()),
-        )
-        overdue_c = overdue_row["c"] if overdue_row else 0
-
-        # Dynamic color based on urgency
-        if overdue_c > 0:
-            today_color = 0xED4245
-        elif any(r["priority"] >= 4 for r in tasks):
-            today_color = 0xE67E22
-        else:
-            today_color = 0x5865F2
-
-        local_date = local_now.strftime("%d/%m/%Y")
-        embed = discord.Embed(
-            title=f"📅 {t('tasks_filter_today', lang)} — {local_date}",
-            color=today_color,
-        )
-        if not tasks:
-            embed.description = "> " + t("tasks_empty", lang)
-        else:
-            lines = [f"**{t('today_summary', lang, count=len(tasks), overdue=overdue_c)}**\n"]
-            for r in tasks:
-                try:
-                    dt = datetime.fromisoformat(r["deadline"])
-                    if dt.tzinfo is None:
-                        dt = pytz.utc.localize(dt)
-                    is_overdue = dt < now_utc
-                except Exception:
-                    is_overdue = False
-                icon = "🚨" if is_overdue else "⏳"
-                tl = time_left_str(r["deadline"])
-                dl_fmt = format_deadline(r["deadline"], tz_name)
-                lines.append(
-                    f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n"
-                    f"   ╰ 📅 `{dl_fmt}`  ·  ⏱️ `{tl}`"
-                )
-            embed.description = "\n".join(lines)
-            embed.set_footer(text=f"{len(tasks)} task(s) today  |  {t('footer_text', lang)}")
-        await interaction.followup.send(embed=embed)
+        embed, view = await _build_today_embed_and_view(uid, lang, tz_name)
+        await interaction.followup.send(embed=embed, view=view)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /overdue
@@ -202,30 +260,8 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await ensure_user(uid, lang)
         await interaction.response.defer()
-
-        now   = datetime.now(pytz.utc).isoformat()
-        tasks = await db.afetchall(
-            """SELECT * FROM tasks
-               WHERE owner_id=$1 AND status='Pending' AND deadline<$2
-               ORDER BY deadline ASC""",
-            (uid, now),
-        )
-
-        embed = discord.Embed(title=f"🚨 {t('tasks_filter_overdue', lang)}", color=0xED4245)
-        if not tasks:
-            embed.description = "> ✅ " + t("overdue_none", lang)
-        else:
-            summary_line = t("overdue_summary", lang, total=len(tasks))
-            note_line = t("overdue_note", lang)
-            lines = [f"**{summary_line}**\n> *{note_line}*\n"]
-            for r in tasks:
-                lines.append(
-                    f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
-                    f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
-                )
-            embed.description = "\n".join(lines)
-            embed.set_footer(text=f"⚠️ {len(tasks)} overdue  |  {t('footer_text', lang)}")
-        await interaction.followup.send(embed=embed)
+        embed, view = await _build_overdue_embed_and_view(uid, lang, tz_name)
+        await interaction.followup.send(embed=embed, view=view)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /task — detail view by ID
@@ -233,6 +269,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="task", description="📌 ดู Task ตาม ID / View task by ID")
     @app_commands.describe(task_id="Task ID number")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def task_detail(self, interaction: discord.Interaction, task_id: int) -> None:
         uid     = str(interaction.user.id)
@@ -272,6 +309,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="done", description="✅ ทำเครื่องหมาย Task เสร็จแล้ว / Mark task done")
     @app_commands.describe(task_id="Task ID number")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def done(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
@@ -321,6 +359,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="delete", description="🗑️ ลบ Task / Delete a task")
     @app_commands.describe(task_id="Task ID to delete")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def delete(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
@@ -353,6 +392,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="pin", description="📌 ปักหมุด Task / Pin a task")
     @app_commands.describe(task_id="Task ID to pin")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def pin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
@@ -371,6 +411,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="unpin", description="📌 เลิกปักหมุด Task / Unpin a task")
     @app_commands.describe(task_id="Task ID to unpin")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def unpin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
@@ -393,6 +434,7 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(name="recurring", description="🔄 ตั้งการทำซ้ำ / Set task recurring")
     @app_commands.describe(task_id="Task ID", interval="daily / weekly / monthly / none")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @app_commands.choices(interval=[
         app_commands.Choice(name="🔄 Daily / ทุกวัน",       value="daily"),
         app_commands.Choice(name="🔄 Weekly / ทุกสัปดาห์",  value="weekly"),

@@ -533,5 +533,50 @@ STRINGS = {
     "recommend_scope_personal":     "📋 Persönliche Aufgaben",
     "recommend_scope_guild":        "🏛️ Server-Aufgaben",
     "recommend_weights_info": "Standardgewichtungen: Priorität {priority}% · Dringlichkeit {urgency}% · Überfälligkeit {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ Wie lange verschieben?",
+    "snooze_preset_1h":           "⏰ +1 Stunde",
+    "snooze_preset_3h":           "⏰ +3 Stunden",
+    "snooze_preset_1d":           "📅 +1 Tag (gleiche Uhrzeit)",
+    "snooze_preset_3d":           "📅 +3 Tage",
+    "snooze_preset_next_week":    "📅 Nächsten Montag",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ Schnellaktion für eine Aufgabe...",
+    "quickaction_done":           "✅ Als erledigt markieren",
+    "quickaction_pin":            "📌 Anheften / Lösen",
+    "quickaction_snooze":         "⏰ +1 Tag verschieben",
+    "quickaction_detail":         "🔍 Details anzeigen",
+    "quickaction_select_hint":    "Wähle eine Aufgabe, um eine Aktion auszuführen.",
+    "quickaction_none":           "— Aufgabe auswählen —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ Aufgabe hinzufügen",
+    "btn_view_all":               "📋 Alle Aufgaben anzeigen",
+    "today_view_title":           "📅 Heutige Aufgaben",
+    "overdue_view_title":         "🚨 Überfällige Aufgaben",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 Suchergebnis öffnen / bearbeiten...",
+    "recommend_action_placeholder": "⚡ Schnellaktion für Empfehlung...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ Datei zum Löschen auswählen...",
+    "storage_upload_hint":               "Verwende `/attach [task_id] [datei]`, um weitere Dateien hochzuladen.",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 Zusammenarbeit",
+    "help_cat_search":            "🔍 Suche & Analysen",
+    "help_cat_files":             "📎 Dateien & Speicher",
+    "help_cat_advanced":          "💡 Tipps & Tastenkürzel",
+    "help_collab_desc":           "Befehle für geteilte Projektzusammenarbeit",
+    "help_search_desc":           "Suche, Empfehlungen und Produktivitätsanalysen",
+    "help_files_desc":            "Dateianhänge hochladen und verwalten",
+    "help_advanced_desc":         "Profi-Tipps und praktische Tastenkürzel",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ Aufgabe **{task_name}** erstellt! ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ Priorität muss zwischen 0 (Normal) und 7 (Kritisch) liegen.",
 }
 

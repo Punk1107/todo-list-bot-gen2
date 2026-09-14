@@ -488,4 +488,49 @@ STRINGS = {
     "recommend_scope_personal":     "📋 Tâches personnelles",
     "recommend_scope_guild":        "🏛️ Tâches du serveur",
     "recommend_weights_info": "Pondérations par défaut : Priorité {priority}% · Urgence {urgency}% · Retard {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ Reporter pour combien de temps ?",
+    "snooze_preset_1h":           "⏰ +1 Heure",
+    "snooze_preset_3h":           "⏰ +3 Heures",
+    "snooze_preset_1d":           "📅 +1 Jour (même heure)",
+    "snooze_preset_3d":           "📅 +3 Jours",
+    "snooze_preset_next_week":    "📅 Lundi prochain",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ Action rapide sur une tâche...",
+    "quickaction_done":           "✅ Marquer comme terminée",
+    "quickaction_pin":            "📌 Épingler / Désépingler",
+    "quickaction_snooze":         "⏰ Reporter de +1 Jour",
+    "quickaction_detail":         "🔍 Voir les détails complets",
+    "quickaction_select_hint":    "Sélectionnez une tâche pour effectuer une action.",
+    "quickaction_none":           "— Sélectionner une tâche —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ Ajouter une tâche",
+    "btn_view_all":               "📋 Voir toutes les tâches",
+    "today_view_title":           "📅 Tâches du jour",
+    "overdue_view_title":         "🚨 Tâches en retard",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 Ouvrir / action sur le résultat...",
+    "recommend_action_placeholder": "⚡ Action rapide sur la recommandation...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ Sélectionner un fichier à supprimer...",
+    "storage_upload_hint":               "Utilisez `/attach [task_id] [fichier]` pour téléverser plus de fichiers.",
+
+    # ─── Help Categories (extended) ────────────────────────────────────
+    "help_cat_collab":            "🤝 Collaboration",
+    "help_cat_search":            "🔍 Recherche & Analytique",
+    "help_cat_files":             "📎 Fichiers & Stockage",
+    "help_cat_advanced":          "💡 Astuces & Raccourcis",
+    "help_collab_desc":           "Commandes de collaboration pour projets partagés",
+    "help_search_desc":           "Recherche de tâches, recommandations et productivité",
+    "help_files_desc":            "Téléversement et gestion des fichiers joints",
+    "help_advanced_desc":         "Astuces pour utilisateurs avancés et formats rapides",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ Tâche **{task_name}** créée ! ID : **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ La priorité doit être comprise entre 0 (Normal) et 7 (Critique).",
 }

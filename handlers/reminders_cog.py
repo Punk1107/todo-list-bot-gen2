@@ -185,12 +185,35 @@ class DailyDigestView(discord.ui.View):
         self.add_item(refresh_btn)
 
     async def _list_callback(self, interaction: discord.Interaction) -> None:
-        from utils.helpers import get_user_lang
-        lang = await get_user_lang(interaction.user.id)
-        await interaction.response.send_message(
-            t("help_add", lang) + "\n\n> Use `/list` to view your tasks.",
-            ephemeral=True,
+        from utils.helpers import get_user_lang, get_user_timezone, build_task_list_embed
+        from handlers.task_views import TaskListView
+        from core.database import db
+        uid     = str(interaction.user.id)
+        lang    = await get_user_lang(interaction.user.id)
+        tz_name = await get_user_timezone(interaction.user.id)
+        await interaction.response.defer(ephemeral=True)
+
+        view = TaskListView(uid, lang, tz_name, "Pending")
+        tasks, page, tot = await view._fetch_page()
+        filter_label = t("tasks_filter_Pending", lang)
+        now_iso = datetime.now(UTC).isoformat()
+        total_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (uid,)
         )
+        overdue_row = await db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
+            "AND status='Pending' AND deadline<$2", (uid, now_iso)
+        )
+        total_count   = total_row["c"]   if total_row   else 0
+        overdue_count = overdue_row["c"] if overdue_row else 0
+        embed = build_task_list_embed(
+            tasks, page, tot, lang, tz_name, filter_label,
+            total_count=total_count, overdue_count=overdue_count,
+        )
+        view._update_nav_buttons(page, tot)
+        view._update_quickaction(tasks)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        view._message = await interaction.original_response()
 
     async def _refresh_callback(self, interaction: discord.Interaction) -> None:
         from utils.helpers import get_user_lang, get_user_timezone

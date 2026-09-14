@@ -272,6 +272,8 @@ async def save_user_settings(
 # Date/time helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+import re as _re
+
 _DATE_FORMATS = [
     "%d/%m/%Y %H:%M",
     "%d-%m-%Y %H:%M",
@@ -279,24 +281,122 @@ _DATE_FORMATS = [
     "%d/%m/%Y",
     "%d-%m-%Y",
     "%Y-%m-%d",
+    # Shorthand without year  — year is inferred below
+    "%d/%m %H:%M",
+    "%d/%m",
 ]
+
+_WEEKDAY_MAP = {
+    "mon": 0, "monday": 0,
+    "tue": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2,
+    "thu": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
+}
+
+_DELTA_RE = _re.compile(
+    r"""^
+    \+?(?P<value>\d+(?:\.\d+)?)    # integer or decimal number
+    \s*(?P<unit>[hmsdw])             # h=hours m=minutes d=days w=weeks s=seconds
+    $""",
+    _re.VERBOSE | _re.IGNORECASE,
+)
+_TIME_RE = _re.compile(r"^(?P<h>\d{1,2}):(?P<m>\d{2})$")
 
 
 def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
-    """Parse user text → UTC-aware datetime. Returns None on failure."""
+    """Parse user text → UTC-aware datetime.
+
+    Supported formats:
+      Classic:     DD/MM/YYYY HH:MM  |  DD-MM-YYYY HH:MM  |  YYYY-MM-DD HH:MM
+                   (date-only variants default to 23:59 local time)
+      Shorthand:   DD/MM HH:MM       |  DD/MM
+      Relative:    +2h  +30m  +3d  +1w  +45s
+      Natural:     today [HH:MM]  |  tomorrow [HH:MM]
+                   monday [HH:MM]  …  sunday [HH:MM]
+
+    Returns None on failure.
+    """
     try:
         tz = pytz.timezone(tz_name)
     except pytz.exceptions.UnknownTimeZoneError:
         tz = pytz.utc
 
+    raw = text.strip()
+    now_utc = datetime.now(pytz.utc)
+    now_local = now_utc.astimezone(tz)
+
+    # ── 1. Relative delta  (+2h, +3d, +1w, +30m) ───────────────────────────
+    m = _DELTA_RE.match(raw)
+    if m:
+        val = float(m.group("value"))
+        unit = m.group("unit").lower()
+        seconds = {
+            "s": val,
+            "m": val * 60,
+            "h": val * 3600,
+            "d": val * 86400,
+            "w": val * 604800,
+        }[unit]
+        return now_utc + timedelta(seconds=seconds)
+
+    # ── 2. Natural language  (today / tomorrow / weekday) ──────────────────
+    parts = raw.lower().split(None, 1)   # at most ["keyword", "HH:MM"]
+    keyword = parts[0]
+    time_str = parts[1] if len(parts) > 1 else None
+
+    _THAI_KEYWORDS = {
+        "วันนี้": 0,
+        "พรุ่งนี้": 1,
+        "มะรืนนี้": 2,
+    }
+
+    if keyword in ("today", "tomorrow") or keyword in _WEEKDAY_MAP or keyword in _THAI_KEYWORDS:
+        # Resolve the base date
+        if keyword in ("today", "วันนี้"):
+            base = now_local.date()
+        elif keyword in ("tomorrow", "พรุ่งนี้"):
+            base = (now_local + timedelta(days=1)).date()
+        elif keyword == "มะรืนนี้":
+            base = (now_local + timedelta(days=2)).date()
+        else:  # weekday name
+            target_wd = _WEEKDAY_MAP[keyword]
+            current_wd = now_local.weekday()
+            days_ahead = (target_wd - current_wd) % 7
+            if days_ahead == 0:
+                days_ahead = 7  # next occurrence, not today
+            base = (now_local + timedelta(days=days_ahead)).date()
+
+        # Resolve the time
+        if time_str:
+            tm = _TIME_RE.match(time_str.strip())
+            hour = int(tm.group("h")) if tm else 23
+            minute = int(tm.group("m")) if tm else 59
+        else:
+            hour, minute = 23, 59
+
+        naive = datetime(base.year, base.month, base.day, hour, minute)
+        return tz.localize(naive).astimezone(pytz.utc)
+
+    # ── 3. Classic & shorthand date formats ────────────────────────────────
     for fmt in _DATE_FORMATS:
         try:
-            naive = datetime.strptime(text.strip(), fmt)
+            naive = datetime.strptime(raw, fmt)
+            # Infer current/next year for shorthand formats missing the year
+            if "%Y" not in fmt:
+                naive = naive.replace(year=now_local.year)
+                # Roll over to next year if the resulting date is already past
+                localized = tz.localize(naive)
+                if localized < now_utc:
+                    naive = naive.replace(year=now_local.year + 1)
             if "%H" not in fmt:
                 naive = naive.replace(hour=23, minute=59)
             return tz.localize(naive).astimezone(pytz.utc)
         except ValueError:
             continue
+
     return None
 
 
@@ -523,11 +623,31 @@ def build_task_embed(row, lang: str, tz_name: str,
     # ── Subtask progress (pre-fetched) ──────────────────────────────────────────────
     if subtasks:
         total_sub = len(subtasks)
-        done_sub  = sum(1 for s in subtasks if s["status"] == "Completed")
+        done_sub = sum(1 for s in subtasks if (s.get("status") if hasattr(s, "get") else s["status"]) == "Completed")
         bar = progress_bar(done_sub, total_sub)
+        sub_val = f"✅ {done_sub}/{total_sub}  {bar}"
+        checklist_lines = []
+        for s in subtasks[:10]:
+            try:
+                task_name = s.get("task") if hasattr(s, "get") else s["task"]
+            except Exception:
+                task_name = None
+            if task_name:
+                try:
+                    s_id = s.get("task_id") if hasattr(s, "get") else s["task_id"]
+                except Exception:
+                    s_id = ""
+                s_st = s.get("status") if hasattr(s, "get") else s["status"]
+                icon = "✅" if s_st == "Completed" else "⏳"
+                id_prefix = f"`#{s_id}` " if s_id else ""
+                checklist_lines.append(f"{icon} {id_prefix}{task_name[:35]}")
+        if len(subtasks) > 10:
+            checklist_lines.append(f"*(+{len(subtasks) - 10} more)*")
+        if checklist_lines:
+            sub_val += "\n" + "\n".join(checklist_lines)
         embed.add_field(
             name=t("task_detail_subtasks", lang),
-            value=f"✅ {done_sub}/{total_sub}  {bar}",
+            value=sub_val,
             inline=False,
         )
 

@@ -118,6 +118,55 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
         for cmd, desc in task_cmds:
             embed.add_field(name=cmd, value=f"> {desc}", inline=False)
 
+    elif category == "collab":
+        embed = discord.Embed(
+            title=f"🤝 {t('help_cat_collab', lang)}",
+            description=t("help_collab_desc", lang),
+            color=0x5865F2,
+        )
+        collab_cmds = [
+            ("🎉 `/project create`", "Create a new shared project in this server" if lang != "th" else "สร้างโปรเจกต์ใหม่ในเซิร์ฟเวอร์"),
+            ("📋 `/project list`", "List all shared projects with interactive selector" if lang != "th" else "ดูโปรเจกต์ทั้งหมดพร้อมเมนูเลือกดู"),
+            ("📊 `/project view [id]`", "View project dashboard, progress, and members" if lang != "th" else "ดู Dashboard ความคืบหน้าและสมาชิก"),
+            ("📌 `/project board [id]`", "Interactive Kanban task board" if lang != "th" else "กระดาน Kanban ติดตามงานแบบ Interactive"),
+            ("➕ `/project add-task [id]`", "Add a task directly to the project" if lang != "th" else "เพิ่มงานเข้าโปรเจกต์โดยตรง"),
+            ("🙋 `/project my-tasks`", "View tasks assigned to you in this server" if lang != "th" else "ดูงานที่ได้รับมอบหมายในเซิร์ฟเวอร์นี้"),
+            ("👥 `/project members [id]`", "View and manage project members" if lang != "th" else "ดูและจัดการสมาชิกในโปรเจกต์"),
+            ("📜 `/project activity [id]`", "View audit trail of project changes" if lang != "th" else "ดูประวัติกิจกรรมของโปรเจกต์"),
+            ("📦 `/project archive [id]`", "Archive a completed project" if lang != "th" else "ปิดเก็บโปรเจกต์เข้ากรุ"),
+        ]
+        for cmd, desc in collab_cmds:
+            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
+
+    elif category == "search":
+        embed = discord.Embed(
+            title=f"🔍 {t('help_cat_search', lang)}",
+            description=t("help_search_desc", lang),
+            color=0x5865F2,
+        )
+        search_cmds = [
+            ("🔍 `/search [query]`", "Full-text search across all tasks with filters" if lang != "th" else "ค้นหา Task แบบเต็มข้อความพร้อมตัวกรอง"),
+            ("⚡ `/recommend`", "Smart task recommendation based on deadline and priority" if lang != "th" else "ระบบแนะนำงานที่ควรทำก่อนตามความเร่งด่วน"),
+            ("📊 `/task-stats`", "Personal task productivity statistics and charts" if lang != "th" else "สถิติประสิทธิภาพการทำงานส่วนตัว"),
+            ("📰 `/digest`", "Interactive daily task digest summary" if lang != "th" else "สรุปงานประจำวัน Daily Digest"),
+            ("📈 `/analytics`", "Server-wide task analytics and completion rates" if lang != "th" else "รายงานวิเคราะห์ระดับเซิร์ฟเวอร์"),
+        ]
+        for cmd, desc in search_cmds:
+            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
+
+    elif category == "files":
+        embed = discord.Embed(
+            title=f"📎 {t('help_cat_files', lang)}",
+            description=t("help_files_desc", lang),
+            color=0x5865F2,
+        )
+        file_cmds = [
+            ("📎 `/attach [task_id] [file]`", "Upload an image or document attachment to a task" if lang != "th" else "แนบรูปภาพหรือเอกสารเข้ากับ Task"),
+            ("📂 `/attachments [task_id]`", "View, open, or delete attachments on a task" if lang != "th" else "ดู ดาวน์โหลด หรือลบไฟล์แนบของ Task"),
+        ]
+        for cmd, desc in file_cmds:
+            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
+
     elif category == "settings":
         embed = discord.Embed(
             title=f"⚙️ {t('help_cat_settings', lang)}",
@@ -136,14 +185,15 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
 
     elif category == "tips":
         embed = discord.Embed(
-            title=f"💡 {t('help_cat_tips', lang)}",
-            description="Helpful tips to make the most of your To-Do bot:" if lang != "th" else "เคล็ดลับและฟีเจอร์เด็ดเพื่อการทำงานที่มีประสิทธิภาพยิ่งขึ้น:",
+            title=f"💡 {t('help_cat_advanced', lang)}",
+            description=t("help_advanced_desc", lang),
             color=0x5865F2,
         )
         tips = [
-            ("⚡ Inline Actions", "When viewing a task with `/task [id]`, you can edit priority, mark done, pin, snooze, or add subtasks using buttons!" if lang != "th" else "เมื่อดู Task ด้วย `/task [id]` สามารถกดปุ่มปรับ Priority, ปักหมุด, เลื่อนกำหนดส่ง หรือเพิ่ม Subtask ได้ทันที!"),
-            ("⏰ Snooze (+1 Day)", "Easily push back deadlines by 1 day right from the task action view with a single confirmation." if lang != "th" else "เลื่อนกำหนดส่งออกไป 1 วันได้ง่ายๆ ผ่านปุ่ม Snooze พร้อมหน้าต่างยืนยัน"),
-            ("📌 Pins & Priority", "Pinned tasks and high-priority tasks always float to the top of your `/list`." if lang != "th" else "Task ที่ปักหมุดและ Task ที่มี Priority สูงจะลอยขึ้นมาอยู่อันดับแรกๆ ใน `/list` เสมอ"),
+            ("⚡ Shorthand Deadlines", "`today 18:00`, `tomorrow`, `พรุ่งนี้`, `+2h`, `+3d`, `25/12` — no need to type full DD/MM/YYYY every time!" if lang != "th" else "พิมพ์ `วันนี้ 18:00`, `พรุ่งนี้`, `+2h`, `+1d`, `25/12` ได้ทันที ไม่ต้องพิมพ์ปี ค.ศ. ยาวๆ"),
+            ("🔍 Instant Autocomplete", "When typing `/task`, `/done`, `/pin`, `/attach` — Discord shows your pending tasks to click instantly!" if lang != "th" else "เมื่อพิมพ์คำสั่ง ระบบจะขึ้น Autocomplete แสดงชื่องานค้างให้คลิกเลือกได้ทันทีโดยไม่ต้องจำ ID"),
+            ("🎯 Quick Action Dropdowns", "Use the dropdown in `/list`, `/today`, `/overdue`, and `/search` to inspect or complete tasks without extra commands." if lang != "th" else "เลือก Task จาก Dropdown ใน `/list`, `/today`, `/overdue`, และ `/search` เพื่อจัดการงานได้ทันที"),
+            ("⏰ Multi-Duration Snooze", "Choose from +1h, +3h, +1d, +3d, or next Monday when clicking Snooze!" if lang != "th" else "เลือกเลื่อนส่ง +1ชม., +3ชม., +1วัน, +3วัน หรือจันทร์หน้าได้ตามใจชอบ"),
             ("🔔 DM Reminders", "The bot automatically notifies you via DM 24h, 3h, and 1h before deadlines!" if lang != "th" else "Bot จะส่ง DM เตือนคุณล่วงหน้า 24 ชม., 3 ชม., และ 1 ชม. ก่อนถึงกำหนดส่งโดยอัตโนมัติ!"),
         ]
         for title, desc in tips:
@@ -186,12 +236,27 @@ class HelpCategorySelect(ui.Select):
                 emoji="📝",
             ),
             discord.SelectOption(
+                label=t("help_cat_collab", lang),
+                value="collab",
+                emoji="🤝",
+            ),
+            discord.SelectOption(
+                label=t("help_cat_search", lang),
+                value="search",
+                emoji="🔍",
+            ),
+            discord.SelectOption(
+                label=t("help_cat_files", lang),
+                value="files",
+                emoji="📎",
+            ),
+            discord.SelectOption(
                 label=t("help_cat_settings", lang),
                 value="settings",
                 emoji="⚙️",
             ),
             discord.SelectOption(
-                label=t("help_cat_tips", lang),
+                label=t("help_cat_advanced", lang),
                 value="tips",
                 emoji="💡",
             ),

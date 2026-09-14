@@ -481,4 +481,49 @@ STRINGS = {
     "recommend_scope_personal":     "📋 개인 작업",
     "recommend_scope_guild":        "🏛️ 서버 작업",
     "recommend_weights_info": "기본 가중치: 우선순위 {priority}% · 긴급도 {urgency}% · 지연 {overdue}%",
+
+    # ─── Snooze Presets ────────────────────────────────────────────────────────
+    "snooze_preset_placeholder":  "⏰ 얼마나 미루시겠습니까?",
+    "snooze_preset_1h":           "⏰ +1시간",
+    "snooze_preset_3h":           "⏰ +3시간",
+    "snooze_preset_1d":           "📅 +1일 (동일 시간)",
+    "snooze_preset_3d":           "📅 +3일",
+    "snooze_preset_next_week":    "📅 다음 주 월요일",
+
+    # ─── Quick Action Dropdown (TaskList / Today / Overdue) ────────────────────
+    "quickaction_placeholder":    "⚡ 작업 빠른 작업...",
+    "quickaction_done":           "✅ 완료로 표시",
+    "quickaction_pin":            "📌 고정 / 고정 해제",
+    "quickaction_snooze":         "⏰ +1일 미루기",
+    "quickaction_detail":         "🔍 상세 정보 보기",
+    "quickaction_select_hint":    "작업을 선택하여 작업을 수행하세요.",
+    "quickaction_none":           "— 작업 선택 —",
+
+    # ─── Today / Overdue View buttons ──────────────────────────────────────────
+    "btn_add_task":               "➕ 작업 추가",
+    "btn_view_all":               "📋 전체 작업 보기",
+    "today_view_title":           "📅 오늘의 작업",
+    "overdue_view_title":         "🚨 마감 지난 작업",
+
+    # ─── Search / Recommend Quick Actions ──────────────────────────────────────
+    "search_action_placeholder":  "🔍 검색 결과 열기 / 작업...",
+    "recommend_action_placeholder": "⚡ 추천 작업 빠른 처리...",
+
+    # ─── Storage Delete Select ─────────────────────────────────────────────────
+    "storage_delete_select_placeholder": "🗑️ 삭제할 파일 선택...",
+    "storage_upload_hint":               "`/attach [task_id] [파일]` 명령어로 파일을 추가 업로드할 수 있습니다.",
+
+    # ─── Help Categories (extended) ────────────────────────────────────────────
+    "help_cat_collab":            "🤝 협업",
+    "help_cat_search":            "🔍 검색 및 분석",
+    "help_cat_files":             "📎 파일 및 저장소",
+    "help_cat_advanced":          "💡 팁 및 단축키",
+    "help_collab_desc":           "공유 프로젝트 협업 명령어",
+    "help_search_desc":           "작업 검색, 추천 및 생산성 분석",
+    "help_files_desc":            "첨부 파일 업로드 및 관리",
+    "help_advanced_desc":         "고급 사용자를 위한 유용한 팁과 단축 표현",
+
+    # ─── /add quick-add messages ───────────────────────────────────────────────
+    "add_quick_created": "✅ 작업 **{task_name}** 이(가) 생성되었습니다! ID: **#{task_id}** · ⏱️ `{time_left}`",
+    "add_invalid_priority_choice": "❌ 우선순위는 0(보통)에서 7(매우 높음) 사이여야 합니다.",
 }

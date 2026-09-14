@@ -24,6 +24,7 @@ from storage.service import (
 )
 from storage.views import build_attachments_embed, TaskAttachmentsView
 from core.config import config
+from handlers.tasks_cog import task_autocomplete
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class StorageCog(commands.Cog, name="Storage"):
         task_id="Task ID to attach the file to",
         file="File to upload (max {max_mb} MB)".format(max_mb=config.storage.max_file_size_mb),
     )
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def attach(
         self,
@@ -147,6 +149,7 @@ class StorageCog(commands.Cog, name="Storage"):
         description="📂 ดูและจัดการไฟล์แนบของ Task / View and manage task attachments",
     )
     @app_commands.describe(task_id="Task ID to view attachments for")
+    @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
     async def attachments_list(
         self,
