@@ -615,3 +615,32 @@ class TestProtocolConformance:
         from search_recommendation.protocols import RecommendationEngineProtocol
         engine = RecommendationEngine()
         assert isinstance(engine, RecommendationEngineProtocol)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cog Registration & Import Verification Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCogLoadAndRegistration:
+
+    def test_cog_imports_cleanly(self):
+        """Verify cog module imports without NameError (e.g. Optional / app_commands)."""
+        import search_recommendation.cog as cog_module
+        assert hasattr(cog_module, "SearchRecommendationCog")
+        assert hasattr(cog_module, "setup")
+
+    @pytest.mark.asyncio
+    async def test_cog_adds_to_bot_cleanly(self):
+        """Verify SearchRecommendationCog registers /search and /recommend without conflict."""
+        import discord
+        from discord.ext import commands
+        from search_recommendation.cog import SearchRecommendationCog
+
+        bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+        cog = SearchRecommendationCog(bot)
+        await bot.add_cog(cog)
+
+        cmd_names = [cmd.name for cmd in bot.tree.get_commands()]
+        assert "search" in cmd_names
+        assert "recommend" in cmd_names
+

@@ -7,8 +7,6 @@ Provides two new slash commands:
 
 Registers as a Cog loaded via main.py COGS list.
 """
-from __future__ import annotations
-
 import logging
 from typing import Optional
 

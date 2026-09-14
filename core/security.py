@@ -9,9 +9,10 @@ import re
 import time
 from collections import defaultdict, deque
 from functools import wraps
-from typing import Callable, TypeVar
+from typing import Callable, Optional, TypeVar
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from core.config import config
