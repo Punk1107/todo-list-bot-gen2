@@ -423,67 +423,6 @@ class TasksCog(commands.Cog, name="Tasks"):
             f"🔄 Task **#{task_id}** → {label}", ephemeral=True
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # /search  — Delegated to PostgreSQL Full Text Search engine (v2)
-    #
-    # The legacy LIKE-based implementation has been replaced by the
-    # search_recommendation.FtsEngine which uses tsvector + GIN index with
-    # ts_rank_cd ranking.  This command retains its simple 1-argument UX;
-    # the advanced /search command (in search_recommendation/cog.py) offers
-    # full filter + sort + pagination controls.
-    # ─────────────────────────────────────────────────────────────────────────
-
-    @app_commands.command(name="search", description="🔍 ค้นหา Task / Search tasks")
-    @app_commands.describe(query="Search keyword / คำค้นหา")
-    @rate_limit_check("search")
-    async def search(self, interaction: discord.Interaction, query: str) -> None:
-        uid     = str(interaction.user.id)
-        lang    = await get_user_lang(uid)
-        tz_name = await get_user_timezone(uid)
-
-        q = validator.sanitize(query, 200)
-        if validator.is_suspicious(q):
-            await interaction.response.send_message(t("err_suspicious", lang), ephemeral=True)
-            return
-        await interaction.response.defer()
-
-        # Delegate to FTS engine (replaces legacy LIKE query — ranked + paginated)
-        from search_recommendation.service import search_svc
-        from search_recommendation.models import SearchFilter, SearchQuery, SortBy
-        from search_recommendation.views import SearchResultsView, build_search_embed
-
-        search_query = SearchQuery(
-            text=q,
-            filter=SearchFilter(owner_id=uid),
-            sort_by=SortBy.RELEVANCE,
-            page=1,
-            page_size=10,
-        )
-        try:
-            result_page = await search_svc.search(search_query)
-        except Exception as exc:
-            log.error("search command FTS error: %s", exc)
-            await interaction.followup.send(t("err_db", lang), ephemeral=True)
-            return
-
-        active_filters = [f"🔍 \"{q[:30]}\""] if q else []
-        embed = build_search_embed(
-            result_page, lang, tz_name,
-            t("recommend_scope_personal", lang),
-            active_filters,
-        )
-        view = SearchResultsView(
-            uid=uid,
-            lang=lang,
-            tz_name=tz_name,
-            query=search_query,
-            initial_result=result_page,
-            scope_label=t("recommend_scope_personal", lang),
-            active_filters=active_filters,
-        )
-        await interaction.followup.send(embed=embed, view=view)
-        view._message = await interaction.original_response()
-
 
     # ─────────────────────────────────────────────────────────────────────────
     # /stats
