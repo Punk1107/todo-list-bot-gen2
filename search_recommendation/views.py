@@ -255,7 +255,7 @@ class SearchResultsView(ui.View):
         await interaction.response.defer()
         await self._go_to_page(interaction, self.current_result.total_pages)
 
-    @ui.button(label="🔄", style=discord.ButtonStyle.secondary, custom_id="sr_refresh", row=0)
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="sr_refresh", row=1)
     async def btn_refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
         if str(interaction.user.id) != self.uid:
             await interaction.response.send_message(
