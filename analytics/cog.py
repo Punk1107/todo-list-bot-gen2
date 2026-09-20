@@ -91,7 +91,7 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
             err_msg = chart_url or "Unknown error"
             err_embed = discord.Embed(
                 title=t("error", lang),
-                description=t("analytics_snapshot_failed", lang).format(error=err_msg),
+                description=t("analytics_snapshot_failed", lang, error=err_msg),
                 color=0xED4245,
             )
             await interaction.edit_original_response(embed=err_embed)

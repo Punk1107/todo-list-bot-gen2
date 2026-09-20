@@ -98,19 +98,19 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
     if category == "tasks":
         embed = discord.Embed(
             title=f"📝 {t('help_cat_tasks', lang)}",
-            description="All slash commands for creating, tracking, and completing tasks:" if lang != "th" else "คำสั่งทั้งหมดสำหรับสร้าง ติดตาม และจัดการงานของคุณ:",
+            description=t("help_tasks_desc", lang),
             color=0x5865F2,
         )
         task_cmds = [
             ("➕ `/add`", t("help_add", lang)),
             ("📋 `/list`", t("help_list", lang)),
-            ("📅 `/today`", "View tasks due today with urgency markers" if lang != "th" else "ดู Task ที่ต้องส่งวันนี้พร้อมตัวบอกความเร่งด่วน"),
-            ("🚨 `/overdue`", "View overdue tasks needing immediate action" if lang != "th" else "ดูรายการ Task ที่เกินกำหนดส่ง"),
-            ("📌 `/task [id]`", "Inspect task details, subtasks, tags, and actions" if lang != "th" else "ดูรายละเอียด Task งานย่อย แท็ก และปุ่มจัดการ"),
+            ("📅 `/today`", t("help_today", lang)),
+            ("🚨 `/overdue`", t("help_overdue", lang)),
+            ("📌 `/task [id]`", t("help_task_inspect", lang)),
             ("✅ `/done [id]`", t("help_done", lang)),
             ("🗑️ `/delete [id]`", t("help_delete", lang)),
-            ("📌 `/pin [id]` / `/unpin [id]`", "Pin/unpin important tasks to top of list" if lang != "th" else "ปักหมุด/เลิกปักหมุด Task สำคัญให้อยู่บนสุด"),
-            ("🔄 `/recurring [id]`", "Set recurrence interval (daily, weekly, monthly)" if lang != "th" else "ตั้งการทำซ้ำอัตโนมัติ (รายวัน, รายสัปดาห์, รายเดือน)"),
+            ("📌 `/pin [id]` / `/unpin [id]`", t("help_pin", lang)),
+            ("🔄 `/recurring [id]`", t("help_recurring", lang)),
             ("🔍 `/search [query]`", t("help_search", lang)),
             ("📊 `/stats`", t("help_stats", lang)),
             ("📥 `/export`", t("help_export", lang)),
@@ -125,15 +125,15 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
             color=0x5865F2,
         )
         collab_cmds = [
-            ("🎉 `/project create`", "Create a new shared project in this server" if lang != "th" else "สร้างโปรเจกต์ใหม่ในเซิร์ฟเวอร์"),
-            ("📋 `/project list`", "List all shared projects with interactive selector" if lang != "th" else "ดูโปรเจกต์ทั้งหมดพร้อมเมนูเลือกดู"),
-            ("📊 `/project view [id]`", "View project dashboard, progress, and members" if lang != "th" else "ดู Dashboard ความคืบหน้าและสมาชิก"),
-            ("📌 `/project board [id]`", "Interactive Kanban task board" if lang != "th" else "กระดาน Kanban ติดตามงานแบบ Interactive"),
-            ("➕ `/project add-task [id]`", "Add a task directly to the project" if lang != "th" else "เพิ่มงานเข้าโปรเจกต์โดยตรง"),
-            ("🙋 `/project my-tasks`", "View tasks assigned to you in this server" if lang != "th" else "ดูงานที่ได้รับมอบหมายในเซิร์ฟเวอร์นี้"),
-            ("👥 `/project members [id]`", "View and manage project members" if lang != "th" else "ดูและจัดการสมาชิกในโปรเจกต์"),
-            ("📜 `/project activity [id]`", "View audit trail of project changes" if lang != "th" else "ดูประวัติกิจกรรมของโปรเจกต์"),
-            ("📦 `/project archive [id]`", "Archive a completed project" if lang != "th" else "ปิดเก็บโปรเจกต์เข้ากรุ"),
+            ("🎉 `/project create`", t("help_proj_create", lang)),
+            ("📋 `/project list`", t("help_proj_list", lang)),
+            ("📊 `/project view [id]`", t("help_proj_view", lang)),
+            ("📌 `/project board [id]`", t("help_proj_board", lang)),
+            ("➕ `/project add-task [id]`", t("help_proj_add_task", lang)),
+            ("🙋 `/project my-tasks`", t("help_proj_my_tasks", lang)),
+            ("👥 `/project members [id]`", t("help_proj_members", lang)),
+            ("📜 `/project activity [id]`", t("help_proj_activity", lang)),
+            ("📦 `/project archive [id]`", t("help_proj_archive", lang)),
         ]
         for cmd, desc in collab_cmds:
             embed.add_field(name=cmd, value=f"> {desc}", inline=False)
@@ -145,11 +145,11 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
             color=0x5865F2,
         )
         search_cmds = [
-            ("🔍 `/search [query]`", "Full-text search across all tasks with filters" if lang != "th" else "ค้นหา Task แบบเต็มข้อความพร้อมตัวกรอง"),
-            ("⚡ `/recommend`", "Smart task recommendation based on deadline and priority" if lang != "th" else "ระบบแนะนำงานที่ควรทำก่อนตามความเร่งด่วน"),
-            ("📊 `/task-stats`", "Personal task productivity statistics and charts" if lang != "th" else "สถิติประสิทธิภาพการทำงานส่วนตัว"),
-            ("📰 `/digest`", "Interactive daily task digest summary" if lang != "th" else "สรุปงานประจำวัน Daily Digest"),
-            ("📈 `/analytics`", "Server-wide task analytics and completion rates" if lang != "th" else "รายงานวิเคราะห์ระดับเซิร์ฟเวอร์"),
+            ("🔍 `/search [query]`", t("help_search_fts", lang)),
+            ("⚡ `/recommend`", t("help_recommend", lang)),
+            ("📊 `/task-stats`", t("help_task_stats", lang)),
+            ("📰 `/digest`", t("help_digest", lang)),
+            ("📈 `/analytics`", t("help_analytics", lang)),
         ]
         for cmd, desc in search_cmds:
             embed.add_field(name=cmd, value=f"> {desc}", inline=False)
@@ -161,8 +161,8 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
             color=0x5865F2,
         )
         file_cmds = [
-            ("📎 `/attach [task_id] [file]`", "Upload an image or document attachment to a task" if lang != "th" else "แนบรูปภาพหรือเอกสารเข้ากับ Task"),
-            ("📂 `/attachments [task_id]`", "View, open, or delete attachments on a task" if lang != "th" else "ดู ดาวน์โหลด หรือลบไฟล์แนบของ Task"),
+            ("📎 `/attach [task_id] [file]`", t("help_attach", lang)),
+            ("📂 `/attachments [task_id]`", t("help_attachments", lang)),
         ]
         for cmd, desc in file_cmds:
             embed.add_field(name=cmd, value=f"> {desc}", inline=False)
@@ -170,15 +170,15 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
     elif category == "settings":
         embed = discord.Embed(
             title=f"⚙️ {t('help_cat_settings', lang)}",
-            description="Configure your preferences and organize tasks into categories:" if lang != "th" else "ตั้งค่าการใช้งานและจัดระเบียบงานด้วยหมวดหมู่:",
+            description=t("help_settings_desc", lang),
             color=0x5865F2,
         )
         setting_cmds = [
             ("🕒 `/setup [timezone]`", t("help_setup", lang)),
             ("🌐 `/lang`", t("help_lang", lang)),
-            ("📂 `/category list`", "List all default and custom categories" if lang != "th" else "แสดงรายการหมวดหมู่ทั้งหมดทั้งระบบและที่คุณสร้าง"),
-            ("➕ `/category add`", "Create a new custom category with emoji" if lang != "th" else "สร้างหมวดหมู่ใหม่พร้อมอิโมจิ"),
-            ("🗑️ `/category remove [id]`", "Delete a custom category" if lang != "th" else "ลบหมวดหมู่ที่คุณสร้าง"),
+            ("📂 `/category list`", t("help_cat_list", lang)),
+            ("➕ `/category add`", t("help_cat_add", lang)),
+            ("🗑️ `/category remove [id]`", t("help_cat_remove", lang)),
         ]
         for cmd, desc in setting_cmds:
             embed.add_field(name=cmd, value=f"> {desc}", inline=False)
@@ -190,11 +190,11 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
             color=0x5865F2,
         )
         tips = [
-            ("⚡ Shorthand Deadlines", "`today 18:00`, `tomorrow`, `พรุ่งนี้`, `+2h`, `+3d`, `25/12` — no need to type full DD/MM/YYYY every time!" if lang != "th" else "พิมพ์ `วันนี้ 18:00`, `พรุ่งนี้`, `+2h`, `+1d`, `25/12` ได้ทันที ไม่ต้องพิมพ์ปี ค.ศ. ยาวๆ"),
-            ("🔍 Instant Autocomplete", "When typing `/task`, `/done`, `/pin`, `/attach` — Discord shows your pending tasks to click instantly!" if lang != "th" else "เมื่อพิมพ์คำสั่ง ระบบจะขึ้น Autocomplete แสดงชื่องานค้างให้คลิกเลือกได้ทันทีโดยไม่ต้องจำ ID"),
-            ("🎯 Quick Action Dropdowns", "Use the dropdown in `/list`, `/today`, `/overdue`, and `/search` to inspect or complete tasks without extra commands." if lang != "th" else "เลือก Task จาก Dropdown ใน `/list`, `/today`, `/overdue`, และ `/search` เพื่อจัดการงานได้ทันที"),
-            ("⏰ Multi-Duration Snooze", "Choose from +1h, +3h, +1d, +3d, or next Monday when clicking Snooze!" if lang != "th" else "เลือกเลื่อนส่ง +1ชม., +3ชม., +1วัน, +3วัน หรือจันทร์หน้าได้ตามใจชอบ"),
-            ("🔔 DM Reminders", "The bot automatically notifies you via DM 24h, 3h, and 1h before deadlines!" if lang != "th" else "Bot จะส่ง DM เตือนคุณล่วงหน้า 24 ชม., 3 ชม., และ 1 ชม. ก่อนถึงกำหนดส่งโดยอัตโนมัติ!"),
+            (t("help_tip_shorthand_title", lang), t("help_tip_shorthand", lang)),
+            (t("help_tip_autocomplete_title", lang), t("help_tip_autocomplete", lang)),
+            (t("help_tip_dropdown_title", lang), t("help_tip_dropdown", lang)),
+            (t("help_tip_snooze_title", lang), t("help_tip_snooze", lang)),
+            (t("help_tip_dm_title", lang), t("help_tip_dm", lang)),
         ]
         for title, desc in tips:
             embed.add_field(name=title, value=f"> {desc}", inline=False)

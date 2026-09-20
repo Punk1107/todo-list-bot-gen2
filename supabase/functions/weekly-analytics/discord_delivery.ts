@@ -23,7 +23,7 @@ function pickEmbedColor(rate: number): number {
   return EMBED_COLOR_POOR;
 }
 
-/** i18n strings (TH / EN) */
+/** i18n strings — all 9 supported languages */
 const STRINGS: Record<string, Record<string, string>> = {
   th: {
     title: "📊 รายงานสรุปงานรายสัปดาห์",
@@ -49,6 +49,90 @@ const STRINGS: Record<string, Record<string, string>> = {
     footer: "To-Do List Bot • Weekly Digest",
     bar_title: "📈 Daily Completions (Last 7 Days)",
   },
+  de: {
+    title: "📊 Wöchentlicher Produktivitätsbericht",
+    desc_prefix: "Aufgabenübersicht für",
+    to: "bis",
+    completed: "✅ Abgeschlossen",
+    pending: "🟡 Ausstehend",
+    cancelled: "❌ Abgebrochen",
+    on_time: "⏱️ Pünktlichkeitsrate",
+    score: "🏆 Produktivitätspunktzahl",
+    footer: "To-Do List Bot • Wöchentlicher Digest",
+    bar_title: "📈 Tägliche Abschlüsse (letzte 7 Tage)",
+  },
+  zh: {
+    title: "📊 每周生产力报告",
+    desc_prefix: "任务汇总：",
+    to: "至",
+    completed: "✅ 已完成",
+    pending: "🟡 待处理",
+    cancelled: "❌ 已取消",
+    on_time: "⏱️ 准时率",
+    score: "🏆 生产力评分",
+    footer: "To-Do List Bot • 每周摘要",
+    bar_title: "📈 每日完成情况（最近7天）",
+  },
+  ja: {
+    title: "📊 週次生産性レポート",
+    desc_prefix: "タスクサマリー：",
+    to: "〜",
+    completed: "✅ 完了",
+    pending: "🟡 保留中",
+    cancelled: "❌ キャンセル",
+    on_time: "⏱️ 期限内完了率",
+    score: "🏆 生産性スコア",
+    footer: "To-Do List Bot • 週次ダイジェスト",
+    bar_title: "📈 日次完了数（過去7日間）",
+  },
+  ko: {
+    title: "📊 주간 생산성 보고서",
+    desc_prefix: "작업 요약:",
+    to: "~",
+    completed: "✅ 완료",
+    pending: "🟡 진행 중",
+    cancelled: "❌ 취소됨",
+    on_time: "⏱️ 제때 완료율",
+    score: "🏆 생산성 점수",
+    footer: "To-Do List Bot • 주간 다이제스트",
+    bar_title: "📈 일별 완료 (지난 7일)",
+  },
+  es: {
+    title: "📊 Informe semanal de productividad",
+    desc_prefix: "Resumen de tareas del",
+    to: "al",
+    completed: "✅ Completadas",
+    pending: "🟡 Pendientes",
+    cancelled: "❌ Canceladas",
+    on_time: "⏱️ Tasa a tiempo",
+    score: "🏆 Puntuación de productividad",
+    footer: "To-Do List Bot • Resumen semanal",
+    bar_title: "📈 Completadas diarias (últimos 7 días)",
+  },
+  ru: {
+    title: "📊 Еженедельный отчёт о продуктивности",
+    desc_prefix: "Сводка задач за",
+    to: "по",
+    completed: "✅ Выполнено",
+    pending: "🟡 В ожидании",
+    cancelled: "❌ Отменено",
+    on_time: "⏱️ Доля выполненных в срок",
+    score: "🏆 Индекс продуктивности",
+    footer: "To-Do List Bot • Еженедельный дайджест",
+    bar_title: "📈 Ежедневные выполнения (за 7 дней)",
+  },
+  fr: {
+    title: "📊 Rapport hebdomadaire de productivité",
+    desc_prefix: "Résumé des tâches du",
+    to: "au",
+    completed: "✅ Terminées",
+    pending: "🟡 En cours",
+    cancelled: "❌ Annulées",
+    on_time: "⏱️ Taux de ponctualité",
+    score: "🏆 Score de productivité",
+    footer: "To-Do List Bot • Résumé hebdomadaire",
+    bar_title: "📈 Complétions quotidiennes (7 derniers jours)",
+  },
 };
 
 function fmtDate(iso: string): string {
@@ -60,7 +144,7 @@ function fmtDate(iso: string): string {
 function buildSummaryEmbed(
   metrics: WeeklySnapshotMetrics,
   doughnutUrl: string,
-  lang: "th" | "en" = "en",
+  lang: string = "en",
 ): DiscordEmbed {
   const s = STRINGS[lang] ?? STRINGS.en;
   const color = pickEmbedColor(metrics.onTimeRatePercent);

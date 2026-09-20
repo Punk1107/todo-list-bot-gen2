@@ -60,6 +60,7 @@ COGS = [
     "collaboration.cog",                    # /project group — Shared Projects (Collaboration)
     "storage.cog",                          # /attach /attachments — Task File Storage
     "search_recommendation.cog",            # /search (FTS) + /recommend (task prioritization)
+    "analytics.cog",                        # /analytics snapshot + /analytics weekly
 ]
 
 

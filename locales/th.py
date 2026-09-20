@@ -589,4 +589,56 @@ STRINGS = {
     # ─── /add quick-add messages ───────────────────────────────────────────────
     "add_quick_created": "✅ Task **{task_name}** สร้างสำเร็จ! ID: **#{task_id}** · ⏱️ `{time_left}`",
     "add_invalid_priority_choice": "❌ ความสำคัญต้องอยู่ระหว่าง 0 (ปกติ) ถึง 7 (วิกฤต)",
+
+    # ─── Help Embed Descriptions (settings_cog build_help_embed) ───────────────
+    "help_tasks_desc":     "คำสั่งทั้งหมดสำหรับสร้าง ติดตาม และจัดการงานของคุณ:",
+    "help_settings_desc":  "ตั้งค่าการใช้งานและจัดระเบียบงานด้วยหมวดหมู่:",
+
+    # Task commands
+    "help_today":          "ดู Task ที่ต้องส่งวันนี้พร้อมตัวบอกความเร่งด่วน",
+    "help_overdue":        "ดูรายการ Task ที่เกินกำหนดส่ง",
+    "help_task_inspect":   "ดูรายละเอียด Task งานย่อย แท็ก และปุ่มจัดการ",
+    "help_pin":            "ปักหมุด/เลิกปักหมุด Task สำคัญให้อยู่บนสุด",
+    "help_recurring":      "ตั้งการทำซ้ำอัตโนมัติ (รายวัน, รายสัปดาห์, รายเดือน)",
+
+    # Collaboration commands
+    "help_proj_create":    "สร้างโปรเจกต์ใหม่ในเซิร์ฟเวอร์",
+    "help_proj_list":      "ดูโปรเจกต์ทั้งหมดพร้อมเมนูเลือกดู",
+    "help_proj_view":      "ดู Dashboard ความคืบหน้าและสมาชิก",
+    "help_proj_board":     "กระดาน Kanban ติดตามงานแบบ Interactive",
+    "help_proj_add_task":  "เพิ่มงานเข้าโปรเจกต์โดยตรง",
+    "help_proj_my_tasks":  "ดูงานที่ได้รับมอบหมายในเซิร์ฟเวอร์นี้",
+    "help_proj_members":   "ดูและจัดการสมาชิกในโปรเจกต์",
+    "help_proj_activity":  "ดูประวัติกิจกรรมของโปรเจกต์",
+    "help_proj_archive":   "ปิดเก็บโปรเจกต์เข้ากรุ",
+
+    # Search/Analytics commands
+    "help_search_fts":     "ค้นหา Task แบบเต็มข้อความพร้อมตัวกรอง",
+    "help_recommend":      "ระบบแนะนำงานที่ควรทำก่อนตามความเร่งด่วน",
+    "help_task_stats":     "สถิติประสิทธิภาพการทำงานส่วนตัว",
+    "help_digest":         "สรุปงานประจำวัน Daily Digest",
+    "help_analytics":      "รายงานวิเคราะห์ระดับเซิร์ฟเวอร์",
+
+    # File commands
+    "help_attach":         "แนบรูปภาพหรือเอกสารเข้ากับ Task",
+    "help_attachments":    "ดู ดาวน์โหลด หรือลบไฟล์แนบของ Task",
+
+    # Settings commands
+    "help_cat_list":       "แสดงรายการหมวดหมู่ทั้งหมดทั้งระบบและที่คุณสร้าง",
+    "help_cat_add":        "สร้างหมวดหมู่ใหม่พร้อมอิโมจิ",
+    "help_cat_remove":     "ลบหมวดหมู่ที่คุณสร้าง",
+
+    # Tips
+    "help_tip_shorthand":    "พิมพ์ `วันนี้ 18:00`, `พรุ่งนี้`, `+2h`, `+1d`, `25/12` ได้ทันที ไม่ต้องพิมพ์ปี ค.ศ. ยาวๆ",
+    "help_tip_autocomplete": "เมื่อพิมพ์คำสั่ง ระบบจะขึ้น Autocomplete แสดงชื่องานค้างให้คลิกเลือกได้ทันทีโดยไม่ต้องจำ ID",
+    "help_tip_dropdown":     "เลือก Task จาก Dropdown ใน `/list`, `/today`, `/overdue`, และ `/search` เพื่อจัดการงานได้ทันที",
+    "help_tip_snooze":       "เลือกเลื่อนส่ง +1ชม., +3ชม., +1วัน, +3วัน หรือจันทร์หน้าได้ตามใจชอบ",
+    "help_tip_dm":           "Bot จะส่ง DM เตือนคุณล่วงหน้า 24 ชม., 3 ชม., และ 1 ชม. ก่อนถึงกำหนดส่งโดยอัตโนมัติ!",
+
+    # Tip field titles
+    "help_tip_shorthand_title":    "⚡ วิธีพิมพ์กำหนดส่งแบบย่อ",
+    "help_tip_autocomplete_title": "🔍 Autocomplete อัตโนมัติ",
+    "help_tip_dropdown_title":     "🎯 Quick Action Dropdown",
+    "help_tip_snooze_title":       "⏰ เลื่อนกำหนดหลายแบบ",
+    "help_tip_dm_title":           "🔔 การแจ้งเตือนทาง DM",
 }

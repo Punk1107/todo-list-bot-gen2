@@ -29,6 +29,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import discord
+
 log = logging.getLogger(__name__)
 
 ROOT    = Path(__file__).resolve().parent.parent
