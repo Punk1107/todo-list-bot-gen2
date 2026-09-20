@@ -163,7 +163,5 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
 
 
 async def setup(bot: commands.Bot) -> None:
-    cog = AnalyticsCog(bot)
-    bot.tree.add_command(cog.analytics_group)
-    await bot.add_cog(cog)
+    await bot.add_cog(AnalyticsCog(bot))
     log.info("[OK] AnalyticsCog loaded — /analytics group registered")

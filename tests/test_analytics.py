@@ -217,3 +217,27 @@ class TestAnalyticsClientRequests:
 
         assert processed == 42
         assert failed == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. AnalyticsCog Registration Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAnalyticsCogRegistration:
+    def test_cog_imports_cleanly(self):
+        import analytics.cog as cog_module
+        assert hasattr(cog_module, "AnalyticsCog")
+        assert hasattr(cog_module, "setup")
+
+    @pytest.mark.asyncio
+    async def test_setup_registers_cog_cleanly(self):
+        """Verify analytics.cog.setup(bot) does not raise CommandAlreadyRegistered."""
+        import discord
+        from discord.ext import commands
+        from analytics.cog import setup
+
+        bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+        await setup(bot)
+
+        cmd_names = [cmd.name for cmd in bot.tree.get_commands()]
+        assert "analytics" in cmd_names
