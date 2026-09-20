@@ -383,10 +383,16 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
     # ── 3. Classic & shorthand date formats ────────────────────────────────
     for fmt in _DATE_FORMATS:
         try:
-            naive = datetime.strptime(raw, fmt)
+            if "%Y" not in fmt:
+                # Prepend the current year to avoid the Python 3.15 deprecation
+                # warning about parsing dates without a year being ambiguous.
+                year_raw = f"{now_local.year}/{raw}"
+                year_fmt = f"%Y/{fmt}"
+                naive = datetime.strptime(year_raw, year_fmt)
+            else:
+                naive = datetime.strptime(raw, fmt)
             # Infer current/next year for shorthand formats missing the year
             if "%Y" not in fmt:
-                naive = naive.replace(year=now_local.year)
                 # Roll over to next year if the resulting date is already past
                 localized = tz.localize(naive)
                 if localized < now_utc:

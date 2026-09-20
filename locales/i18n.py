@@ -1,5 +1,5 @@
-"""
-i18n — Internationalisation Manager
+﻿"""
+i18n -- Internationalisation Manager
 Handles TH / EN / ZH / JA / KO / ES / RU / FR / DE language switching per-user.
 Language is persisted in the database and cached in UserCache.
 """
@@ -12,29 +12,44 @@ log = logging.getLogger(__name__)
 SUPPORTED_LANGS = ("th", "en", "zh", "ja", "ko", "es", "ru", "fr", "de")
 DEFAULT_LANG = "en"   # fallback when Discord locale does not match any supported lang
 
-# ── Discord locale → our lang code ───────────────────────────────────────────
+# -- Discord locale -> our lang code -------------------------------------------
 # Discord locale strings: https://discord.com/developers/docs/reference#locales
 DISCORD_LOCALE_MAP: dict[str, str] = {
-    "th":    "th",
-    "en-US": "en",
-    "en-GB": "en",
-    "zh-CN": "zh",
-    "zh-TW": "zh",   # Traditional → Simplified as best-effort
-    "ja":    "ja",
-    "ko":    "ko",
-    "es-ES": "es",
+    "th":     "th",
+    "en-us":  "en",
+    "en-gb":  "en",
+    "zh-cn":  "zh",
+    "zh-tw":  "zh",   # Traditional -> Simplified as best-effort
+    "ja":     "ja",
+    "ko":     "ko",
+    "es-es":  "es",
     "es-419": "es",  # Latin America Spanish
-    "ru":    "ru",
-    "fr":    "fr",
-    "de":    "de",
+    "ru":     "ru",
+    "fr":     "fr",
+    "de":     "de",
 }
 
 
 def locale_to_lang(discord_locale: str) -> str:
     """Map a Discord locale string to our internal lang code.
-    Returns DEFAULT_LANG if no match is found.
+
+    Normalises the locale to lowercase and replaces underscores with hyphens
+    before lookup.  If no exact match is found, tries the base language code
+    (e.g. 'en-AU' -> 'en').  Returns DEFAULT_LANG if nothing matches.
     """
-    return DISCORD_LOCALE_MAP.get(str(discord_locale), DEFAULT_LANG)
+    if not discord_locale:
+        return DEFAULT_LANG
+    norm = str(discord_locale).lower().replace("_", "-")
+    if norm in DISCORD_LOCALE_MAP:
+        return DISCORD_LOCALE_MAP[norm]
+    # Direct match against our supported lang codes ("en", "zh", etc.)
+    if norm in SUPPORTED_LANGS:
+        return norm
+    # Fallback to base language code ("en-AU" -> "en")
+    base = norm.split("-")[0]
+    if base in SUPPORTED_LANGS:
+        return base
+    return DEFAULT_LANG
 
 
 # Lazy-load locale modules
@@ -67,6 +82,15 @@ def _load(lang: str) -> dict:
     return _CACHE[lang]
 
 
+class _SafeDict(dict):
+    """dict subclass that returns '{key}' for missing keys instead of raising KeyError.
+
+    Used with str.format_map() so partially-applied templates never crash.
+    """
+    def __missing__(self, key: str) -> str:
+        return f"{{{key}}}"
+
+
 def t(key: str, lang: str = DEFAULT_LANG, **kwargs: Any) -> str:
     """
     Translate a key for the given language.
@@ -75,14 +99,20 @@ def t(key: str, lang: str = DEFAULT_LANG, **kwargs: Any) -> str:
     Usage:
         t("task_created", lang="ja", task_id=42)
     """
+    # Normalise lang: guard against None / empty / unsupported
+    if not lang or lang not in SUPPORTED_LANGS:
+        lang = DEFAULT_LANG
+
     strings  = _load(lang)
     fallback = _load(DEFAULT_LANG)
 
     template = strings.get(key) or fallback.get(key) or key
+    if not kwargs:
+        return template
     try:
-        return template.format(**kwargs) if kwargs else template
-    except (KeyError, ValueError) as exc:
-        log.warning("i18n format error — key=%s lang=%s err=%s", key, lang, exc)
+        return template.format_map(_SafeDict(kwargs))
+    except (KeyError, ValueError, IndexError, AttributeError) as exc:
+        log.warning("i18n format error -- key=%s lang=%s err=%s", key, lang, exc)
         return template
 
 
@@ -92,4 +122,3 @@ def get_flag(lang: str) -> str:
 
 def get_lang_name(lang: str) -> str:
     return _load(lang).get("lang_name", lang.upper())
-

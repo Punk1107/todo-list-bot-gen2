@@ -22,7 +22,7 @@ from discord import ui
 import pytz
 
 from collaboration import service
-from collaboration.models import BoardData, Project, ProjectStats, ProjectTask, ProjectActivity
+from collaboration.models import BoardData, Project, ProjectMember, ProjectStats, ProjectTask, ProjectActivity
 from locales.i18n import t
 from utils.helpers import get_user_lang, get_user_timezone, ensure_user, format_deadline, time_left_str
 
@@ -454,7 +454,7 @@ class ProjectDashboardView(ui.View):
         try:
             stats = await service.get_project_stats(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_project_dashboard_embed(stats, lang)
         await interaction.message.edit(embed=embed, view=self)
@@ -468,7 +468,7 @@ class ProjectDashboardView(ui.View):
         try:
             board = await service.get_project_board(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_board_embed(board, lang, "pending")
         view  = ProjectBoardView(self.project_id, self.guild_id, lang, self.user, board)
@@ -482,7 +482,7 @@ class ProjectDashboardView(ui.View):
             project = await service.get_project(self.project_id, self.guild_id)
             members = await service.get_project_members(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_members_embed(members, project, lang)
         view  = MembersView(project, lang, self.user, members)
@@ -496,7 +496,7 @@ class ProjectDashboardView(ui.View):
             project    = await service.get_project(self.project_id, self.guild_id)
             activities = await service.get_project_activity(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_activity_embed(activities, project, lang)
         await interaction.message.edit(embed=embed, view=self)
@@ -507,7 +507,7 @@ class ProjectDashboardView(ui.View):
         try:
             project = await service.get_project(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.response.send_message(t("proj_not_found", lang), ephemeral=True)
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         modal = AddProjectTaskModal(project, lang)
         await interaction.response.send_modal(modal)
@@ -581,7 +581,7 @@ class BoardColumnSelect(ui.Select):
         try:
             board = await service.get_project_board(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", self.lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", self.lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_board_embed(board, self.lang, col)
         view  = ProjectBoardView(self.project_id, self.guild_id, self.lang, self.user, board, current_col=col)
@@ -612,7 +612,7 @@ class ProjectBoardView(ui.View):
         try:
             board = await service.get_project_board(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
 
         # Show unclaimed pending tasks for selection
@@ -634,7 +634,7 @@ class ProjectBoardView(ui.View):
         try:
             stats = await service.get_project_stats(self.project_id, self.guild_id)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", self.lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", self.lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_project_dashboard_embed(stats, self.lang)
         view  = ProjectDashboardView(self.project_id, self.guild_id, self.lang, self.user)
@@ -666,7 +666,7 @@ class ClaimTaskSelect(ui.Select):
         try:
             task = await service.claim_task(task_id, self.project_id, self.guild_id, uid)
         except service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang), ephemeral=True)
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         except service.TaskNotFound:
             await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)

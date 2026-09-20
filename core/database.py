@@ -875,6 +875,19 @@ class DatabaseManager:
         """Call once the asyncio event loop is running (e.g. in setup_hook)."""
         self.bulk_writer.start()
 
+    def acquire(self) -> asyncpg.pool.PoolAcquireContext:
+        """Acquire a connection from the asyncpg pool.
+
+        Usage::
+            async with db.acquire() as conn:
+                await conn.execute(\"SELECT 1\")
+
+        Raises RuntimeError if the pool has not been initialised yet.
+        """
+        if self._pool is None:
+            raise RuntimeError("Database pool has not been initialized. Call db.initialize() first.")
+        return self._pool.acquire()
+
     # ── Migrations ────────────────────────────────────────────────────────────
 
     async def _current_version(self, conn: asyncpg.Connection) -> int:

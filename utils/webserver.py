@@ -14,6 +14,8 @@ import logging
 import time
 from typing import Optional
 
+import sys
+
 from aiohttp import web
 
 from core.config import config
@@ -94,7 +96,7 @@ async def start_async() -> Optional[web.AppRunner]:
         config.webserver.host,
         config.webserver.port,
         reuse_address=True,
-        reuse_port=True,
+        reuse_port=(sys.platform != "win32"),  # not supported on Windows
     )
     await site.start()
     log.info(

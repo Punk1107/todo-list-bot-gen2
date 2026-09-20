@@ -1,4 +1,4 @@
-﻿"""
+"""
 collaboration/service.py โ€” Business Logic & Scope Isolation for Shared Projects
 
 KEY DESIGN RULES (enforced in EVERY query):
@@ -6,10 +6,10 @@ KEY DESIGN RULES (enforced in EVERY query):
   2. All SELECT/UPDATE/DELETE on project tasks include WHERE project_id = $N AND guild_id = $N
   3. Personal tasks (project_id IS NULL) are NEVER touched here โ€” separate query paths
   4. Permission model:
-       - project LEAD     โ’ full control (edit project, assign tasks, manage members)
-       - project MEMBER   โ’ create tasks, claim/update own tasks, mark tasks done
-       - project VIEWER   โ’ read-only
-       - guild ADMIN      โ’ override (checked via discord.Member.guild_permissions.administrator)
+       - project LEAD     ① full control (edit project, assign tasks, manage members)
+       - project MEMBER   ① create tasks, claim/update own tasks, mark tasks done
+       - project VIEWER   ① read-only
+       - guild ADMIN      ① override (checked via discord.Member.guild_permissions.administrator)
 """
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ async def create_project(
     owner_id: str,
     description: Optional[str] = None,
     color: str = "#5865F2",
-    emoji: str = "๐“",
+    emoji: str = "📁",
     channel_id: Optional[int] = None,
     role_id: Optional[int] = None,
 ) -> Project:
@@ -382,7 +382,7 @@ async def assign_task(
         )
     db.query_cache.invalidate_all()
     await log_activity(project_id, guild_id, actor_id, "task_assigned",
-                       f"#{task_id} โ’ {assignee_id}")
+                       f"#{task_id} ① {assignee_id}")
     return await get_project_task(task_id, project_id, guild_id)
 
 
@@ -392,9 +392,9 @@ async def update_task_status(
 ) -> ProjectTask:
     """
     Change a task's status. Valid transitions:
-      Pending      โ’ In_Progress, Cancelled
-      In_Progress  โ’ Completed, Pending, Cancelled
-      Completed    โ’ (no change allowed, must re-open via Lead/Admin only)
+      Pending      ① In_Progress, Cancelled
+      In_Progress  ① Completed, Pending, Cancelled
+      Completed    ① (no change allowed, must re-open via Lead/Admin only)
     Allowed actors: assignee, task creator, project lead, guild admin.
     """
     project = await get_project(project_id, guild_id)
@@ -432,7 +432,7 @@ async def update_task_status(
     }
     await log_activity(project_id, guild_id, actor_id,
                        action_map.get(new_status, "task_status_changed"),
-                       f"#{task_id} โ’ {new_status}")
+                       f"#{task_id} ① {new_status}")
     return await get_project_task(task_id, project_id, guild_id)
 
 

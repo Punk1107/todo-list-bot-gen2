@@ -144,7 +144,6 @@ class FtsEngine:
         }
         order_sql = sort_map.get(effective_sort, "t.priority DESC, t.deadline ASC NULLS LAST")
 
-        count_ph = p(0)  # dummy — we need separate count
         count_sql = f"""
 SELECT COUNT(*) AS total
 FROM tasks t

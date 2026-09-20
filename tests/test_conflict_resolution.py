@@ -218,7 +218,7 @@ class TestCalculateDefensiveSnooze:
     def test_snooze_accepts_naive_datetime(self):
         """Naive datetimes (no tzinfo) must be treated as UTC."""
         now_utc  = _now_utc()
-        deadline = datetime.utcnow() + timedelta(hours=5)  # naive
+        deadline = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5)  # naive
 
         result_iso = calculate_defensive_snooze(deadline.isoformat(), now_utc=now_utc)
         result     = self._parse(result_iso)

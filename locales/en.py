@@ -588,4 +588,56 @@ STRINGS = {
     # ─── /add quick-add messages ───────────────────────────────────────────────
     "add_quick_created": "✅ Task **{task_name}** created! ID: **#{task_id}** · ⏱️ `{time_left}`",
     "add_invalid_priority_choice": "❌ Priority must be between 0 (Normal) and 7 (Critical).",
+
+    # ─── Help Embed Descriptions (settings_cog build_help_embed) ───────────────
+    "help_tasks_desc":     "All slash commands for creating, tracking, and completing tasks:",
+    "help_settings_desc":  "Configure your preferences and organize tasks into categories:",
+
+    # Task commands
+    "help_today":          "View tasks due today with urgency markers",
+    "help_overdue":        "View overdue tasks needing immediate action",
+    "help_task_inspect":   "Inspect task details, subtasks, tags, and actions",
+    "help_pin":            "Pin/unpin important tasks to top of list",
+    "help_recurring":      "Set recurrence interval (daily, weekly, monthly)",
+
+    # Collaboration commands
+    "help_proj_create":    "Create a new shared project in this server",
+    "help_proj_list":      "List all shared projects with interactive selector",
+    "help_proj_view":      "View project dashboard, progress, and members",
+    "help_proj_board":     "Interactive Kanban task board",
+    "help_proj_add_task":  "Add a task directly to the project",
+    "help_proj_my_tasks":  "View tasks assigned to you in this server",
+    "help_proj_members":   "View and manage project members",
+    "help_proj_activity":  "View audit trail of project changes",
+    "help_proj_archive":   "Archive a completed project",
+
+    # Search/Analytics commands
+    "help_search_fts":     "Full-text search across all tasks with filters",
+    "help_recommend":      "Smart task recommendation based on deadline and priority",
+    "help_task_stats":     "Personal task productivity statistics and charts",
+    "help_digest":         "Interactive daily task digest summary",
+    "help_analytics":      "Server-wide task analytics and completion rates",
+
+    # File commands
+    "help_attach":         "Upload an image or document attachment to a task",
+    "help_attachments":    "View, open, or delete attachments on a task",
+
+    # Settings commands
+    "help_cat_list":       "List all default and custom categories",
+    "help_cat_add":        "Create a new custom category with emoji",
+    "help_cat_remove":     "Delete a custom category",
+
+    # Tips
+    "help_tip_shorthand":    "`today 18:00`, `tomorrow`, `+2h`, `+3d`, `25/12` — no need to type full DD/MM/YYYY every time!",
+    "help_tip_autocomplete": "When typing `/task`, `/done`, `/pin`, `/attach` — Discord shows your pending tasks to click instantly!",
+    "help_tip_dropdown":     "Use the dropdown in `/list`, `/today`, `/overdue`, and `/search` to inspect or complete tasks without extra commands.",
+    "help_tip_snooze":       "Choose from +1h, +3h, +1d, +3d, or next Monday when clicking Snooze!",
+    "help_tip_dm":           "The bot automatically notifies you via DM 24h, 3h, and 1h before deadlines!",
+
+    # Tip field titles
+    "help_tip_shorthand_title":    "⚡ Shorthand Deadlines",
+    "help_tip_autocomplete_title": "🔍 Instant Autocomplete",
+    "help_tip_dropdown_title":     "🎯 Quick Action Dropdowns",
+    "help_tip_snooze_title":       "⏰ Multi-Duration Snooze",
+    "help_tip_dm_title":           "🔔 DM Reminders",
 }
