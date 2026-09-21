@@ -292,7 +292,7 @@ class AddTaskModal(ui.Modal):
                 success_msg, embed=embed, view=view,
             )
         dm_embed = discord.Embed(
-            title="✅ " + ("สร้าง Task สำเร็จ!" if lang == "th" else "Task Created!"),
+            title="✅ " + t("task_created_title", lang),
             description=f"**#{task_id} — {task_name[:80]}**",
             color=0x57F287,
         )
@@ -435,7 +435,7 @@ class EditTaskModal(ui.Modal):
             t("task_edit_success", lang), embed=embed, view=view,
         )
         dm_embed = discord.Embed(
-            title="✏️ " + ("แก้ไข Task สำเร็จ" if lang == "th" else "Task Updated"),
+            title="✏️ " + t("task_updated_title", lang),
             description=f"**#{self.task_id} — {name_or_err[:80]}**",
             color=0x5865F2,
         )
@@ -469,7 +469,7 @@ class DeleteConfirmView(ui.View):
         if self._message:
             try:
                 await self._message.edit(
-                    content=f"⌛ {'หมดเวลายืนยัน' if self.lang == 'th' else 'Confirmation timed out.'}",
+                    content=t("confirm_timed_out", self.lang),
                     view=self,
                 )
             except Exception:
@@ -678,7 +678,7 @@ class TaskConflictView(ui.View):
             content=success_msg, embed=embed, view=view,
         )
         dm_embed = discord.Embed(
-            title="✅ " + ("สร้าง Task สำเร็จ!" if lang == "th" else "Task Created!"),
+            title="✅ " + t("task_created_title", lang),
             description=f"**#{task_id} — {final_name[:80]}**",
             color=0x57F287,
         )
@@ -690,7 +690,7 @@ class TaskConflictView(ui.View):
         if self.message:
             try:
                 await self.message.edit(
-                    content=("⌛ หมดเวลา" if self.lang == "th" else "⌛ Timed out."),
+                    content=t("timed_out", self.lang),
                     view=self,
                 )
             except Exception:
@@ -964,7 +964,7 @@ class CategorySelect(ui.Select):
                     default=(cat["category_id"] == current_cat_id),
                 )
             )
-        placeholder = "🏷️ เปลี่ยนหมวดหมู่..." if lang == "th" else "🏷️ Change category..."
+        placeholder = t("cat_select_placeholder", lang)
         super().__init__(
             custom_id=f"task_{task_id}_csel",
             placeholder=placeholder, options=options,
@@ -992,10 +992,7 @@ class CategorySelect(ui.Select):
             log.error("Category update failed: %s", exc)
             await interaction.followup.send(t("err_db", lang), ephemeral=True)
             return
-        msg = (
-            "🏷️ เปลี่ยนหมวดหมู่สำเร็จ!" if lang == "th"
-            else "🏷️ Category updated!"
-        )
+        msg = t("cat_changed_success", lang)
         await interaction.followup.send(msg, ephemeral=True)
 
 
@@ -1157,11 +1154,7 @@ class TaskActionView(ui.View):
         self._update_pin_label()
         msg_key = "task_pinned" if self.is_pinned else "task_unpinned"
         await interaction.followup.send(t(msg_key, lang, task_id=self.task_id), ephemeral=True)
-        pin_label = (
-            ("📌 ปักหมุดแล้ว" if self.is_pinned else "📌 เลิกปักหมุดแล้ว")
-            if lang == "th"
-            else ("📌 Pinned" if self.is_pinned else "📌 Unpinned")
-        )
+        pin_label = t("task_pinned_badge", lang) if self.is_pinned else t("task_unpinned_badge", lang)
         dm_embed = discord.Embed(
             title=pin_label,
             description=f"Task **#{self.task_id}**",

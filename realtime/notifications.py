@@ -60,7 +60,7 @@ def build_task_completed_embed(
             f"{bar}  ({done_count}/{total} tasks)" if done_count is not None and total is not None
             else bar
         )
-        embed.add_field(name="📊 Progress", value=label, inline=False)
+        embed.add_field(name=t("rt_progress_title", lang), value=label, inline=False)
 
     embed.set_footer(text=f"{project_emoji} Project #{project_id} · To-Do List Bot Gen 2")
     return embed
@@ -128,6 +128,6 @@ def build_attachment_uploaded_embed(
     if is_image:
         embed.set_image(url=public_url)
     else:
-        embed.add_field(name="🔗 Download", value=f"[{file_name}]({public_url})", inline=False)
+        embed.add_field(name=t("rt_download_title", lang), value=f"[{file_name}]({public_url})", inline=False)
     embed.set_footer(text="To-Do List Bot Gen 2")
     return embed

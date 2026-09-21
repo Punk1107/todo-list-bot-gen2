@@ -291,9 +291,9 @@ async def on_app_command_error(
     elif isinstance(error, discord.app_commands.MissingPermissions):
         msg = t("permission_denied", lang)
     elif isinstance(error, discord.app_commands.BotMissingPermissions):
-        msg = "❌ I'm missing required permissions in this channel."
+        msg = t("bot_missing_permissions", lang)
     elif isinstance(error, discord.app_commands.NoPrivateMessage):
-        msg = "❌ This command cannot be used in DMs."
+        msg = t("err_dm_not_allowed", lang)
     elif isinstance(error, discord.app_commands.CommandNotFound):
         return   # Silently ignore — can happen during deploy
     else:

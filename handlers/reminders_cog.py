@@ -233,7 +233,7 @@ class DailyDigestView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("DigestView refresh error: %s", exc)
-            await interaction.followup.send("❌ Refresh failed.", ephemeral=True)
+            await interaction.followup.send(t("refresh_failed", lang), ephemeral=True)
 
 
 class RemindersCog(commands.Cog, name="Reminders"):
