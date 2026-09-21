@@ -18,6 +18,9 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
+from utils.helpers import get_user_lang
+from locales.i18n import t
+
 log = logging.getLogger(__name__)
 
 
@@ -284,8 +287,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/health command failed: %s", exc, exc_info=True)
+            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
-                "❌ ไม่สามารถดึงข้อมูลได้ — ดู logs สำหรับรายละเอียด",
+                t("monitoring_fetch_failed", lang),
                 ephemeral=True,
             )
 
@@ -306,8 +310,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/errors command failed: %s", exc, exc_info=True)
+            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
-                "❌ ไม่สามารถดึงข้อมูลได้ — ดู logs สำหรับรายละเอียด",
+                t("monitoring_fetch_failed", lang),
                 ephemeral=True,
             )
 
@@ -328,8 +333,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/cmdstats command failed: %s", exc, exc_info=True)
+            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
-                "❌ ไม่สามารถดึงข้อมูลได้ — ดู logs สำหรับรายละเอียด",
+                t("monitoring_fetch_failed", lang),
                 ephemeral=True,
             )
 

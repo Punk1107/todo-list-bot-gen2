@@ -73,12 +73,12 @@ def urgency_color(deadline_val: Any, status: str) -> int:
         return _C_UPCOMING
 
 
-def urgency_badge(deadline_val: Any, status: str) -> str:
+def urgency_badge(deadline_val: Any, status: str, lang: str = "en") -> str:
     """Return a short urgency badge string for embed titles."""
     if status in ("Completed", "Cancelled"):
         return ""
     if status == "Overdue":
-        return "🔴 OVERDUE"
+        return t("badge_overdue", lang)
     try:
         if isinstance(deadline_val, datetime):
             dt = deadline_val
@@ -90,14 +90,14 @@ def urgency_badge(deadline_val: Any, status: str) -> str:
             dt = pytz.utc.localize(dt)
         secs = (dt - datetime.now(pytz.utc)).total_seconds()
         if secs < 0:
-            return "🔴 OVERDUE"
+            return t("badge_overdue", lang)
         if secs < 10_800:
-            return "🟠 CRITICAL"
+            return t("badge_critical", lang)
         if secs < 86_400:
-            return "🟡 DUE TODAY"
+            return t("badge_due_today", lang)
         if secs < 259_200:
-            return "🔵 UPCOMING"
-        return "🟢 ON TRACK"
+            return t("badge_upcoming", lang)
+        return t("badge_on_track", lang)
     except Exception:
         return ""
 
@@ -562,7 +562,7 @@ def build_task_embed(row, lang: str, tz_name: str,
         pass
 
     color    = urgency_color(deadline, status)
-    badge    = urgency_badge(deadline, status)
+    badge    = urgency_badge(deadline, status, lang)
     tl       = time_left_str(deadline)
     dl_fmt   = format_deadline(deadline, tz_name)
     ubar     = urgency_bar(deadline) if status not in ("Completed", "Cancelled") else ""
@@ -648,7 +648,7 @@ def build_task_embed(row, lang: str, tz_name: str,
                 id_prefix = f"`#{s_id}` " if s_id else ""
                 checklist_lines.append(f"{icon} {id_prefix}{task_name[:35]}")
         if len(subtasks) > 10:
-            checklist_lines.append(f"*(+{len(subtasks) - 10} more)*")
+            checklist_lines.append(t("subtasks_more", lang, count=len(subtasks) - 10))
         if checklist_lines:
             sub_val += "\n" + "\n".join(checklist_lines)
         embed.add_field(

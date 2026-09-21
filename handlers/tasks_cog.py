@@ -571,7 +571,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         except Exception as exc:
             log.error("On-demand digest error uid=%s: %s", uid, exc)
             await interaction.followup.send(
-                f"❌ เกิดข้อผิดพลาด กรุณาลองใหม่\n`{exc}`",
+                t("err_with_detail", lang, detail=str(exc)),
                 ephemeral=True,
             )
 
@@ -604,6 +604,7 @@ class TaskStatsView(discord.ui.View):
                        custom_id="stats_overview")
     async def btn_overview(self, interaction: discord.Interaction,
                            button: discord.ui.Button) -> None:
+        button.label = t("btn_overview_tab", self._lang)
         self._view_mode = "overview"
         embed = build_task_stats_embed(
             self._data, self._lang, self._username,
@@ -616,6 +617,7 @@ class TaskStatsView(discord.ui.View):
                        custom_id="stats_speed")
     async def btn_speed(self, interaction: discord.Interaction,
                         button: discord.ui.Button) -> None:
+        button.label = t("btn_speed_tab", self._lang)
         self._view_mode = "speed"
         embed = build_task_stats_embed(
             self._data, self._lang, self._username,
@@ -640,7 +642,7 @@ class TaskStatsView(discord.ui.View):
         # Edit original message with fresh embed + updated view
         await interaction.message.edit(embed=embed, view=self)
         await interaction.followup.send(
-            "🔄 รีเฟรชข้อมูลเรียบร้อยแล้ว ✅", ephemeral=True
+            t("stats_refreshed", self._lang), ephemeral=True
         )
 
 

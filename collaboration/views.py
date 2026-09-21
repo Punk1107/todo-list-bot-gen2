@@ -73,7 +73,7 @@ class ProjectSelectDropdown(ui.Select):
         ]
         if not options:
             options = [discord.SelectOption(label=t("quickaction_none", lang), value="0")]
-        placeholder = "📂 เลือกดู Dashboard โปรเจกต์..." if lang == "th" else "📂 Select project dashboard to view..."
+        placeholder = t("proj_select_dashboard_placeholder", lang)
         super().__init__(
             placeholder=placeholder,
             options=options,
@@ -97,7 +97,7 @@ class ProjectSelectDropdown(ui.Select):
             return
 
         embed = build_project_dashboard_embed(stats, self.lang)
-        view  = ProjectDashboardView(stats.project, str(interaction.user.id), self.lang, stats)
+        view  = ProjectDashboardView(proj_id, guild_id, self.lang, interaction.user)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 

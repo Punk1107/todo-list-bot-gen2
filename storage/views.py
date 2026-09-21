@@ -49,9 +49,9 @@ def build_attachments_embed(
             f"👤 <@{att.uploader_id}>",
         ]
         if att.is_image:
-            value_lines.append(f"[🔗 View]({att.public_url})")
+            value_lines.append(f"[{t('storage_link_view', lang)}]({att.public_url})")
         else:
-            value_lines.append(f"[⬇️ Download]({att.public_url})")
+            value_lines.append(f"[{t('storage_link_download', lang)}]({att.public_url})")
 
         embed.add_field(
             name=f"{att.icon_emoji} `{att.display_name}`",

@@ -206,12 +206,12 @@ def build_help_embed(category: str, lang: str) -> discord.Embed:
             color=0x5865F2,
         )
         embed.add_field(
-            name="🚀 Getting Started",
+            name=t("help_quickstart_title", lang),
             value=t("help_quickstart", lang),
             inline=False,
         )
         embed.add_field(
-            name="📚 Browse Categories",
+            name=t("help_browse_title", lang),
             value=t("help_overview_browse", lang),
             inline=False,
         )
@@ -261,7 +261,7 @@ class HelpCategorySelect(ui.Select):
                 emoji="💡",
             ),
         ]
-        super().__init__(placeholder="📖 Select help category...", options=options, min_values=1, max_values=1)
+        super().__init__(placeholder=t("help_category_select_placeholder", lang), options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         val = self.values[0]
@@ -481,8 +481,7 @@ class SettingsCog(commands.Cog, name="Settings"):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         if row["owner_id"] == "system":
-            msg = "❌ Cannot remove default categories." if lang == "en" else "❌ ไม่สามารถลบหมวดหมู่เริ่มต้นได้"
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.response.send_message(t("cat_cannot_remove_default", lang), ephemeral=True)
             return
         # Nullify tasks referencing this category
         await db.aexecute(
@@ -507,7 +506,8 @@ class SettingsCog(commands.Cog, name="Settings"):
     @admin_group.command(name="stats", description="📊 Bot-wide statistics")
     async def admin_stats(self, interaction: discord.Interaction) -> None:
         if not _is_owner(interaction.user.id):
-            await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
+            lang = await get_user_lang(str(interaction.user.id))
+            await interaction.response.send_message(t("err_owner_only", lang), ephemeral=True)
             return
 
         # Single query: COUNT(DISTINCT) for users avoids double-counting rows from the LEFT JOIN.
@@ -548,7 +548,8 @@ class SettingsCog(commands.Cog, name="Settings"):
     @admin_group.command(name="cache_purge", description="🗑️ Purge expired user cache entries")
     async def admin_cache_purge(self, interaction: discord.Interaction) -> None:
         if not _is_owner(interaction.user.id):
-            await interaction.response.send_message("❌ Owner-only command.", ephemeral=True)
+            lang = await get_user_lang(str(interaction.user.id))
+            await interaction.response.send_message(t("err_owner_only", lang), ephemeral=True)
             return
         removed = db.user_cache.purge_expired()
         await interaction.response.send_message(
