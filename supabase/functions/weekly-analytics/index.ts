@@ -194,7 +194,9 @@ async function handleCronBatch(): Promise<{ processed: number; failed: number }>
       const uid = u.user_id as string;
       if (!uid || uid === "system") continue;
 
-      const lang = ((u.lang as string) === "th" ? "th" : "en") as "th" | "en";
+      const SUPPORTED = ["th","en","zh","ja","ko","es","ru","fr","de"];
+      const rawLang = (u.lang as string) ?? "en";
+      const lang: string = SUPPORTED.includes(rawLang) ? rawLang : "en";
       const metrics = await computeWeeklyMetrics(uid);
       const { doughnutUrl, barUrl } = await buildWeeklyCharts(metrics);
 

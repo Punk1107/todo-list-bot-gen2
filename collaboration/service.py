@@ -556,7 +556,7 @@ async def get_user_assigned_tasks(guild_id: str, user_id: str) -> list[ProjectTa
     Combines task_assignments JOIN tasks JOIN projects โ€” always guild-scoped.
     """
     rows = await db.fetchall(
-        """SELECT t.*, pm.project_id AS _proj_id
+        """SELECT t.*, p.project_id AS _proj_id
            FROM task_assignments ta
            JOIN tasks t ON t.task_id = ta.task_id
            JOIN projects p ON p.project_id = t.project_id

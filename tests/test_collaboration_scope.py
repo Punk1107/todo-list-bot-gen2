@@ -288,6 +288,43 @@ class TestModels:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 5b. SQL Regression: get_user_assigned_tasks alias fix
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestGetUserAssignedTasksSQL:
+    """Regression tests for get_user_assigned_tasks (SQL alias bug fix).
+
+    Previously the query used `pm.project_id` but the projects table was aliased as `p`,
+    which caused a DB error. Fixed to `p.project_id AS _proj_id`.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_rows(self):
+        """When the DB returns no rows, get_user_assigned_tasks must return []."""
+        mock_db = AsyncMock()
+        mock_db.fetchall = AsyncMock(return_value=[])
+
+        with patch("collaboration.service.db", mock_db):
+            result = await service.get_user_assigned_tasks("guild_A", "user_1")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_sql_contains_correct_alias(self):
+        """The SQL in get_user_assigned_tasks must use 'p.project_id', not 'pm.project_id'."""
+        import inspect, re
+        source = inspect.getsource(service.get_user_assigned_tasks)
+        # Must contain the corrected alias 'p.project_id AS _proj_id'
+        assert "p.project_id AS _proj_id" in source, (
+            "SQL alias regression: expected 'p.project_id AS _proj_id' but got something else"
+        )
+        # Must NOT contain the buggy 'pm.project_id'
+        assert "pm.project_id" not in source, (
+            "SQL alias regression: 'pm.project_id' still present — alias not fixed"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 6. Locale Key Integrity — all proj_* keys must exist in all 9 languages
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -186,7 +186,7 @@ function buildSummaryEmbed(
   };
 }
 
-function buildBarEmbed(barUrl: string, lang: "th" | "en"): DiscordEmbed {
+function buildBarEmbed(barUrl: string, lang: string): DiscordEmbed {
   const s = STRINGS[lang] ?? STRINGS.en;
   return {
     title: s.bar_title,
@@ -248,7 +248,7 @@ export async function deliverWeeklyReport(
   doughnutUrl: string,
   barUrl: string,
   botToken: string,
-  lang: "th" | "en" = "en",
+  lang: string = "en",
 ): Promise<boolean> {
   try {
     const dmChannelId = await openDmChannel(userId, botToken);

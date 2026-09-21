@@ -169,7 +169,7 @@ def validate_deadline_defensive(
 
     # Step 2: Year range check
     now_utc = datetime.now(timezone.utc)
-    max_future = now_utc.replace(year=now_utc.year + _MAX_YEARS_AHEAD)
+    max_future = now_utc + timedelta(days=365 * _MAX_YEARS_AHEAD)
     if dt > max_future:
         raise DeadlineValidationError("task_invalid_year")
     if dt.year < 2000:
