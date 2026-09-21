@@ -110,6 +110,30 @@ class TestValidateDeadlineDefensive:
             validate_deadline_defensive(ancient, TZ_BANGKOK)
         assert exc_info.value.i18n_key == "task_invalid_year"
 
+    def test_leap_day_does_not_crash(self):
+        """validate_deadline_defensive must not raise ValueError on Feb 29 (leap year).
+
+        Regression test for the bug where now_utc.replace(year=now_utc.year + 10)
+        raised ValueError when called on February 29 in a non-leap year+10 scenario.
+        The fix uses timedelta(days=365*10) instead.
+        """
+        from unittest.mock import patch
+        # Simulate being called on a leap day (Feb 29 2024)
+        leap_day = datetime(2024, 2, 29, 12, 0, 0, tzinfo=timezone.utc)
+        # A valid deadline 48h in the future from leap day
+        future_dl = (leap_day + timedelta(hours=48)).astimezone(_BANGKOK).strftime("%d/%m/%Y %H:%M")
+        with patch("utils.conflict_resolver.datetime") as mock_dt:
+            mock_dt.now.return_value = leap_day
+            mock_dt.fromisoformat = datetime.fromisoformat
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            # Should not raise ValueError — previously crashed here
+            try:
+                validate_deadline_defensive(future_dl, TZ_BANGKOK)
+            except DeadlineValidationError:
+                pass  # Any i18n error is OK — we only care that ValueError is NOT raised
+            except ValueError as exc:
+                pytest.fail(f"Leap day triggered ValueError: {exc}")
+
     def test_grace_buffer_exactly_at_cutoff(self):
         """A deadline slightly more than grace_seconds in the past must be rejected."""
         dt_utc = _now_utc() - timedelta(seconds=70)  # 70s past, grace=60s

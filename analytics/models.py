@@ -67,5 +67,5 @@ class SnapshotConfig:
     """
     user_id:                 str
     enabled:                 bool = True
-    lang:                    str  = "en"    # "th" | "en"
+    lang:                    str  = "en"    # one of SUPPORTED_LANGS (th/en/zh/ja/ko/es/ru/fr/de)
     send_dm:                 bool = True

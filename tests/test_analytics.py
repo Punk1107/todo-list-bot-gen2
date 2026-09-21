@@ -241,3 +241,47 @@ class TestAnalyticsCogRegistration:
 
         cmd_names = [cmd.name for cmd in bot.tree.get_commands()]
         assert "analytics" in cmd_names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Lang Support Regression Tests (Edge Function bug fix)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestLangSupportRegression:
+    """Regression tests for the edge function lang narrowing bug.
+
+    Previously the cron batch hardcoded lang to 'th' or 'en' only,
+    ignoring de/zh/ja/ko/es/ru/fr users. Fixed to pass the actual stored lang.
+    """
+
+    ALL_LANGS = ["th", "en", "zh", "ja", "ko", "es", "ru", "fr", "de"]
+
+    def test_snapshot_config_accepts_all_languages(self):
+        """SnapshotConfig.lang must accept all 9 supported languages."""
+        from analytics.models import SnapshotConfig
+        for lang in self.ALL_LANGS:
+            cfg = SnapshotConfig(user_id="test", lang=lang)
+            assert cfg.lang == lang, f"SnapshotConfig rejected lang '{lang}'"
+
+    def test_supported_langs_from_i18n_are_all_present(self):
+        """All SUPPORTED_LANGS from i18n must have locale files with at least 100 keys."""
+        import importlib
+        from locales.i18n import SUPPORTED_LANGS
+        for lang in SUPPORTED_LANGS:
+            mod = importlib.import_module(f"locales.{lang}")
+            assert hasattr(mod, "STRINGS"), f"locales/{lang}.py missing STRINGS"
+            assert len(mod.STRINGS) >= 100, f"locales/{lang}.py has fewer than 100 keys"
+
+    def test_all_locales_have_same_keys_as_en(self):
+        """Every non-EN locale must have exactly the same keys as EN (no missing, no extra)."""
+        import importlib
+        from locales.i18n import SUPPORTED_LANGS
+        en_keys = set(importlib.import_module("locales.en").STRINGS.keys())
+        for lang in SUPPORTED_LANGS:
+            if lang == "en":
+                continue
+            lang_keys = set(importlib.import_module(f"locales.{lang}").STRINGS.keys())
+            missing = en_keys - lang_keys
+            extra = lang_keys - en_keys
+            assert not missing, f"[{lang}] Missing keys vs EN: {sorted(missing)}"
+            assert not extra, f"[{lang}] Extra keys vs EN: {sorted(extra)}"
