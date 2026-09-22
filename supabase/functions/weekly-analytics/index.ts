@@ -152,7 +152,7 @@ async function handleOnDemand(payload: SnapshotRequestPayload): Promise<Snapshot
 
   const lang = payload.lang ?? "en";
   const metrics = await computeWeeklyMetrics(payload.userId);
-  const { doughnutUrl, barUrl } = await buildWeeklyCharts(metrics);
+  const { doughnutUrl, barUrl } = await buildWeeklyCharts(metrics, lang);
 
   let dmSent = false;
   if (payload.sendDm !== false && DISCORD_BOT_TOKEN) {
@@ -198,7 +198,7 @@ async function handleCronBatch(): Promise<{ processed: number; failed: number }>
       const rawLang = (u.lang as string) ?? "en";
       const lang: string = SUPPORTED.includes(rawLang) ? rawLang : "en";
       const metrics = await computeWeeklyMetrics(uid);
-      const { doughnutUrl, barUrl } = await buildWeeklyCharts(metrics);
+      const { doughnutUrl, barUrl } = await buildWeeklyCharts(metrics, lang);
 
       if (DISCORD_BOT_TOKEN) {
         await deliverWeeklyReport(uid, metrics, doughnutUrl, barUrl, DISCORD_BOT_TOKEN, lang);

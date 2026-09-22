@@ -130,7 +130,9 @@ class RealtimeDispatcher:
         # Determine who completed the task (may be in old_record or via audit)
         actor_id = task_record.get("owner_id", "")
 
+        from core.config import config
         from realtime.notifications import build_task_completed_embed
+        lang = project.get("lang") or config.bot.default_lang
         embed = build_task_completed_embed(
             task_id=int(task_record.get("task_id", 0)),
             task_name=task_record.get("task", "Unknown"),
@@ -142,9 +144,11 @@ class RealtimeDispatcher:
             progress_pct=progress_pct,
             done_count=done_count,
             total=total,
+            lang=lang,
         )
 
         await self._send_to_channel(int(channel_id), embed)
+
 
     # ── Dashboard refresh ──────────────────────────────────────────────────────
 

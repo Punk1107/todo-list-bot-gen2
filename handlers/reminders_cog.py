@@ -311,8 +311,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
             if not channel:
                 continue
 
-            lang    = row["lang"] or "th"
-            tz_name = row["timezone"] or "Asia/Bangkok"
+            lang    = row["lang"] or config.bot.default_lang
+            tz_name = row["timezone"] or config.bot.default_timezone
             tid     = row["task_id"]
 
             try:
@@ -447,8 +447,9 @@ class RemindersCog(commands.Cog, name="Reminders"):
             self._digest_sent_today = set()
             self._digest_day = today_key
 
-        # Only trigger at the :00 second to avoid running 60× per minute
-        if now.second != 0:
+        # Only trigger near the :00 mark — allow up to 30s of event-loop drift
+        # so the loop never silently skips a whole minute due to lag.
+        if now.second > 30:
             return
 
         users = await db.afetchall(
@@ -585,8 +586,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
             for row in rows:
                 uid     = row["user_id"]
-                lang    = row["lang"] or "th"
-                tz_name = row["timezone"] or "Asia/Bangkok"
+                lang    = row["lang"] or config.bot.default_lang
+                tz_name = row["timezone"] or config.bot.default_timezone
                 tid     = row["task_id"]
 
                 # Fetch the Discord user object — try cache first, then API
@@ -631,6 +632,8 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     log.debug(
                         "DM reminder (%s) sent: task_id=%d user=%s", label_key, tid, uid
                     )
+                    # Rate-limit pacing: avoid hitting Discord HTTP 429 when many DMs fire
+                    await asyncio.sleep(0.2)
 
                     # Mark this bit as sent
                     new_mask = row["dm_reminded"] | bit

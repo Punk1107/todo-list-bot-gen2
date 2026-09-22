@@ -28,8 +28,9 @@ from storage.models import TaskAttachment
 
 log = logging.getLogger(__name__)
 
-# Module-level singleton REST client (created on first use)
+# Module-level singleton REST client & aiohttp session (created on first use)
 _storage_client: Optional[SupabaseStorageClient] = None
+_http_session: Optional[aiohttp.ClientSession] = None
 
 
 def _get_client() -> SupabaseStorageClient:
@@ -38,6 +39,13 @@ def _get_client() -> SupabaseStorageClient:
         cfg = config.storage
         _storage_client = SupabaseStorageClient(cfg.url, cfg.key, cfg.bucket)
     return _storage_client
+
+
+def _get_http_session() -> aiohttp.ClientSession:
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession()
+    return _http_session
 
 
 # ── Custom exceptions ──────────────────────────────────────────────────────────
@@ -155,14 +163,14 @@ async def upload_attachment(
     if ext not in cfg.allowed_extensions:
         raise InvalidFileTypeError(ext, cfg.allowed_extensions)
 
-    # ── Stream bytes from Discord ──────────────────────────────────────────────
-    async with aiohttp.ClientSession() as session:
-        async with session.get(discord_attachment.url) as resp:
-            if resp.status != 200:
-                raise RuntimeError(
-                    f"Could not download attachment from Discord CDN: HTTP {resp.status}"
-                )
-            data = await resp.read()
+    # ── Stream bytes from Discord (reusing shared ClientSession) ───────────────
+    session = _get_http_session()
+    async with session.get(discord_attachment.url) as resp:
+        if resp.status != 200:
+            raise RuntimeError(
+                f"Could not download attachment from Discord CDN: HTTP {resp.status}"
+            )
+        data = await resp.read()
 
     content_type = _guess_content_type(file_name)
     object_path  = _build_object_path(task_id, file_name, project_id)
@@ -187,7 +195,7 @@ async def upload_attachment(
             content_type, object_path, public_url, uploader_id,
         ),
     )
-    db.query_cache.invalidate_all()
+    db.query_cache.invalidate_table("task_attachments")
     return TaskAttachment.from_record(row)
 
 

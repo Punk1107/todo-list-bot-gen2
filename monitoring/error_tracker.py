@@ -16,13 +16,15 @@ import asyncio
 import logging
 import time
 import traceback
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 import discord
 
+from locales.i18n import t
+
 log = logging.getLogger(__name__)
+
 
 # ── Data model ───────────────────────────────────────────────────────────────
 
@@ -131,8 +133,12 @@ class ErrorTracker:
 
     # ── Discord Embed ────────────────────────────────────────────────────────
 
-    def get_summary_embed(self) -> discord.Embed:
-        """Build a colour-coded Discord Embed showing error stats."""
+    def get_summary_embed(self, lang: str = "en") -> discord.Embed:
+        """Build a colour-coded Discord Embed showing error stats.
+
+        Args:
+            lang: Language code for i18n translation (default: 'en').
+        """
         top = self.get_top_errors(5)
         total = self._total_errors
         next_reset_ts = int(self._reset_at)
@@ -146,30 +152,35 @@ class ErrorTracker:
             color = 0xE74C3C   # red
 
         embed = discord.Embed(
-            title="🚨 Error Report (Last 24 h)",
+            title=t("error_report_title", lang),
             color=color,
             timestamp=discord.utils.utcnow(),
         )
         embed.add_field(
-            name="📊 Overview",
+            name=t("error_overview_label", lang),
             value=(
-                f"**Total errors:** {total}\n"
-                f"**Unique types:** {self.unique_error_types}\n"
-                f"**Resets:** <t:{next_reset_ts}:R>"
+                f"**{t('error_total_errors', lang)}:** {total}\n"
+                f"**{t('error_unique_types', lang)}:** {self.unique_error_types}\n"
+                f"**{t('error_next_reset', lang)}:** <t:{next_reset_ts}:R>"
             ),
             inline=False,
         )
 
         if not top:
-            embed.add_field(name="✅ Status", value="No errors recorded — all clear!", inline=False)
+            embed.add_field(
+                name=t("error_top_title", lang),
+                value=t("error_none_recorded", lang),
+                inline=False,
+            )
         else:
             for entry in top:
                 last_ts = int(entry.last_seen)
                 embed.add_field(
                     name=f"❌ `{entry.error_type}` × {entry.count}",
                     value=(
-                        f"Last seen: <t:{last_ts}:R>\n"
-                        f"Command: `{entry.last_command}`  |  User: `{entry.last_user_id}`\n"
+                        f"{t('error_last_seen', lang)}: <t:{last_ts}:R>\n"
+                        f"{t('error_command', lang)}: `{entry.last_command}`  |  "
+                        f"{t('error_user', lang)}: `{entry.last_user_id}`\n"
                         f"```\n{entry.snippet[:200]}\n```"
                     ),
                     inline=False,
@@ -186,7 +197,7 @@ class ErrorTracker:
         tb_lines = traceback.format_exception(type(error), error, error.__traceback__)
         full = "".join(tb_lines)
         # Take last `lines` non-empty lines
-        parts = [l for l in full.splitlines() if l.strip()]
+        parts = [ln for ln in full.splitlines() if ln.strip()]
         return "\n".join(parts[-lines:])
 
 

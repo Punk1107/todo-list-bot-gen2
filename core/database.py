@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 15   # bump when adding migrations below
+SCHEMA_VERSION = 16   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,11 +56,13 @@ class _CachedUser:
 class UserCache:
     """
     Thread-safe in-memory cache for user settings.
+    Bounded by max_size (default 5000) with FIFO eviction.
     All public methods are safe to call from the asyncio thread.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_size: int = 5000) -> None:
         self._store: dict[str, _CachedUser] = {}
+        self._max_size = max_size
         self._lock = Lock()
 
     def get(self, uid: str) -> Optional[_CachedUser]:
@@ -75,6 +77,9 @@ class UserCache:
     def set(self, uid: str, lang: str, timezone: str,
             channel_id: Optional[int], role: str) -> None:
         with self._lock:
+            if len(self._store) >= self._max_size and uid not in self._store:
+                oldest = next(iter(self._store))
+                del self._store[oldest]
             self._store[uid] = _CachedUser(
                 lang=lang, timezone=timezone,
                 channel_id=channel_id, role=role,
@@ -117,10 +122,11 @@ class _CachedStats:
 
 
 class StatsCache:
-    """Thread-safe short-lived stats cache to avoid hammering the DB on /stats."""
+    """Thread-safe short-lived stats cache bounded by max_size (default 5000)."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_size: int = 5000) -> None:
         self._store: dict[str, _CachedStats] = {}
+        self._max_size = max_size
         self._lock = Lock()
 
     def get(self, uid: str) -> Optional[dict]:
@@ -134,16 +140,44 @@ class StatsCache:
 
     def set(self, uid: str, data: dict) -> None:
         with self._lock:
+            if len(self._store) >= self._max_size and uid not in self._store:
+                oldest = next(iter(self._store))
+                del self._store[oldest]
             self._store[uid] = _CachedStats(data=data)
 
     def invalidate(self, uid: str) -> None:
         with self._lock:
             self._store.pop(uid, None)
 
+    def purge_expired(self) -> int:
+        """Remove expired entries. Returns count removed."""
+        now = time.monotonic()
+        with self._lock:
+            stale = [u for u, v in self._store.items() if now > v._expires]
+            for u in stale:
+                del self._store[u]
+        return len(stale)
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._store)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # QueryCache  (L1 read cache — deduplicates hot fetchone/fetchall calls)
 # ─────────────────────────────────────────────────────────────────────────────
+
+_KNOWN_TABLES = {
+    "tasks", "users", "categories", "projects", "project_members",
+    "project_activity_log", "task_attachments", "task_assignments",
+    "guild_settings", "audit_log", "schema_version",
+}
+
+def _detect_tables(sql: str) -> set[str]:
+    """Detect which database tables are referenced in a SQL query string."""
+    lower = sql.lower()
+    return {t for t in _KNOWN_TABLES if t in lower}
+
 
 @dataclass
 class _CachedQuery:
@@ -157,17 +191,16 @@ class _CachedQuery:
 
 class QueryCache:
     """
-    Thread-safe TTL cache for read queries.
-    Key = stable hash of (sql, params). Invalidated explicitly on writes.
-
-    Usage: only fetchone/fetchall results are cached.
-    Any execute() (write) call on the same table should call invalidate_all().
+    Thread-safe TTL cache for read queries with table-scoped invalidation.
+    Key = stable hash of (sql, params).
+    Invalidated explicitly on writes per-table or globally.
     """
 
     def __init__(self, ttl: float = 30.0, max_size: int = 2048) -> None:
         self._ttl = ttl
         self._max_size = max_size
         self._store: dict[str, _CachedQuery] = {}
+        self._table_map: dict[str, set[str]] = {}  # table -> set of cache keys
         self._lock = Lock()
         # Track hits/misses for /metrics
         self._hits = 0
@@ -187,22 +220,48 @@ class QueryCache:
                 return entry.result
             if entry:
                 del self._store[k]
+                for keys in self._table_map.values():
+                    keys.discard(k)
             self._misses += 1
             return _MISS
 
     def set(self, sql: str, params: Any, result: Any) -> None:
         k = self._key(sql, params)
         expires = time.monotonic() + self._ttl
+        tables = _detect_tables(sql)
         with self._lock:
             # Evict oldest entries if at capacity (simple FIFO eviction)
             if len(self._store) >= self._max_size:
                 oldest_key = next(iter(self._store))
                 del self._store[oldest_key]
+                for keys in self._table_map.values():
+                    keys.discard(oldest_key)
             self._store[k] = _CachedQuery(result=result, _expires=expires)
+            for tbl in tables:
+                if tbl not in self._table_map:
+                    self._table_map[tbl] = set()
+                self._table_map[tbl].add(k)
+
+    def invalidate_table(self, table: str) -> None:
+        """Invalidate all cached queries touching a specific table."""
+        with self._lock:
+            keys = self._table_map.pop(table, set())
+            for k in keys:
+                self._store.pop(k, None)
+
+    def invalidate_tables(self, tables: Sequence[str]) -> None:
+        """Invalidate all cached queries touching any of the specified tables."""
+        with self._lock:
+            for tbl in tables:
+                keys = self._table_map.pop(tbl, set())
+                for k in keys:
+                    self._store.pop(k, None)
 
     def invalidate_all(self) -> None:
+        """Clear all cached queries across all tables."""
         with self._lock:
             self._store.clear()
+            self._table_map.clear()
 
     def purge_expired(self) -> int:
         now = time.monotonic()
@@ -210,6 +269,8 @@ class QueryCache:
             stale = [k for k, v in self._store.items() if now > v._expires]
             for k in stale:
                 del self._store[k]
+                for keys in self._table_map.values():
+                    keys.discard(k)
         return len(stale)
 
     @property
@@ -230,6 +291,7 @@ class QueryCache:
     def size(self) -> int:
         with self._lock:
             return len(self._store)
+
 
 
 # Sentinel value for cache miss
@@ -283,35 +345,53 @@ class BulkWriter:
                 self._queue.extendleft(reversed(batch))
             return 0
 
+        chunk_size = 50
+        chunks = [batch[i:i + chunk_size] for i in range(0, len(batch), chunk_size)]
+        total_flushed = 0
+        requeue: list[tuple[str, tuple, int]] = []
+        dropped = 0
+
         try:
             async with pool.acquire() as conn:
-                async with conn.transaction():
-                    for sql, params, _fc in batch:
-                        await conn.execute(sql, *params)
+                for chunk in chunks:
+                    try:
+                        async with conn.transaction():
+                            for sql, params, _fc in chunk:
+                                await conn.execute(sql, *params)
+                        total_flushed += len(chunk)
+                    except Exception as exc:
+                        log.warning(
+                            "BulkWriter chunk transaction failed (%d rows): %s — falling back to per-item execution",
+                            len(chunk), exc,
+                        )
+                        # Fall back to individual items so valid queries still commit
+                        for sql, params, fail_count in chunk:
+                            try:
+                                await conn.execute(sql, *params)
+                                total_flushed += 1
+                            except Exception as item_exc:
+                                new_fc = fail_count + 1
+                                if new_fc >= self._MAX_ITEM_RETRIES:
+                                    log.warning(
+                                        "BulkWriter: dropping poisoned item after %d failures: %s | SQL: %.120s",
+                                        new_fc, item_exc, sql,
+                                    )
+                                    dropped += 1
+                                else:
+                                    requeue.append((sql, params, new_fc))
             with self._lock:
-                self._flushed_count += len(batch)
-                self._batch_count += 1
-            return len(batch)
-        except Exception as exc:
-            log.error("BulkWriter flush failed (%d rows): %s — re-queuing", len(batch), exc)
-            # Re-queue failed items with incremented failure count.
-            # Items that exceed _MAX_ITEM_RETRIES are dropped to prevent unbounded growth.
-            requeue = []
-            dropped = 0
-            for sql, params, fail_count in batch:
-                new_fc = fail_count + 1
-                if new_fc >= self._MAX_ITEM_RETRIES:
-                    log.warning(
-                        "BulkWriter: dropping item after %d failures — SQL: %.120s",
-                        new_fc, sql,
-                    )
-                    dropped += 1
-                else:
-                    requeue.append((sql, params, new_fc))
-            with self._lock:
-                self._queue.extendleft(reversed(requeue))
+                self._flushed_count += total_flushed
+                self._batch_count += len(chunks)
+                if requeue:
+                    self._queue.extendleft(reversed(requeue))
                 self._dropped_count += dropped
+            return total_flushed
+        except Exception as exc:
+            log.error("BulkWriter connection error: %s — re-queuing %d items", exc, len(batch))
+            with self._lock:
+                self._queue.extendleft(reversed(batch))
             return 0
+
 
     async def _run(self) -> None:
         while True:
@@ -716,7 +796,15 @@ MIGRATIONS: list[tuple[int, str]] = [
 
     INSERT INTO schema_version VALUES (15) ON CONFLICT (version) DO UPDATE SET version=15;
     """),
+
+    # ── v16: weekly_digest on users & lang on projects ────────────────────────
+    (16, """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_digest INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS lang TEXT DEFAULT 'th';
+    INSERT INTO schema_version VALUES (16) ON CONFLICT (version) DO UPDATE SET version=16;
+    """),
 ]
+
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -933,10 +1021,19 @@ class DatabaseManager:
     async def execute(self, sql: str, params: Sequence[Any] = ()) -> str:
         """
         Execute a write statement (INSERT/UPDATE/DELETE).
-        Invalidates query cache. Returns asyncpg status string.
+        Invalidates table-scoped query cache. Returns asyncpg status string.
         Retries on transient connection errors with exponential backoff.
         """
-        self.query_cache.invalidate_all()
+        lower_sql = sql.lower()
+        if "last_reminder" in lower_sql or "last_active" in lower_sql:
+            pass  # Background timestamp writes don't invalidate user query caches
+        else:
+            tables = _detect_tables(sql)
+            if tables:
+                self.query_cache.invalidate_tables(list(tables))
+            else:
+                self.query_cache.invalidate_all()
+
         last_exc: Optional[Exception] = None
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
@@ -947,6 +1044,9 @@ class DatabaseManager:
                 asyncpg.TooManyConnectionsError,
                 asyncpg.PostgresConnectionError,
                 asyncpg.InterfaceError,       # connection reset mid-flight
+                asyncpg.CannotConnectNowError,
+                asyncpg.ConnectionDoesNotExistError,
+                asyncio.TimeoutError,
             ) as exc:
                 last_exc = exc
                 if attempt < self._MAX_RETRIES:
@@ -965,7 +1065,12 @@ class DatabaseManager:
 
     async def executemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
         """Execute a statement for each row in params_list within one transaction."""
-        self.query_cache.invalidate_all()
+        tables = _detect_tables(sql)
+        if tables:
+            self.query_cache.invalidate_tables(list(tables))
+        else:
+            self.query_cache.invalidate_all()
+
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 async with self._pool.acquire() as conn:
@@ -976,6 +1081,9 @@ class DatabaseManager:
                 asyncpg.TooManyConnectionsError,
                 asyncpg.PostgresConnectionError,
                 asyncpg.InterfaceError,
+                asyncpg.CannotConnectNowError,
+                asyncpg.ConnectionDoesNotExistError,
+                asyncio.TimeoutError,
             ) as exc:
                 if attempt < self._MAX_RETRIES:
                     delay = self._retry_delay(attempt)
@@ -993,7 +1101,14 @@ class DatabaseManager:
         Execute multiple (sql, params) pairs in a single explicit transaction.
         Far more efficient than calling execute() N times for bulk operations.
         """
-        self.query_cache.invalidate_all()
+        all_tables: set[str] = set()
+        for stmt_sql, _ in statements:
+            all_tables.update(_detect_tables(stmt_sql))
+        if all_tables:
+            self.query_cache.invalidate_tables(list(all_tables))
+        else:
+            self.query_cache.invalidate_all()
+
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 async with self._pool.acquire() as conn:
@@ -1005,6 +1120,9 @@ class DatabaseManager:
                 asyncpg.TooManyConnectionsError,
                 asyncpg.PostgresConnectionError,
                 asyncpg.InterfaceError,
+                asyncpg.CannotConnectNowError,
+                asyncpg.ConnectionDoesNotExistError,
+                asyncio.TimeoutError,
             ) as exc:
                 if attempt < self._MAX_RETRIES:
                     delay = self._retry_delay(attempt)
@@ -1018,32 +1136,73 @@ class DatabaseManager:
         raise RuntimeError("DB execute_batch failed after retries")
 
     async def fetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[asyncpg.Record]:
-        """Fetch a single row. Results are L1-cached."""
+        """Fetch a single row. Results are L1-cached. Retries on transient connection errors."""
         cached = self.query_cache.get(sql, params)
         if not isinstance(cached, _MissType):
             return cached
-        try:
-            async with self._pool.acquire() as conn:
-                result = await conn.fetchrow(sql, *params)
-            self.query_cache.set(sql, params, result)
-            return result
-        except Exception as exc:
-            log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
-            raise
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                async with self._pool.acquire() as conn:
+                    result = await conn.fetchrow(sql, *params)
+                self.query_cache.set(sql, params, result)
+                return result
+            except (
+                asyncpg.TooManyConnectionsError,
+                asyncpg.PostgresConnectionError,
+                asyncpg.InterfaceError,
+                asyncpg.CannotConnectNowError,
+                asyncpg.ConnectionDoesNotExistError,
+                asyncio.TimeoutError,
+            ) as exc:
+                last_exc = exc
+                if attempt < self._MAX_RETRIES:
+                    delay = self._retry_delay(attempt)
+                    await asyncio.sleep(delay)
+                else:
+                    log.error("DB fetchone failed after %d retries: %s | SQL: %.200s",
+                              self._MAX_RETRIES, exc, sql)
+                    raise
+            except Exception as exc:
+                log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
+                raise
+        raise last_exc  # type: ignore[misc]
 
     async def fetchall(self, sql: str, params: Sequence[Any] = ()) -> List[asyncpg.Record]:
-        """Fetch all rows. Results are L1-cached."""
+        """Fetch all rows. Results are L1-cached. Retries on transient connection errors."""
         cached = self.query_cache.get(sql, params)
         if not isinstance(cached, _MissType):
             return cached
-        try:
-            async with self._pool.acquire() as conn:
-                result = await conn.fetch(sql, *params)
-            self.query_cache.set(sql, params, result)
-            return result
-        except Exception as exc:
-            log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
-            raise
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                async with self._pool.acquire() as conn:
+                    result = await conn.fetch(sql, *params)
+                self.query_cache.set(sql, params, result)
+                return result
+            except (
+                asyncpg.TooManyConnectionsError,
+                asyncpg.PostgresConnectionError,
+                asyncpg.InterfaceError,
+                asyncpg.CannotConnectNowError,
+                asyncpg.ConnectionDoesNotExistError,
+                asyncio.TimeoutError,
+            ) as exc:
+                last_exc = exc
+                if attempt < self._MAX_RETRIES:
+                    delay = self._retry_delay(attempt)
+                    await asyncio.sleep(delay)
+                else:
+                    log.error("DB fetchall failed after %d retries: %s | SQL: %.200s",
+                              self._MAX_RETRIES, exc, sql)
+                    raise
+            except Exception as exc:
+                log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
+                raise
+        raise last_exc  # type: ignore[misc]
+
 
     # ── Async aliases (kept for API compatibility with cog code) ──────────────
     # asyncpg is already fully async — these are just aliases.
@@ -1137,89 +1296,92 @@ class DatabaseManager:
         if cached is not None:
             return cached
 
+        # ── 1+2+3+4+5+6: Combined CTE query (replaces 6 separate round-trips) ──
+        # All count/aggregate computations happen server-side in one query.
         now_iso = datetime.now(timezone.utc).isoformat()
-
-        # ── 1. Basic counts ───────────────────────────────────────────────────
-        base_row = await self.afetchone(
-            """SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS completed,
-                SUM(CASE WHEN status='Pending'   THEN 1 ELSE 0 END) AS pending,
-                SUM(CASE WHEN status='Cancelled' THEN 1 ELSE 0 END) AS cancelled,
-                SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue,
-                SUM(CASE WHEN is_pinned=1 THEN 1 ELSE 0 END) AS pinned
-               FROM tasks WHERE owner_id=$2""",
+        combined_row = await self.afetchone(
+            """WITH base AS (
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE WHEN status='Pending'   THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN status='Cancelled' THEN 1 ELSE 0 END) AS cancelled,
+                    SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue,
+                    SUM(CASE WHEN is_pinned=1 THEN 1 ELSE 0 END) AS pinned,
+                    -- Velocity
+                    SUM(CASE WHEN completed_at >= NOW() - INTERVAL '7 days'
+                             AND status='Completed' AND completed_at IS NOT NULL
+                             THEN 1 ELSE 0 END) AS done_7d,
+                    SUM(CASE WHEN completed_at >= NOW() - INTERVAL '30 days'
+                             AND status='Completed' AND completed_at IS NOT NULL
+                             THEN 1 ELSE 0 END) AS done_30d,
+                    -- Timeliness
+                    SUM(CASE WHEN status='Completed' AND completed_at IS NOT NULL
+                             AND deadline IS NOT NULL
+                             AND completed_at <= deadline::TIMESTAMP WITH TIME ZONE
+                             THEN 1 ELSE 0 END) AS on_time,
+                    SUM(CASE WHEN status='Completed' AND completed_at IS NOT NULL
+                             AND deadline IS NOT NULL
+                             AND completed_at > deadline::TIMESTAMP WITH TIME ZONE
+                             THEN 1 ELSE 0 END) AS late,
+                    -- Turnaround
+                    AVG(CASE WHEN status='Completed' AND completed_at IS NOT NULL
+                             AND created_at IS NOT NULL
+                             THEN EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600.0
+                             ELSE NULL END) AS avg_turnaround_h,
+                    -- Lead margin (hours early for on-time tasks)
+                    AVG(CASE WHEN status='Completed' AND completed_at IS NOT NULL
+                             AND deadline IS NOT NULL
+                             AND completed_at <= deadline::TIMESTAMP WITH TIME ZONE
+                             THEN EXTRACT(EPOCH FROM (deadline::TIMESTAMP WITH TIME ZONE - completed_at)) / 3600.0
+                             ELSE NULL END) AS avg_lead_h,
+                    -- Lag margin (hours late for overdue-completed tasks)
+                    AVG(CASE WHEN status='Completed' AND completed_at IS NOT NULL
+                             AND deadline IS NOT NULL
+                             AND completed_at > deadline::TIMESTAMP WITH TIME ZONE
+                             THEN EXTRACT(EPOCH FROM (completed_at - deadline::TIMESTAMP WITH TIME ZONE)) / 3600.0
+                             ELSE NULL END) AS avg_lag_h
+                FROM tasks WHERE owner_id=$2
+            )
+            SELECT * FROM base""",
             (now_iso, uid),
         )
-        base = {k: int(base_row[k] or 0) for k in
-                ("total", "completed", "pending", "cancelled", "overdue", "pinned")} \
-               if base_row else {"total": 0, "completed": 0, "pending": 0,
-                                 "cancelled": 0, "overdue": 0, "pinned": 0}
+        if not combined_row:
+            combined_row = {}
 
-        # ── 2. Velocity: tasks completed in last 7d / 30d ─────────────────────
-        velocity_row = await self.afetchone(
-            """SELECT
-                SUM(CASE WHEN completed_at >= NOW() - INTERVAL '7 days'  THEN 1 ELSE 0 END) AS done_7d,
-                SUM(CASE WHEN completed_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END) AS done_30d
-               FROM tasks
-               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL""",
-            (uid,),
-        )
-        done_7d  = int(velocity_row["done_7d"]  or 0) if velocity_row else 0
-        done_30d = int(velocity_row["done_30d"] or 0) if velocity_row else 0
+        def _int(key: str) -> int:
+            return int(combined_row.get(key) or 0)
 
-        # ── 3. Timeliness: on-time vs late (using completed_at vs deadline) ───
-        timeliness_row = await self.afetchone(
-            """SELECT
-                SUM(CASE WHEN completed_at <= deadline::TIMESTAMP WITH TIME ZONE THEN 1 ELSE 0 END) AS on_time,
-                SUM(CASE WHEN completed_at >  deadline::TIMESTAMP WITH TIME ZONE THEN 1 ELSE 0 END) AS late
-               FROM tasks
-               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL AND deadline IS NOT NULL""",
-            (uid,),
-        )
-        on_time_count = int(timeliness_row["on_time"] or 0) if timeliness_row else 0
-        late_count    = int(timeliness_row["late"]    or 0) if timeliness_row else 0
+        def _float(key: str) -> float:
+            return float(combined_row.get(key) or 0.0)
+
+        base = {
+            "total":     _int("total"),
+            "completed": _int("completed"),
+            "pending":   _int("pending"),
+            "cancelled": _int("cancelled"),
+            "overdue":   _int("overdue"),
+            "pinned":    _int("pinned"),
+        }
+        done_7d  = _int("done_7d")
+        done_30d = _int("done_30d")
+
+        on_time_count = _int("on_time")
+        late_count    = _int("late")
         timed_total   = on_time_count + late_count
         on_time_rate  = round(on_time_count / timed_total * 100, 1) if timed_total > 0 else 0.0
         late_rate     = round(late_count    / timed_total * 100, 1) if timed_total > 0 else 0.0
 
-        # ── 4. Turnaround time: avg hours from created_at → completed_at ──────
-        turnaround_row = await self.afetchone(
-            """SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600.0) AS avg_hours
-               FROM tasks
-               WHERE owner_id=$1 AND status='Completed'
-                 AND completed_at IS NOT NULL AND created_at IS NOT NULL""",
-            (uid,),
-        )
-        avg_turnaround_hours = float(turnaround_row["avg_hours"] or 0.0) if turnaround_row else 0.0
+        avg_turnaround_hours = round(_float("avg_turnaround_h"), 1)
+        avg_lead_hours       = round(_float("avg_lead_h"), 1)
+        avg_lag_hours        = round(_float("avg_lag_h"), 1)
 
-        # ── 5. Lead margin: avg hours EARLY for on-time tasks ─────────────────
-        lead_row = await self.afetchone(
-            """SELECT AVG(EXTRACT(EPOCH FROM (deadline::TIMESTAMP WITH TIME ZONE - completed_at)) / 3600.0) AS avg_lead
-               FROM tasks
-               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL
-                 AND deadline IS NOT NULL
-                 AND completed_at <= deadline::TIMESTAMP WITH TIME ZONE""",
-            (uid,),
-        )
-        avg_lead_hours = float(lead_row["avg_lead"] or 0.0) if lead_row else 0.0
-
-        # ── 6. Lag margin: avg hours LATE for overdue-completed tasks ─────────
-        lag_row = await self.afetchone(
-            """SELECT AVG(EXTRACT(EPOCH FROM (completed_at - deadline::TIMESTAMP WITH TIME ZONE)) / 3600.0) AS avg_lag
-               FROM tasks
-               WHERE owner_id=$1 AND status='Completed' AND completed_at IS NOT NULL
-                 AND deadline IS NOT NULL
-                 AND completed_at > deadline::TIMESTAMP WITH TIME ZONE""",
-            (uid,),
-        )
-        avg_lag_hours = float(lag_row["avg_lag"] or 0.0) if lag_row else 0.0
-
-        # ── 7. Streak days from users table ───────────────────────────────────
+        # ── 2. Streak days (separate row from users table) ────────────────────
         streak_row = await self.afetchone(
             "SELECT streak_days FROM users WHERE user_id=$1", (uid,)
         )
         streak_days = int(streak_row["streak_days"] or 0) if streak_row else 0
+
 
         # ── 8. Productivity Score (0–100) ─────────────────────────────────────
         #  Weighted formula:
@@ -1266,8 +1428,9 @@ class DatabaseManager:
     def purge_all_caches(self) -> dict[str, int]:
         """Purge expired entries from all caches. Returns counts removed."""
         return {
-            "user_cache": self.user_cache.purge_expired(),
-            "query_cache": self.query_cache.purge_expired(),
+            "user_cache":   self.user_cache.purge_expired(),
+            "stats_cache":  self.stats_cache.purge_expired(),
+            "query_cache":  self.query_cache.purge_expired(),
         }
 
     # ── Metrics (for /metrics endpoint) ──────────────────────────────────────

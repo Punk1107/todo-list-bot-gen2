@@ -21,6 +21,7 @@ from analytics.client import AnalyticsClient
 from core.config import config
 from core.database import db
 from locales.i18n import t
+from utils.helpers import get_user_lang
 
 log = logging.getLogger(__name__)
 
@@ -38,15 +39,6 @@ def _get_client() -> AnalyticsClient | None:
             return None
         _analytics_client = AnalyticsClient(supabase_url=url, service_key=key)
     return _analytics_client
-
-
-async def _get_user_lang(user_id: str) -> str:
-    """Fetch the user's preferred language from DB cache."""
-    try:
-        row = await db.fetchone("SELECT lang FROM users WHERE user_id = $1", (user_id,))
-        return (row["lang"] if row else "en") or "en"
-    except Exception:
-        return "en"
 
 
 class AnalyticsCog(commands.Cog, name="Analytics"):
@@ -69,7 +61,7 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         user_id = str(interaction.user.id)
-        lang    = await _get_user_lang(user_id)
+        lang    = await get_user_lang(user_id)
         client  = _get_client()
 
         if client is None:
@@ -106,17 +98,17 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
                 color=0x57F287,
             )
             success_embed.add_field(
-                name="🏆 Productivity Score",
+                name=t("analytics_field_score", lang),
                 value=f"**{metrics.productivity_score}/100** {metrics.productivity_emoji}",
                 inline=True,
             )
             success_embed.add_field(
-                name="✅ Completed",
+                name=t("analytics_field_completed", lang),
                 value=f"**{metrics.completed_count}** / {metrics.total_tasks}",
                 inline=True,
             )
             success_embed.add_field(
-                name="⏱️ On-Time Rate",
+                name=t("analytics_field_ontime", lang),
                 value=f"**{metrics.on_time_rate_percent:.1f}%**",
                 inline=True,
             )
@@ -140,15 +132,22 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
         await interaction.response.defer(ephemeral=True)
 
         user_id = str(interaction.user.id)
-        lang    = await _get_user_lang(user_id)
+        lang    = await get_user_lang(user_id)
         client  = _get_client()
 
         if client is None:
             await interaction.followup.send(t("analytics_not_configured", lang), ephemeral=True)
             return
 
-        # Persist preference to DB (uses existing users table, future column)
-        # For now we store it in a simple flag and inform the user.
+        # Persist preference to DB (users.weekly_digest)
+        try:
+            await db.execute(
+                "UPDATE users SET weekly_digest = $1 WHERE user_id = $2",
+                (1 if enabled else 0, user_id),
+            )
+        except Exception as exc:
+            log.warning("Could not persist weekly_digest for user %s: %s", user_id, exc)
+
         key = "analytics_weekly_enabled" if enabled else "analytics_weekly_disabled"
         embed = discord.Embed(
             description=t(key, lang),
@@ -160,6 +159,7 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
             "[analytics] User %s (%s) %s weekly digest",
             interaction.user, user_id, "enabled" if enabled else "disabled",
         )
+
 
 
 async def setup(bot: commands.Bot) -> None:
