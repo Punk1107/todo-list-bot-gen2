@@ -1,15 +1,15 @@
 """
-collaboration/service.py โ€” Business Logic & Scope Isolation for Shared Projects
+collaboration/service.py — Business Logic & Scope Isolation for Shared Projects
 
 KEY DESIGN RULES (enforced in EVERY query):
   1. All SELECT/UPDATE/DELETE on projects include WHERE guild_id = $N  (Multi-tenancy)
   2. All SELECT/UPDATE/DELETE on project tasks include WHERE project_id = $N AND guild_id = $N
-  3. Personal tasks (project_id IS NULL) are NEVER touched here โ€” separate query paths
+  3. Personal tasks (project_id IS NULL) are NEVER touched here — separate query paths
   4. Permission model:
-       - project LEAD     ① full control (edit project, assign tasks, manage members)
-       - project MEMBER   ① create tasks, claim/update own tasks, mark tasks done
-       - project VIEWER   ① read-only
-       - guild ADMIN      ① override (checked via discord.Member.guild_permissions.administrator)
+       - project LEAD     → full control (edit project, assign tasks, manage members)
+       - project MEMBER   → create tasks, claim/update own tasks, mark tasks done
+       - project VIEWER   → read-only
+       - guild ADMIN      → override (checked via discord.Member.guild_permissions.administrator)
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ from core.database import db
 log = logging.getLogger(__name__)
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Exceptions
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 class ProjectNotFound(Exception):
     """Raised when a project doesn't exist in the given guild."""
@@ -48,9 +48,9 @@ class AlreadyClaimed(Exception):
     """Raised when a user tries to claim an already-assigned task."""
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Permission Helpers
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_member_role(project_id: int, user_id: str) -> Optional[str]:
     """Return the ProjectRole of user_id in project_id, or None if not a member."""
@@ -83,9 +83,9 @@ async def require_role(
         raise ProjectPermissionError(minimum_role)
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Project CRUD (Guild-scoped)
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def create_project(
     guild_id: str,
@@ -168,9 +168,9 @@ async def update_project_status(
     return await get_project(project_id, guild_id)
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Member Management
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def add_member(
     project_id: int, guild_id: str,
@@ -221,9 +221,9 @@ async def get_project_members(project_id: int, guild_id: str) -> list[ProjectMem
     return [ProjectMember.from_record(r) for r in rows] if rows else []
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Task CRUD (Project-scoped, always includes guild_id guard)
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def add_project_task(
     project_id: int, guild_id: str,
@@ -235,7 +235,7 @@ async def add_project_task(
 ) -> ProjectTask:
     """
     Create a task inside a Shared Project.
-    project_id AND guild_id are set on the task row โ€” this is what distinguishes
+    project_id AND guild_id are set on the task row — this is what distinguishes
     a Shared Task from a Personal Task (where both are NULL).
     Requires minimum 'member' role.
     """
@@ -295,9 +295,9 @@ async def delete_project_task(
     await log_activity(project_id, guild_id, actor_id, "task_deleted", task.task)
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Task Claiming & Assignment
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def claim_task(
     task_id: int, project_id: int, guild_id: str,
@@ -382,7 +382,7 @@ async def assign_task(
         )
     db.query_cache.invalidate_all()
     await log_activity(project_id, guild_id, actor_id, "task_assigned",
-                       f"#{task_id} ① {assignee_id}")
+                       f"#{task_id} → {assignee_id}")
     return await get_project_task(task_id, project_id, guild_id)
 
 
@@ -392,9 +392,9 @@ async def update_task_status(
 ) -> ProjectTask:
     """
     Change a task's status. Valid transitions:
-      Pending      ① In_Progress, Cancelled
-      In_Progress  ① Completed, Pending, Cancelled
-      Completed    ① (no change allowed, must re-open via Lead/Admin only)
+      Pending      → In_Progress, Cancelled
+      In_Progress  → Completed, Pending, Cancelled
+      Completed    → (no change allowed, must re-open via Lead/Admin only)
     Allowed actors: assignee, task creator, project lead, guild admin.
     """
     project = await get_project(project_id, guild_id)
@@ -432,13 +432,13 @@ async def update_task_status(
     }
     await log_activity(project_id, guild_id, actor_id,
                        action_map.get(new_status, "task_status_changed"),
-                       f"#{task_id} ① {new_status}")
+                       f"#{task_id} → {new_status}")
     return await get_project_task(task_id, project_id, guild_id)
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Board View (Kanban)
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_project_board(project_id: int, guild_id: str) -> BoardData:
     """
@@ -482,9 +482,9 @@ async def get_project_board(project_id: int, guild_id: str) -> BoardData:
     )
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Project Stats & Leaderboard
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
     """
@@ -546,14 +546,14 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
     )
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
-# Cross-Scope "My Tasks" โ€” tasks assigned to a user across all guild projects
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-Scope "My Tasks" — tasks assigned to a user across all guild projects
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_user_assigned_tasks(guild_id: str, user_id: str) -> list[ProjectTask]:
     """
     Return all tasks assigned to user_id across ALL projects in guild_id.
-    Combines task_assignments JOIN tasks JOIN projects โ€” always guild-scoped.
+    Combines task_assignments JOIN tasks JOIN projects — always guild-scoped.
     """
     rows = await db.fetchall(
         """SELECT t.*, p.project_id AS _proj_id
@@ -584,9 +584,9 @@ async def get_user_assigned_tasks(guild_id: str, user_id: str) -> list[ProjectTa
             for r in rows]
 
 
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Activity Log
-# โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def log_activity(
     project_id: int, guild_id: str, user_id: str,

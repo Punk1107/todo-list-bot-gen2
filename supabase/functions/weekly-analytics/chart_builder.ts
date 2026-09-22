@@ -30,15 +30,104 @@ const DARK_PLUGIN = {
   },
 };
 
+interface ChartLocale {
+  completed: string;
+  pending: string;
+  overdue: string;
+  cancelled: string;
+  barLabel: string;
+  days: string[];
+}
+
+const LOCALES: Record<string, ChartLocale> = {
+  th: {
+    completed: "✅ เสร็จแล้ว",
+    pending: "🟡 รอดำเนินการ",
+    overdue: "🔴 เลยกำหนด",
+    cancelled: "❌ ยกเลิก",
+    barLabel: "งานที่เสร็จสิ้น",
+    days: ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."],
+  },
+  en: {
+    completed: "✅ Completed",
+    pending: "🟡 Pending",
+    overdue: "🔴 Overdue",
+    cancelled: "❌ Cancelled",
+    barLabel: "Tasks Completed",
+    days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  },
+  de: {
+    completed: "✅ Erledigt",
+    pending: "🟡 Ausstehend",
+    overdue: "🔴 Überfällig",
+    cancelled: "❌ Abgebrochen",
+    barLabel: "Erledigte Aufgaben",
+    days: ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+  },
+  es: {
+    completed: "✅ Completada",
+    pending: "🟡 Pendiente",
+    overdue: "🔴 Vencida",
+    cancelled: "❌ Cancelada",
+    barLabel: "Tareas completadas",
+    days: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+  },
+  fr: {
+    completed: "✅ Terminé",
+    pending: "🟡 En attente",
+    overdue: "🔴 En retard",
+    cancelled: "❌ Annulé",
+    barLabel: "Tâches terminées",
+    days: ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
+  },
+  ja: {
+    completed: "✅ 完了",
+    pending: "🟡 保留中",
+    overdue: "🔴 期限切れ",
+    cancelled: "❌ キャンセル",
+    barLabel: "完了したタスク",
+    days: ["日", "月", "火", "水", "木", "金", "土"],
+  },
+  ko: {
+    completed: "✅ 완료됨",
+    pending: "🟡 대기 중",
+    overdue: "🔴 기한 초과",
+    cancelled: "❌ 취소됨",
+    barLabel: "완료된 작업",
+    days: ["일", "월", "화", "수", "목", "금", "토"],
+  },
+  ru: {
+    completed: "✅ Выполнено",
+    pending: "🟡 В ожидании",
+    overdue: "🔴 Просрочено",
+    cancelled: "❌ Отменено",
+    barLabel: "Выполненные задачи",
+    days: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"],
+  },
+  zh: {
+    completed: "✅ 已完成",
+    pending: "🟡 进行中",
+    overdue: "🔴 已逾期",
+    cancelled: "❌ 已取消",
+    barLabel: "完成的任务",
+    days: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  },
+};
+
+function getLocale(lang: string = "en"): ChartLocale {
+  return LOCALES[lang.toLowerCase()] ?? LOCALES.en;
+}
+
 /**
  * Builds the Chart.js config object for the status doughnut chart.
  */
-function buildDoughnutConfig(metrics: WeeklySnapshotMetrics): object {
+function buildDoughnutConfig(metrics: WeeklySnapshotMetrics, lang: string = "en"): object {
+  const loc = getLocale(lang);
   const overdue = metrics.completedOverdueCount + Math.max(0, metrics.pendingCount - metrics.completedCount);
   return {
     type: "doughnut",
     data: {
-      labels: ["✅ Completed", "🟡 Pending", "🔴 Overdue", "❌ Cancelled"],
+      labels: [loc.completed, loc.pending, loc.overdue, loc.cancelled],
       datasets: [{
         data: [
           metrics.completedCount,
@@ -77,13 +166,14 @@ function buildDoughnutConfig(metrics: WeeklySnapshotMetrics): object {
 /**
  * Builds the Chart.js config object for the 7-day bar chart.
  */
-function buildBarConfig(metrics: WeeklySnapshotMetrics, dayLabels: string[]): object {
+function buildBarConfig(metrics: WeeklySnapshotMetrics, dayLabels: string[], lang: string = "en"): object {
+  const loc = getLocale(lang);
   return {
     type: "bar",
     data: {
       labels: dayLabels,
       datasets: [{
-        label: "Tasks Completed",
+        label: loc.barLabel,
         data: metrics.dailyCompletions,
         backgroundColor: COLORS.barFill,
         borderColor: COLORS.barBorder,
@@ -158,26 +248,29 @@ async function createShortChartUrl(chartConfig: object): Promise<string> {
 /**
  * Generates readable 3-letter weekday labels starting from startDate.
  */
-function getWeekdayLabels(startDate: string): string[] {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function getWeekdayLabels(startDate: string, lang: string = "en"): string[] {
+  const loc = getLocale(lang);
   const d = new Date(startDate);
   return Array.from({ length: 7 }, (_, i) => {
     const curr = new Date(d);
     curr.setDate(d.getDate() + i);
-    return days[curr.getDay()];
+    return loc.days[curr.getDay()];
   });
 }
 
 /**
  * Main export: builds and returns both chart URLs for a metrics snapshot.
  */
-export async function buildWeeklyCharts(metrics: WeeklySnapshotMetrics): Promise<{
+export async function buildWeeklyCharts(
+  metrics: WeeklySnapshotMetrics,
+  lang: string = "en",
+): Promise<{
   doughnutUrl: string;
   barUrl: string;
 }> {
-  const dayLabels = getWeekdayLabels(metrics.startDate);
-  const doughnutConfig = buildDoughnutConfig(metrics);
-  const barConfig = buildBarConfig(metrics, dayLabels);
+  const dayLabels = getWeekdayLabels(metrics.startDate, lang);
+  const doughnutConfig = buildDoughnutConfig(metrics, lang);
+  const barConfig = buildBarConfig(metrics, dayLabels, lang);
 
   const [doughnutUrl, barUrl] = await Promise.all([
     createShortChartUrl(doughnutConfig),
@@ -186,3 +279,4 @@ export async function buildWeeklyCharts(metrics: WeeklySnapshotMetrics): Promise
 
   return { doughnutUrl, barUrl };
 }
+

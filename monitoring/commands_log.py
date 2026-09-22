@@ -31,6 +31,8 @@ from typing import Dict, List, Optional, Tuple
 
 import discord
 
+from locales.i18n import t
+
 log = logging.getLogger(__name__)
 
 ROOT    = Path(__file__).resolve().parent.parent
@@ -145,10 +147,13 @@ class CommandsLogger:
             "total_errors": total_errors,
         }
 
-    def get_stats_embed(self, top_n: int = 10) -> "discord.Embed":  # type: ignore[name-defined]
-        """Build a Discord Embed with command usage stats."""
-        import discord  # local import to avoid circular dependency at module level
+    def get_stats_embed(self, top_n: int = 10, lang: str = "en") -> "discord.Embed":  # type: ignore[name-defined]
+        """Build a Discord Embed with command usage stats.
 
+        Args:
+            top_n: Number of top commands to show (default: 10).
+            lang:  Language code for i18n (default: 'en').
+        """
         stats = self.get_stats(top_n=top_n)
         total  = stats["total_calls"]
         errors = stats["total_errors"]
@@ -157,15 +162,15 @@ class CommandsLogger:
         color = 0x3498DB if error_rate < 5 else (0xF39C12 if error_rate < 20 else 0xE74C3C)
 
         embed = discord.Embed(
-            title="📊 Command Usage Stats",
+            title=t("cmdstats_title", lang),
             color=color,
             timestamp=discord.utils.utcnow(),
         )
         embed.add_field(
-            name="📈 Overview",
+            name=t("cmdstats_overview_label", lang),
             value=(
-                f"**Total calls:** {total}\n"
-                f"**Errors:** {errors} ({error_rate}%)"
+                f"**{t('cmdstats_total_commands', lang)}:** {total}\n"
+                f"**{t('cmdstats_failed', lang)}:** {errors} ({error_rate}%)"
             ),
             inline=False,
         )
@@ -178,7 +183,7 @@ class CommandsLogger:
                     f"`{i:>2}.` **/{cmd}** — {count}× | {err_icon} {err_rate}% err | ⚡ {avg_ms}ms"
                 )
             embed.add_field(
-                name="🏆 Top Commands",
+                name=t("cmdstats_top_commands", lang),
                 value="\n".join(rows) or "—",
                 inline=False,
             )
@@ -186,12 +191,12 @@ class CommandsLogger:
         if stats["top_errors"]:
             err_rows = [f"`{etype}` × {cnt}" for etype, cnt in stats["top_errors"][:5]]
             embed.add_field(
-                name="⚠️ Frequent Error Types",
+                name=t("cmdstats_top_errors", lang),
                 value="\n".join(err_rows) or "—",
                 inline=False,
             )
 
-        embed.set_footer(text="Stats since last restart · monitoring/commands_log.py")
+        embed.set_footer(text=f"{t('cmdstats_footer', lang)} · monitoring/commands_log.py")
         return embed
 
 

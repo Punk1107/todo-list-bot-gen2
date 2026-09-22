@@ -69,11 +69,13 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
 
         guild = interaction.guild
         if not guild or not interaction.guild_id:
+            lang = await get_user_lang(interaction.user.id)
             await interaction.response.send_message(
-                "❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น", ephemeral=True
+                t("monitoring_guild_only", lang), ephemeral=True
             )
             return
 
+        lang = await get_user_lang(interaction.user.id)
         guild_id = str(interaction.guild_id)
         saved: list[str] = []
         errors: list[str] = []
@@ -94,17 +96,17 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
                         channel = None
 
                 if channel is None:
-                    errors.append(f"❌ **Channel ID `{ch_id}`** ไม่พบในเซิร์ฟเวอร์นี้")
+                    errors.append(t("monitoring_channel_not_found", lang).format(ch_id=ch_id))
                 elif not isinstance(channel, discord.abc.Messageable):
-                    errors.append(f"❌ Channel `{channel.name}` ไม่สามารถส่งข้อความได้")
+                    errors.append(t("monitoring_channel_unsendable", lang).format(name=channel.name))
                 else:
                     await db.set_guild_setting(guild_id, "admin_log_channel_id", str(ch_id))
-                    saved.append(f"📢 **Log Channel** → {channel.mention}")
+                    saved.append(t("monitoring_log_channel_saved", lang).format(mention=channel.mention))
                     # Hot-update the live dispatcher for this specific guild
                     if hasattr(interaction.client, "_alert_dispatcher") and interaction.client._alert_dispatcher:
                         interaction.client._alert_dispatcher.update_guild_channel(guild_id, ch_id)
             except ValueError:
-                errors.append("❌ **Channel ID** ต้องเป็นตัวเลขเท่านั้น")
+                errors.append(t("monitoring_channel_numeric", lang))
 
         # Health check interval
         hi_val = self.health_interval.value.strip()
@@ -112,12 +114,12 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
             try:
                 hi = int(hi_val)
                 if not (1 <= hi <= 60):
-                    errors.append("❌ **Health Interval** ต้องอยู่ระหว่าง 1–60 นาที")
+                    errors.append(t("monitoring_health_interval_range", lang))
                 else:
                     await db.set_guild_setting(guild_id, "health_check_interval_min", str(hi))
-                    saved.append(f"🏥 **Health Interval** → {hi} นาที")
+                    saved.append(t("monitoring_health_interval_saved", lang).format(value=hi))
             except ValueError:
-                errors.append("❌ **Health Interval** ต้องเป็นตัวเลขเท่านั้น")
+                errors.append(t("monitoring_health_interval_numeric", lang))
 
         # Alert rate limit
         ar_val = self.alert_cooldown.value.strip()
@@ -125,14 +127,14 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
             try:
                 ar = int(ar_val)
                 if not (30 <= ar <= 3600):
-                    errors.append("❌ **Alert Rate Limit** ต้องอยู่ระหว่าง 30–3600 วินาที")
+                    errors.append(t("monitoring_alert_limit_range", lang))
                 else:
                     await db.set_guild_setting(guild_id, "alert_rate_limit_sec", str(ar))
-                    saved.append(f"⏱️ **Alert Rate Limit** → {ar} วินาที")
+                    saved.append(t("monitoring_alert_limit_saved", lang).format(value=ar))
                     if hasattr(interaction.client, "_alert_dispatcher") and interaction.client._alert_dispatcher:
                         interaction.client._alert_dispatcher._rate_limit_sec = ar
             except ValueError:
-                errors.append("❌ **Alert Rate Limit** ต้องเป็นตัวเลขเท่านั้น")
+                errors.append(t("monitoring_alert_limit_numeric", lang))
 
         # Enable/disable monitoring
         en_val = self.monitoring_enabled.value.strip().lower()
@@ -140,46 +142,54 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
             if en_val in ("true", "false", "1", "0", "yes", "no"):
                 is_enabled = en_val in ("true", "1", "yes")
                 await db.set_guild_setting(guild_id, "monitoring_enabled", str(is_enabled).lower())
-                saved.append(f"✅ **Monitoring** → {'เปิดใช้งาน ✓' if is_enabled else 'ปิดใช้งาน ✗'}")
+                key = "monitoring_enabled_saved_on" if is_enabled else "monitoring_enabled_saved_off"
+                saved.append(t(key, lang))
             else:
-                errors.append("❌ **Enable Monitoring** ต้องเป็น `true` หรือ `false`")
+                errors.append(t("monitoring_enabled_boolean", lang))
 
         # ── Build response embed ──────────────────────────────────────────────
         if not saved and not errors:
             await interaction.response.send_message(
-                "ℹ️ ไม่มีการเปลี่ยนแปลง — กรอกอย่างน้อยหนึ่งช่องเพื่อบันทึกการตั้งค่า",
+                t("monitoring_no_changes", lang),
                 ephemeral=True,
             )
             return
 
         color = 0x2ECC71 if not errors else (0xF39C12 if saved else 0xE74C3C)
         embed = discord.Embed(
-            title="🔧 Monitoring Setup — Results",
+            title=t("monitoring_setup_results_title", lang),
             color=color,
             timestamp=discord.utils.utcnow(),
         )
         if saved:
             embed.add_field(
-                name="✅ บันทึกสำเร็จ",
+                name=t("monitoring_saved_header", lang),
                 value="\n".join(saved),
                 inline=False,
             )
         if errors:
             embed.add_field(
-                name="⚠️ พบข้อผิดพลาด",
+                name=t("monitoring_errors_header", lang),
                 value="\n".join(errors),
                 inline=False,
             )
-        embed.set_footer(text="การตั้งค่าถูกบันทึกใน Supabase — มีผลทันที")
+        embed.set_footer(text=t("monitoring_saved_supabase_footer", lang))
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("MonitoringSetupModal error: %s", error, exc_info=True)
-        await interaction.response.send_message(
-            "❌ เกิดข้อผิดพลาดระหว่างบันทึก — ดู logs สำหรับรายละเอียด",
-            ephemeral=True,
-        )
+        lang = await get_user_lang(interaction.user.id)
+        try:
+            await interaction.response.send_message(
+                t("monitoring_save_error", lang),
+                ephemeral=True,
+            )
+        except discord.InteractionResponded:
+            await interaction.followup.send(
+                t("monitoring_save_error", lang),
+                ephemeral=True,
+            )
 
 
 # ── Cog ───────────────────────────────────────────────────────────────────────
@@ -201,7 +211,7 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
     @monitoring_group.command(
         name="setup",
-        description="🔧 [Admin] กำหนดค่า Monitoring สำหรับเซิร์ฟเวอร์นี้ผ่านแบบฟอร์ม",
+        description="🔧 [Admin] Configure monitoring for this server via a form",
     )
     async def monitoring_setup(self, interaction: discord.Interaction) -> None:
         """Open a Modal to configure monitoring settings."""
@@ -209,13 +219,15 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
     @monitoring_group.command(
         name="status",
-        description="📋 [Admin] ดูการตั้งค่า Monitoring ปัจจุบันของเซิร์ฟเวอร์นี้",
+        description="📋 [Admin] View current monitoring settings for this server",
     )
     async def monitoring_status(self, interaction: discord.Interaction) -> None:
         """Show current monitoring settings stored in Supabase for this guild."""
+        lang = await get_user_lang(interaction.user.id)
+
         if not interaction.guild or not interaction.guild_id:
             await interaction.response.send_message(
-                "❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น", ephemeral=True
+                t("monitoring_guild_only", lang), ephemeral=True
             )
             return
 
@@ -226,8 +238,8 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             settings = await db.get_all_guild_settings(guild_id)
 
             embed = discord.Embed(
-                title="📋 Monitoring Settings",
-                description=f"การตั้งค่าปัจจุบันของเซิร์ฟเวอร์ **{interaction.guild.name}**",
+                title=t("monitoring_status_title", lang),
+                description=t("monitoring_status_desc", lang).format(guild=interaction.guild.name),
                 color=0x3498DB,
                 timestamp=discord.utils.utcnow(),
             )
@@ -236,37 +248,45 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             ch_id_str = settings.get("admin_log_channel_id")
             if ch_id_str:
                 ch = interaction.guild.get_channel(int(ch_id_str))
-                ch_display = ch.mention if ch else f"`{ch_id_str}` (ไม่พบช่อง)"
+                if ch:
+                    ch_display = ch.mention
+                else:
+                    ch_display = t("monitoring_channel_not_found_display", lang).format(ch_id=ch_id_str)
             else:
-                ch_display = "⚠️ ยังไม่ได้ตั้งค่า — ใช้ `/monitoring setup` เพื่อกำหนด"
+                ch_display = t("monitoring_not_configured_hint", lang)
 
             embed.add_field(
-                name="📢 Admin Log Channel",
+                name=t("monitoring_status_channel_label", lang),
                 value=ch_display,
                 inline=False,
             )
             embed.add_field(
-                name="🏥 Health Check Interval",
-                value=f"{settings.get('health_check_interval_min', '5')} นาที",
+                name=t("monitoring_status_health_label", lang),
+                value=t("monitoring_status_health_value", lang).format(
+                    value=settings.get("health_check_interval_min", "5")
+                ),
                 inline=True,
             )
             embed.add_field(
-                name="⏱️ Alert Rate Limit",
-                value=f"{settings.get('alert_rate_limit_sec', '300')} วินาที",
+                name=t("monitoring_status_rate_label", lang),
+                value=t("monitoring_status_rate_value", lang).format(
+                    value=settings.get("alert_rate_limit_sec", "300")
+                ),
                 inline=True,
             )
+            is_on = settings.get("monitoring_enabled", "true") == "true"
             embed.add_field(
-                name="✅ Monitoring Enabled",
-                value="เปิดใช้งาน ✓" if settings.get("monitoring_enabled", "true") == "true" else "ปิดใช้งาน ✗",
+                name=t("monitoring_status_enabled_label", lang),
+                value=t("monitoring_status_active", lang) if is_on else t("monitoring_status_inactive", lang),
                 inline=True,
             )
-            embed.set_footer(text="แก้ไขด้วย /monitoring setup · บันทึกใน Supabase")
+            embed.set_footer(text=t("monitoring_status_footer", lang))
 
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/monitoring status failed: %s", exc, exc_info=True)
             await interaction.followup.send(
-                "❌ ไม่สามารถดึงข้อมูลได้ — ดู logs สำหรับรายละเอียด",
+                t("monitoring_status_fetch_error", lang),
                 ephemeral=True,
             )
 
@@ -274,20 +294,20 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
     @app_commands.command(
         name="health",
-        description="🏥 [Admin] ดูสถานะสุขภาพบอทแบบ Real-time: DB, memory, uptime, latency",
+        description="🏥 [Admin] View real-time bot health: DB, memory, uptime, latency",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     async def health_cmd(self, interaction: discord.Interaction) -> None:
         """Display the latest health snapshot as a rich embed."""
+        lang = await get_user_lang(interaction.user.id)
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.health_monitor import health_monitor
-            embed = health_monitor.get_health_embed()
+            embed = health_monitor.get_health_embed(lang=lang)
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/health command failed: %s", exc, exc_info=True)
-            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
                 t("monitoring_fetch_failed", lang),
                 ephemeral=True,
@@ -297,20 +317,20 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
     @app_commands.command(
         name="errors",
-        description="🚨 [Admin] ดู Error ที่เกิดขึ้นใน 24 ชั่วโมงที่ผ่านมา",
+        description="🚨 [Admin] View errors from the last 24 hours",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     async def errors_cmd(self, interaction: discord.Interaction) -> None:
         """Display the error tracker summary embed."""
+        lang = await get_user_lang(interaction.user.id)
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.error_tracker import error_tracker
-            embed = error_tracker.get_summary_embed()
+            embed = error_tracker.get_summary_embed(lang=lang)
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/errors command failed: %s", exc, exc_info=True)
-            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
                 t("monitoring_fetch_failed", lang),
                 ephemeral=True,
@@ -320,20 +340,20 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
     @app_commands.command(
         name="cmdstats",
-        description="📊 [Admin] ดูสถิติการใช้คำสั่งตั้งแต่เริ่มบอท",
+        description="📊 [Admin] View command usage statistics since bot start",
     )
     @app_commands.default_permissions(administrator=True)
     @app_commands.guild_only()
     async def cmdstats_cmd(self, interaction: discord.Interaction) -> None:
         """Display command usage statistics."""
+        lang = await get_user_lang(interaction.user.id)
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.commands_log import commands_logger
-            embed = commands_logger.get_stats_embed(top_n=10)
+            embed = commands_logger.get_stats_embed(top_n=10, lang=lang)
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as exc:
             log.error("/cmdstats command failed: %s", exc, exc_info=True)
-            lang = await get_user_lang(interaction.user.id)
             await interaction.followup.send(
                 t("monitoring_fetch_failed", lang),
                 ephemeral=True,

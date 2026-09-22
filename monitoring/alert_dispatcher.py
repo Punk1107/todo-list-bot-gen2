@@ -127,10 +127,17 @@ class AlertDispatcher:
             log.debug("AlertDispatcher: rate-limiting alert for %s in guild %s", error_type, guild_id)
             return
 
+        # Prune expired rate-limit keys to prevent unbounded memory growth
+        if len(self._last_alert) > 500:
+            cutoff = now - self._rate_limit_sec
+            for k in [k for k, v in self._last_alert.items() if v < cutoff]:
+                self._last_alert.pop(k, None)
+
         self._last_alert[rate_key] = now
         embed = self._build_error_embed(error, level=level, command=command,
                                         user_id=user_id, guild_id=guild_id)
         await self._enqueue(target_ch_id, embed)
+
 
     async def dispatch_health_alert(self, snapshot: HealthSnapshot) -> None:
         """

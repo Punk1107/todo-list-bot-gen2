@@ -63,6 +63,8 @@ class BotConfig:
     default_timezone: str
     default_lang: str
     owner_ids: frozenset[int]
+    persistent_views_max_days: int
+    persistent_views_limit: int
 
     @classmethod
     def from_env(cls) -> "BotConfig":
@@ -74,12 +76,21 @@ class BotConfig:
                 owner_ids = frozenset(int(x.strip()) for x in owner_raw.split(",") if x.strip())
             except ValueError:
                 log.warning("BOT_OWNER_IDS contains non-integer values — ignoring")
+
+        supported_langs = ("th", "en", "de", "es", "fr", "ja", "ko", "ru", "zh")
+        default_lang = _env("DEFAULT_LANG", "th")
+        if default_lang not in supported_langs:
+            log.warning("DEFAULT_LANG '%s' is not in supported languages, falling back to 'th'", default_lang)
+            default_lang = "th"
+
         return cls(
             token=token,
             prefix=_env("COMMAND_PREFIX", "!"),
             default_timezone=_env("DEFAULT_TIMEZONE", "Asia/Bangkok"),
-            default_lang=_env("DEFAULT_LANG", "th"),
+            default_lang=default_lang,
             owner_ids=owner_ids,
+            persistent_views_max_days=_env_int("PERSISTENT_VIEWS_MAX_DAYS", 30),
+            persistent_views_limit=_env_int("PERSISTENT_VIEWS_LIMIT", 500),
         )
 
 

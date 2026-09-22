@@ -2009,13 +2009,18 @@ async def register_all_persistent_views(bot: discord.Client) -> None:
     """
     from core.database import db as _db
 
+    limit = getattr(config.bot, "persistent_views_limit", 500)
+    max_days = getattr(config.bot, "persistent_views_max_days", 30)
     rows = await _db.afetchall(
         """SELECT t.task_id, t.owner_id, t.priority, t.is_pinned,
-                  COALESCE(u.lang, 'th') AS lang
+                  COALESCE(u.lang, $1) AS lang
            FROM tasks t
            LEFT JOIN users u ON t.owner_id = u.user_id
+           WHERE t.status != 'Cancelled'
+             AND (t.status != 'Completed' OR t.updated_at >= NOW() - ($2 || ' days')::INTERVAL)
            ORDER BY t.task_id DESC
-           LIMIT 5000""",
+           LIMIT $3""",
+        (config.bot.default_lang, str(max_days), limit),
     )
 
     # Pre-fetch all categories once (system + per-user) to avoid N+1 queries

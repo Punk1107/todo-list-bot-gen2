@@ -23,6 +23,8 @@ from typing import Optional
 
 import discord
 
+from locales.i18n import t
+
 log = logging.getLogger(__name__)
 
 # Try psutil — gracefully degrade if not installed
@@ -180,13 +182,17 @@ class HealthMonitor:
 
     # ── Discord Embed ────────────────────────────────────────────────────────
 
-    def get_health_embed(self) -> discord.Embed:
-        """Build a rich health status embed from the latest snapshot."""
+    def get_health_embed(self, lang: str = "en") -> discord.Embed:
+        """Build a rich health status embed from the latest snapshot.
+
+        Args:
+            lang: Language code for i18n translation (default: 'en').
+        """
         snap = self._latest
         ok = snap.is_healthy
 
         color = 0x2ECC71 if ok else 0xE74C3C
-        status_label = "🟢 Healthy" if ok else "🔴 Degraded"
+        status_label = t("health_healthy", lang) if ok else t("health_degraded", lang)
 
         # Format uptime
         uptime_s = int(snap.uptime_s)
@@ -196,7 +202,7 @@ class HealthMonitor:
 
         # DB latency indicator
         if snap.db_latency_ms < 0:
-            db_str = "❌ Unreachable"
+            db_str = t("health_db_unreachable", lang)
         elif snap.db_latency_ms < 100:
             db_str = f"🟢 {snap.db_latency_ms} ms"
         elif snap.db_latency_ms < 500:
@@ -206,7 +212,7 @@ class HealthMonitor:
 
         # Memory indicator
         if snap.memory_mb < 0:
-            mem_str = "N/A (psutil not installed)"
+            mem_str = t("health_mem_unavailable", lang)
         elif snap.memory_percent < 50:
             mem_str = f"🟢 {snap.memory_mb} MB ({snap.memory_percent:.0f}%)"
         elif snap.memory_percent < 80:
@@ -223,37 +229,37 @@ class HealthMonitor:
             lag_str = f"🔴 {snap.loop_lag_ms} ms"
 
         embed = discord.Embed(
-            title=f"🏥 Bot Health Status — {status_label}",
+            title=t("health_status_title", lang).format(status=status_label),
             color=color,
             timestamp=discord.utils.utcnow(),
         )
         embed.add_field(
-            name="🤖 Bot",
+            name=t("health_bot_label", lang),
             value=(
-                f"**Uptime:** {uptime_str}\n"
-                f"**Guilds:** {snap.guilds}\n"
-                f"**Discord latency:** {snap.discord_latency_ms:.0f} ms"
+                f"**{t('health_uptime', lang)}:** {uptime_str}\n"
+                f"**{t('health_guilds', lang)}:** {snap.guilds}\n"
+                f"**{t('health_discord_latency', lang)}:** {snap.discord_latency_ms:.0f} ms"
             ),
             inline=True,
         )
         embed.add_field(
-            name="🗄️ Database",
+            name=t("health_database", lang),
             value=(
-                f"**Ping:** {db_str}\n"
-                f"**Pool size:** {snap.db_pool_size}"
+                f"**{t('health_db_ping', lang)}:** {db_str}\n"
+                f"**{t('health_pool_size', lang)}:** {snap.db_pool_size}"
             ),
             inline=True,
         )
         embed.add_field(
-            name="💾 System",
+            name=t("health_system", lang),
             value=(
-                f"**Memory:** {mem_str}\n"
-                f"**Loop lag:** {lag_str}"
+                f"**{t('health_memory', lang)}:** {mem_str}\n"
+                f"**{t('health_loop_lag', lang)}:** {lag_str}"
             ),
             inline=True,
         )
         snap_ts = int(snap.timestamp)
-        embed.set_footer(text=f"Last checked · <t:{snap_ts}:R>")
+        embed.set_footer(text=f"{t('health_last_checked', lang)} · <t:{snap_ts}:R>")
         return embed
 
 

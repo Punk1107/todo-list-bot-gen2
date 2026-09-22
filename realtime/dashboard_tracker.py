@@ -130,10 +130,10 @@ class DashboardTracker:
             if channel is None:
                 channel = await bot.fetch_channel(entry.channel_id)
 
-            message = await channel.fetch_message(entry.message_id)  # type: ignore[union-attr]
+            message = channel.get_partial_message(entry.message_id)  # type: ignore[union-attr]
         except Exception as exc:
             log.warning(
-                "Dashboard update: could not fetch message project=%d: %s",
+                "Dashboard update: could not get message project=%d: %s",
                 project_id, exc,
             )
             self.unregister(project_id)
@@ -181,16 +181,19 @@ class DashboardTracker:
         await db.execute(
             """UPDATE projects
                SET active_dashboard_msg_id=$1,
-                   active_dashboard_chan_id=$2
-             WHERE project_id=$3""",
-            (entry.message_id, entry.channel_id, project_id),
+                   active_dashboard_chan_id=$2,
+                   lang=$3
+             WHERE project_id=$4""",
+            (entry.message_id, entry.channel_id, entry.lang, project_id),
         )
 
     async def restore_from_db(self, bot: "discord.Client") -> None:
         """Reload dashboard registrations from DB on bot restart."""
         from core.database import db
+        from core.config import config
         rows = await db.fetchall(
-            """SELECT project_id, guild_id, active_dashboard_msg_id, active_dashboard_chan_id
+            """SELECT project_id, guild_id, active_dashboard_msg_id, active_dashboard_chan_id,
+                      COALESCE(lang, 'th') AS lang
                  FROM projects
                 WHERE active_dashboard_msg_id IS NOT NULL
                   AND active_dashboard_chan_id IS NOT NULL""",
@@ -204,11 +207,14 @@ class DashboardTracker:
                 guild_id=row["guild_id"],
                 channel_id=int(row["active_dashboard_chan_id"]),
                 message_id=int(row["active_dashboard_msg_id"]),
+                lang=row["lang"] or config.bot.default_lang,
             )
             log.info(
-                "Dashboard restored: project=%d  chan=%d  msg=%d",
+                "Dashboard restored: project=%d  chan=%d  msg=%d  lang=%s",
                 row["project_id"], row["active_dashboard_chan_id"], row["active_dashboard_msg_id"],
+                row["lang"] or config.bot.default_lang,
             )
+
 
     @property
     def active_count(self) -> int:

@@ -255,16 +255,34 @@ async def on_ready() -> None:
     )
 
 
+_last_active_cache: dict[str, float] = {}
+_LAST_ACTIVE_DEBOUNCE_SEC = 300.0  # 5 minutes
+
+
 @bot.event
 async def on_interaction(interaction: discord.Interaction) -> None:
     """Update last_active timestamp non-blocking via BulkWriter.
+    Debounced to at most once per 5 minutes per user to avoid autocomplete spam.
     Also ensures the user row exists (INSERT OR IGNORE) so the UPDATE never silently drops.
     """
     from core.database import db
     # Guard: do not enqueue before the DB pool is initialised (e.g. during reconnect)
     if db._pool is None:
         return
+
     uid = str(interaction.user.id)
+    now = time.monotonic()
+    last = _last_active_cache.get(uid, 0.0)
+    if now - last < _LAST_ACTIVE_DEBOUNCE_SEC:
+        return
+    _last_active_cache[uid] = now
+
+    # Prune cache if it grows excessively
+    if len(_last_active_cache) > 10000:
+        cutoff = now - _LAST_ACTIVE_DEBOUNCE_SEC
+        for k in [k for k, v in _last_active_cache.items() if v < cutoff]:
+            _last_active_cache.pop(k, None)
+
     # Ensure user row exists before updating last_active
     db.bulk_writer.enqueue(
         "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -274,6 +292,7 @@ async def on_interaction(interaction: discord.Interaction) -> None:
         "UPDATE users SET last_active=NOW() WHERE user_id=$1",
         (uid,),
     )
+
 
 
 @bot.event

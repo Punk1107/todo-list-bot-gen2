@@ -286,7 +286,32 @@ _DATE_FORMATS = [
     "%d/%m",
 ]
 
-_WEEKDAY_MAP = {
+# Natural language relative day keywords for all 9 supported languages
+# Maps lowercased keyword -> day offset (0 = today, 1 = tomorrow, 2 = day after tomorrow)
+_NATURAL_DAYS_OFFSET: dict[str, int] = {
+    # English
+    "today": 0, "tomorrow": 1, "day after tomorrow": 2,
+    # Thai
+    "วันนี้": 0, "พรุ่งนี้": 1, "มะรืนนี้": 2,
+    # German
+    "heute": 0, "morgen": 1, "übermorgen": 2, "ubermorgen": 2,
+    # Spanish
+    "hoy": 0, "mañana": 1, "manana": 1, "pasado mañana": 2, "pasado manana": 2,
+    # French
+    "aujourd'hui": 0, "aujourdhui": 0, "demain": 1, "après-demain": 2, "apres-demain": 2,
+    # Japanese
+    "今日": 0, "明日": 1, "明後日": 2,
+    # Korean
+    "오늘": 0, "내일": 1, "모레": 2,
+    # Chinese
+    "今天": 0, "明天": 1, "后天": 2, "後天": 2,
+    # Russian
+    "сегодня": 0, "завтра": 1, "послезавтра": 2,
+}
+
+# Natural language weekday names across all 9 languages (0=Monday ... 6=Sunday)
+_NATURAL_WEEKDAY_MAP: dict[str, int] = {
+    # English
     "mon": 0, "monday": 0,
     "tue": 1, "tuesday": 1,
     "wed": 2, "wednesday": 2,
@@ -294,7 +319,73 @@ _WEEKDAY_MAP = {
     "fri": 4, "friday": 4,
     "sat": 5, "saturday": 5,
     "sun": 6, "sunday": 6,
+    # Thai
+    "จันทร์": 0, "วันจันทร์": 0,
+    "อังคาร": 1, "วันอังคาร": 1,
+    "พุธ": 2, "วันพุธ": 2,
+    "พฤหัส": 3, "พฤหัสบดี": 3, "วันพฤหัส": 3, "วันพฤหัสบดี": 3,
+    "ศุกร์": 4, "วันศุกร์": 4,
+    "เสาร์": 5, "วันเสาร์": 5,
+    "อาทิตย์": 6, "วันอาทิตย์": 6,
+    # German
+    "mo": 0, "montag": 0,
+    "di": 1, "dienstag": 1,
+    "mi": 2, "mittwoch": 2,
+    "do": 3, "donnerstag": 3,
+    "fr": 4, "freitag": 4,
+    "sa": 5, "samstag": 5,
+    "so": 6, "sonntag": 6,
+    # Spanish
+    "lun": 0, "lunes": 0,
+    "mar": 1, "martes": 1,
+    "mié": 2, "mie": 2, "miércoles": 2, "miercoles": 2,
+    "jue": 3, "jueves": 3,
+    "vie": 4, "viernes": 4,
+    "sáb": 5, "sab": 5, "sábado": 5, "sabado": 5,
+    "dom": 6, "domingo": 6,
+    # French
+    "lundi": 0,
+    "mardi": 1,
+    "mercredi": 2,
+    "jeudi": 3,
+    "vendredi": 4,
+    "samedi": 5,
+    "dimanche": 6,
+    # Japanese
+    "月曜": 0, "月曜日": 0, "月": 0,
+    "火曜": 1, "火曜日": 1, "火": 1,
+    "水曜": 2, "水曜日": 2, "水": 2,
+    "木曜": 3, "木曜日": 3, "木": 3,
+    "金曜": 4, "金曜日": 4, "金": 4,
+    "土曜": 5, "土曜日": 5, "土": 5,
+    "日曜": 6, "日曜日": 6, "日": 6,
+    # Korean
+    "월요일": 0, "월": 0,
+    "화요일": 1, "화": 1,
+    "수요일": 2, "수": 2,
+    "목요일": 3, "목": 3,
+    "금요일": 4, "금": 4,
+    "토요일": 5, "토": 5,
+    "일요일": 6, "일": 6,
+    # Chinese
+    "星期一": 0, "周一": 0, "礼拜一": 0,
+    "星期二": 1, "周二": 1, "礼拜二": 1,
+    "星期三": 2, "周三": 2, "礼拜三": 2,
+    "星期四": 3, "周四": 3, "礼拜四": 3,
+    "星期五": 4, "周五": 4, "礼拜五": 4,
+    "星期六": 5, "周六": 5, "礼拜六": 5,
+    "星期日": 6, "星期天": 6, "周日": 6, "周天": 6, "礼拜日": 6, "礼拜天": 6,
+    # Russian
+    "пн": 0, "понедельник": 0,
+    "вт": 1, "вторник": 1,
+    "ср": 2, "среда": 2,
+    "чт": 3, "четверг": 3,
+    "пт": 4, "пятница": 4,
+    "сб": 5, "суббота": 5,
+    "вс": 6, "воскресенье": 6,
 }
+
+_WEEKDAY_MAP = _NATURAL_WEEKDAY_MAP  # backward compatibility
 
 _DELTA_RE = _re.compile(
     r"""^
@@ -314,8 +405,9 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
                    (date-only variants default to 23:59 local time)
       Shorthand:   DD/MM HH:MM       |  DD/MM
       Relative:    +2h  +30m  +3d  +1w  +45s
-      Natural:     today [HH:MM]  |  tomorrow [HH:MM]
-                   monday [HH:MM]  …  sunday [HH:MM]
+      Natural:     today [HH:MM]  |  tomorrow [HH:MM]  |  day after tomorrow [HH:MM]
+                   Supports all 9 languages (TH, EN, DE, ES, FR, JA, KO, ZH, RU)
+                   Weekdays across all 9 languages
 
     Returns None on failure.
     """
@@ -342,34 +434,35 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         }[unit]
         return now_utc + timedelta(seconds=seconds)
 
-    # ── 2. Natural language  (today / tomorrow / weekday) ──────────────────
-    parts = raw.lower().split(None, 1)   # at most ["keyword", "HH:MM"]
-    keyword = parts[0]
-    time_str = parts[1] if len(parts) > 1 else None
+    # ── 2. Natural language  (today / tomorrow / weekday in all 9 languages) ──
+    lower_raw = raw.lower()
+    base_date = None
+    time_str = None
 
-    _THAI_KEYWORDS = {
-        "วันนี้": 0,
-        "พรุ่งนี้": 1,
-        "มะรืนนี้": 2,
-    }
+    # Check relative day keywords (sorted longest first so phrases like 'day after tomorrow' match first)
+    for kw, offset in sorted(_NATURAL_DAYS_OFFSET.items(), key=lambda x: len(x[0]), reverse=True):
+        if lower_raw == kw or lower_raw.startswith(kw + " "):
+            base_date = (now_local + timedelta(days=offset)).date()
+            remainder = lower_raw[len(kw):].strip()
+            if remainder:
+                time_str = remainder
+            break
 
-    if keyword in ("today", "tomorrow") or keyword in _WEEKDAY_MAP or keyword in _THAI_KEYWORDS:
-        # Resolve the base date
-        if keyword in ("today", "วันนี้"):
-            base = now_local.date()
-        elif keyword in ("tomorrow", "พรุ่งนี้"):
-            base = (now_local + timedelta(days=1)).date()
-        elif keyword == "มะรืนนี้":
-            base = (now_local + timedelta(days=2)).date()
-        else:  # weekday name
-            target_wd = _WEEKDAY_MAP[keyword]
-            current_wd = now_local.weekday()
-            days_ahead = (target_wd - current_wd) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # next occurrence, not today
-            base = (now_local + timedelta(days=days_ahead)).date()
+    # If not a relative day, check weekday keywords
+    if base_date is None:
+        for kw, target_wd in sorted(_NATURAL_WEEKDAY_MAP.items(), key=lambda x: len(x[0]), reverse=True):
+            if lower_raw == kw or lower_raw.startswith(kw + " "):
+                current_wd = now_local.weekday()
+                days_ahead = (target_wd - current_wd) % 7
+                if days_ahead == 0:
+                    days_ahead = 7  # next occurrence, not today
+                base_date = (now_local + timedelta(days=days_ahead)).date()
+                remainder = lower_raw[len(kw):].strip()
+                if remainder:
+                    time_str = remainder
+                break
 
-        # Resolve the time
+    if base_date is not None:
         if time_str:
             tm = _TIME_RE.match(time_str.strip())
             hour = int(tm.group("h")) if tm else 23
@@ -377,8 +470,9 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         else:
             hour, minute = 23, 59
 
-        naive = datetime(base.year, base.month, base.day, hour, minute)
+        naive = datetime(base_date.year, base_date.month, base_date.day, hour, minute)
         return tz.localize(naive).astimezone(pytz.utc)
+
 
     # ── 3. Classic & shorthand date formats ────────────────────────────────
     for fmt in _DATE_FORMATS:
