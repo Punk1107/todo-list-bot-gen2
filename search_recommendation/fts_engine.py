@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 from core.database import db
 from search_recommendation.models import (
@@ -80,13 +80,21 @@ class FtsEngine:
         if total == 0:
             return await self._ilike_fallback(query, text)
 
+        # Compile snippet highlight regex ONCE per search (not per-row)
+        snippet_re: Optional[re.Pattern] = None
+        if text:
+            try:
+                snippet_re = re.compile(re.escape(text), re.IGNORECASE)
+            except re.error:
+                pass
+
         try:
             rows = await db.fetchall(data_sql, data_params)
         except Exception as exc:
             log.error("FTS data query failed: %s", exc)
             return await self._ilike_fallback(query, text)
 
-        items = [self._row_to_result(row, text) for row in rows]
+        items = [self._row_to_result(row, text, snippet_re) for row in rows]
         total_pages = max(1, (total + page_size - 1) // page_size)
 
         return SearchResultPage(
@@ -180,7 +188,14 @@ LIMIT {limit_ph} OFFSET {offset_ph}
                 total_pages=1, query_text=text, sort_by=query.sort_by
             )
 
-        items = [self._row_to_result(row, text) for row in rows]
+        snippet_re: Optional[re.Pattern] = None
+        if text:
+            try:
+                snippet_re = re.compile(re.escape(text), re.IGNORECASE)
+            except re.error:
+                pass
+
+        items = [self._row_to_result(row, text, snippet_re) for row in rows]
         total_pages = max(1, (total + page_size - 1) // page_size)
 
         return SearchResultPage(
@@ -216,7 +231,7 @@ LIMIT {limit_ph} OFFSET {offset_ph}
                 total_pages=1, query_text="", sort_by=query.sort_by
             )
 
-        items = [self._row_to_result(row, "") for row in rows]
+        items = [self._row_to_result(row, "", None) for row in rows]
         total_pages = max(1, (total + page_size - 1) // page_size)
 
         return SearchResultPage(
@@ -226,9 +241,9 @@ LIMIT {limit_ph} OFFSET {offset_ph}
 
     # ── Row → Model ───────────────────────────────────────────────────────────
 
-    def _row_to_result(self, row: Any, query_text: str) -> SearchResult:
+    def _row_to_result(self, row: Any, query_text: str, snippet_re: Optional[re.Pattern] = None) -> SearchResult:
         """Convert an asyncpg Record to a SearchResult, generating a snippet."""
-        snippet = self._make_snippet(row, query_text)
+        snippet = self._make_snippet(row, query_text, snippet_re)
         return SearchResult(
             task_id      = row["task_id"],
             task         = row["task"],
@@ -250,10 +265,11 @@ LIMIT {limit_ph} OFFSET {offset_ph}
         )
 
     @staticmethod
-    def _make_snippet(row: Any, query_text: str) -> str:
+    def _make_snippet(row: Any, query_text: str, snippet_re: Optional[re.Pattern] = None) -> str:
         """
         Build a short highlighted snippet from description or tags.
         Highlights matching terms with Discord's __underline__ markdown.
+        Accepts a pre-compiled regex pattern to avoid recompiling per-row.
         """
         text = (row.get("description") or row.get("tags") or "").strip()
         if not text:
@@ -262,9 +278,9 @@ LIMIT {limit_ph} OFFSET {offset_ph}
         text = text[:_SNIPPET_MAX]
         if not query_text:
             return text
-        # Highlight matching substrings (case-insensitive)
+        # Highlight matching substrings using pre-compiled pattern
         try:
-            pattern = re.compile(re.escape(query_text), re.IGNORECASE)
+            pattern = snippet_re or re.compile(re.escape(query_text), re.IGNORECASE)
             text = pattern.sub(lambda m: f"__{m.group(0)}__", text)
         except re.error:
             pass

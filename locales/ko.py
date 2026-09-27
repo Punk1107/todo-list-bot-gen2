@@ -681,4 +681,14 @@ STRINGS = {
     "analytics_field_completed": "✅ 완료됨",
     "analytics_field_ontime":    "⏱️ 정시 완료율",
     "analytics_weekly_status":   "주간 다이제스트",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 대시보드",
+    "proj_btn_board": "📋 보드",
+    "proj_btn_members": "👥 멤버",
+    "proj_btn_activity": "📜 활동",
+    "proj_btn_add_task": "➕ 작업 추가",
+    "proj_btn_files": "📎 파일",
+    "proj_btn_claim": "🙋 작업 맡기",
+    "proj_btn_back": "⬅️ 대시보드",
+}

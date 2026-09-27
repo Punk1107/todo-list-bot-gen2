@@ -446,6 +446,13 @@ class ProjectDashboardView(ui.View):
         self.guild_id   = guild_id
         self.lang       = lang
         self.user       = user
+        # Localize button labels after init (Discord requires static labels on @ui.button decorator)
+        self.btn_dashboard.label = t("proj_btn_dashboard", lang)
+        self.btn_board.label     = t("proj_btn_board",     lang)
+        self.btn_members.label   = t("proj_btn_members",   lang)
+        self.btn_activity.label  = t("proj_btn_activity",  lang)
+        self.btn_add_task.label  = t("proj_btn_add_task",  lang)
+        self.btn_files.label     = t("proj_btn_files",     lang)
 
     @ui.button(label="📊 Dashboard", style=discord.ButtonStyle.primary,  custom_id="proj_dash_dashboard")
     async def btn_dashboard(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -524,21 +531,18 @@ class ProjectDashboardView(ui.View):
             return
         # Fetch all tasks belonging to this project, then list attachments
         from core.database import db
-        task_rows = await db.fetchall(
-            "SELECT task_id, task FROM tasks WHERE project_id=$1 AND guild_id=$2 ORDER BY task_id",
-            (self.project_id, self.guild_id),
+        # Single query via project_id index instead of N+1 per-task queries
+        att_rows = await db.fetchall(
+            """SELECT * FROM task_attachments
+                WHERE project_id=$1
+                ORDER BY created_at DESC""",
+            (self.project_id,),
         )
-        if not task_rows:
+        if not att_rows:
             await interaction.followup.send(t("storage_no_attachments", lang), ephemeral=True)
             return
-        # Gather attachments for all tasks in project
-        all_attachments = []
-        for tr in task_rows:
-            atts = await storage_svc.get_attachments(tr["task_id"])
-            all_attachments.extend(atts)
-        if not all_attachments:
-            await interaction.followup.send(t("storage_no_attachments", lang), ephemeral=True)
-            return
+        from storage.models import TaskAttachment
+        all_attachments = [TaskAttachment.from_record(r) for r in att_rows]
         from storage.views import build_attachments_embed, TaskAttachmentsView
         uid = str(interaction.user.id) if interaction.user else ""
         embed = build_attachments_embed(
@@ -604,6 +608,9 @@ class ProjectBoardView(ui.View):
 
         # Column selector dropdown
         self.add_item(BoardColumnSelect(project_id, guild_id, lang, user, board, current_col))
+        # Localize button labels
+        self.btn_claim.label = t("proj_btn_claim", lang)
+        self.btn_back.label  = t("proj_btn_back",  lang)
 
     @ui.button(label="🙋 Claim a Task", style=discord.ButtonStyle.success, custom_id="board_claim_btn")
     async def btn_claim(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -700,6 +707,8 @@ class MembersView(ui.View):
         self.lang    = lang
         self.user    = user
         self.members = members
+        # Localize button labels
+        self.btn_back.label = t("proj_btn_back", lang)
 
     @ui.button(label="⬅️ Dashboard", style=discord.ButtonStyle.secondary, custom_id="members_back")
     async def btn_back(self, interaction: discord.Interaction, button: ui.Button) -> None:

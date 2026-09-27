@@ -682,4 +682,14 @@ STRINGS = {
     "analytics_field_completed": "✅ 完了",
     "analytics_field_ontime":    "⏱️ 期限厳守率",
     "analytics_weekly_status":   "週次ダイジェスト",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 ダッシュボード",
+    "proj_btn_board": "📋 ボード",
+    "proj_btn_members": "👥 メンバー",
+    "proj_btn_activity": "📜 アクティビティ",
+    "proj_btn_add_task": "➕ タスク追加",
+    "proj_btn_files": "📎 ファイル",
+    "proj_btn_claim": "🙋 タスクを担当",
+    "proj_btn_back": "⬅️ ダッシュボード",
+}

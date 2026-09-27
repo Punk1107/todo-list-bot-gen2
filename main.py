@@ -15,6 +15,7 @@ import logging
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 
 import discord
@@ -193,6 +194,13 @@ class TodoBot(commands.Bot):
             await storage_svc.close_client()
         except Exception as exc:
             log.warning("Storage shutdown error: %s", exc)
+
+        # Close AnalyticsClient aiohttp session
+        try:
+            from analytics import cog as analytics_cog
+            await analytics_cog.close_client()
+        except Exception as exc:
+            log.warning("Analytics shutdown error: %s", exc)
 
         if self._webserver_runner:
             await self._webserver_runner.cleanup()

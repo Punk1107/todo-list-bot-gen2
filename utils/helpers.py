@@ -213,10 +213,16 @@ async def ensure_user(user_id, lang: Optional[str] = None,
       2. ``discord_locale`` mapped via DISCORD_LOCALE_MAP
       3. config.bot.default_lang
     Existing users are never updated by this function — use save_user_settings().
+
+    Cache-first: if the user already exists in UserCache, skip the DB write
+    entirely to preserve QueryCache hit rates and avoid redundant round-trips.
     """
     from core.database import db
     from locales.i18n import locale_to_lang
     uid = str(user_id)
+    # Fast path: user already cached → definitely exists in DB, nothing to do
+    if lang is None and db.user_cache.get(uid) is not None:
+        return
     if lang is None and discord_locale is not None:
         lang = locale_to_lang(discord_locale)
     await db.aexecute(
@@ -275,6 +281,7 @@ async def save_user_settings(
 import re as _re
 
 _DATE_FORMATS = [
+    # ── ISO / slash / dash ────────────────────────────────────────────────────
     "%d/%m/%Y %H:%M",
     "%d-%m-%Y %H:%M",
     "%Y-%m-%d %H:%M",
@@ -284,6 +291,16 @@ _DATE_FORMATS = [
     # Shorthand without year  — year is inferred below
     "%d/%m %H:%M",
     "%d/%m",
+    # ── European dot format (German, Russian, etc.) ───────────────────────────
+    "%d.%m.%Y %H:%M",
+    "%d.%m.%Y",
+    "%d.%m %H:%M",
+    "%d.%m",
+    # ── East Asian year-first formats (Japanese, Chinese) ────────────────────
+    "%Y/%m/%d %H:%M",
+    "%Y/%m/%d",
+    "%Y.%m.%d %H:%M",
+    "%Y.%m.%d",
 ]
 
 # Natural language relative day keywords for all 9 supported languages
@@ -385,6 +402,14 @@ _NATURAL_WEEKDAY_MAP: dict[str, int] = {
     "вс": 6, "воскресенье": 6,
 }
 
+# Pre-sorted tuples for O(1) module load instead of O(N log N) per parse_deadline call
+_NATURAL_DAYS_SORTED = tuple(
+    sorted(_NATURAL_DAYS_OFFSET.items(), key=lambda x: len(x[0]), reverse=True)
+)
+_NATURAL_WEEKDAY_SORTED = tuple(
+    sorted(_NATURAL_WEEKDAY_MAP.items(), key=lambda x: len(x[0]), reverse=True)
+)
+
 _WEEKDAY_MAP = _NATURAL_WEEKDAY_MAP  # backward compatibility
 
 _DELTA_RE = _re.compile(
@@ -394,7 +419,15 @@ _DELTA_RE = _re.compile(
     $""",
     _re.VERBOSE | _re.IGNORECASE,
 )
-_TIME_RE = _re.compile(r"^(?P<h>\d{1,2}):(?P<m>\d{2})$")
+# Extended time regex: supports HH:MM, HH.MM, and optional Thai น. / น suffix
+_TIME_RE = _re.compile(
+    r"^(?P<h>\d{1,2})[:.](?P<m>\d{2})(?:น\.?)?$"
+)
+# Kanji/Hanzi date pattern: YYYY年MM月DD日 [HH:MM]
+_KANJI_DATE_RE = _re.compile(
+    r"^(?P<year>\d{4})\u5e74(?P<month>\d{1,2})\u6708(?P<day>\d{1,2})\u65e5"
+    r"(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?$"
+)
 
 
 def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
@@ -408,6 +441,12 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
       Natural:     today [HH:MM]  |  tomorrow [HH:MM]  |  day after tomorrow [HH:MM]
                    Supports all 9 languages (TH, EN, DE, ES, FR, JA, KO, ZH, RU)
                    Weekdays across all 9 languages
+      i18n extras:
+        - Unspaced Asian keywords (e.g. พรุ่งนี้18:00, 明日18:00, 明天18:00)
+        - Thai dot-time & น. suffix (18.00, 18.00น., 18:00น.)
+        - Thai Buddhist Era (25/12/2569 → 25/12/2026)
+        - European dot dates (DD.MM.YYYY, DD.MM)
+        - East Asian year-first (YYYY/MM/DD, YYYY.MM.DD, YYYY年MM月DD日)
 
     Returns None on failure.
     """
@@ -434,30 +473,59 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         }[unit]
         return now_utc + timedelta(seconds=seconds)
 
-    # ── 2. Natural language  (today / tomorrow / weekday in all 9 languages) ──
+    # ── 2. Kanji/Hanzi date: YYYY年MM月DD日 [HH:MM] ─────────────────────────
+    km = _KANJI_DATE_RE.match(raw)
+    if km:
+        year   = int(km.group("year"))
+        month  = int(km.group("month"))
+        day    = int(km.group("day"))
+        hour   = int(km.group("hour"))   if km.group("hour")   else 23
+        minute = int(km.group("minute")) if km.group("minute") else 59
+        if year >= 2400:  # Thai Buddhist Era
+            year -= 543
+        try:
+            naive = datetime(year, month, day, hour, minute)
+            return tz.localize(naive).astimezone(pytz.utc)
+        except ValueError:
+            pass
+
+    # ── 3. Natural language  (today / tomorrow / weekday in all 9 languages) ──
     lower_raw = raw.lower()
     base_date = None
     time_str = None
 
-    # Check relative day keywords (sorted longest first so phrases like 'day after tomorrow' match first)
-    for kw, offset in sorted(_NATURAL_DAYS_OFFSET.items(), key=lambda x: len(x[0]), reverse=True):
-        if lower_raw == kw or lower_raw.startswith(kw + " "):
-            base_date = (now_local + timedelta(days=offset)).date()
+    # Check relative day keywords (pre-sorted longest first)
+    for kw, offset in _NATURAL_DAYS_SORTED:
+        # Match: exact, or keyword + space, or keyword immediately followed by digit (unspaced Asian)
+        remainder = None
+        if lower_raw == kw:
+            remainder = ""
+        elif lower_raw.startswith(kw + " "):
             remainder = lower_raw[len(kw):].strip()
+        elif lower_raw.startswith(kw) and len(lower_raw) > len(kw) and lower_raw[len(kw)].isdigit():
+            remainder = lower_raw[len(kw):]
+        if remainder is not None:
+            base_date = (now_local + timedelta(days=offset)).date()
             if remainder:
                 time_str = remainder
             break
 
-    # If not a relative day, check weekday keywords
+    # If not a relative day, check weekday keywords (pre-sorted longest first)
     if base_date is None:
-        for kw, target_wd in sorted(_NATURAL_WEEKDAY_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-            if lower_raw == kw or lower_raw.startswith(kw + " "):
+        for kw, target_wd in _NATURAL_WEEKDAY_SORTED:
+            remainder = None
+            if lower_raw == kw:
+                remainder = ""
+            elif lower_raw.startswith(kw + " "):
+                remainder = lower_raw[len(kw):].strip()
+            elif lower_raw.startswith(kw) and len(lower_raw) > len(kw) and lower_raw[len(kw)].isdigit():
+                remainder = lower_raw[len(kw):]
+            if remainder is not None:
                 current_wd = now_local.weekday()
                 days_ahead = (target_wd - current_wd) % 7
                 if days_ahead == 0:
                     days_ahead = 7  # next occurrence, not today
                 base_date = (now_local + timedelta(days=days_ahead)).date()
-                remainder = lower_raw[len(kw):].strip()
                 if remainder:
                     time_str = remainder
                 break
@@ -474,7 +542,7 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         return tz.localize(naive).astimezone(pytz.utc)
 
 
-    # ── 3. Classic & shorthand date formats ────────────────────────────────
+    # ── 4. Classic, shorthand & extended date formats ────────────────────────
     for fmt in _DATE_FORMATS:
         try:
             if "%Y" not in fmt:
@@ -485,6 +553,11 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
                 naive = datetime.strptime(year_raw, year_fmt)
             else:
                 naive = datetime.strptime(raw, fmt)
+
+            # Thai Buddhist Era: year >= 2400 means it's a BE year
+            if naive.year >= 2400:
+                naive = naive.replace(year=naive.year - 543)
+
             # Infer current/next year for shorthand formats missing the year
             if "%Y" not in fmt:
                 # Roll over to next year if the resulting date is already past

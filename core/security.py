@@ -26,10 +26,34 @@ _F = TypeVar("_F", bound=Callable)
 # Dangerous pattern detection
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Patterns that look like SQL injection or script injection attempts
+# Patterns that look like SQL injection or script injection attempts.
+# Only matches actual injection *sequences*, NOT standalone English words.
+# This prevents false positives on task names like:
+#   "Select team lead", "Update documentation", "Drop off mail",
+#   "Insert batteries", "Delete old files".
 _SUSPICIOUS_RE = re.compile(
-    r"(--|;|\bDROP\b|\bSELECT\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b|"
-    r"<script|javascript:|on\w+=)",
+    r"("
+    # SQL statement sequences — must follow a statement terminator or comment
+    r";\s*(?:DROP|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|TRUNCATE|EXEC)\b"
+    r"|"
+    # SQL comment injection (two consecutive dashes)
+    r"--"
+    r"|"
+    # Block comment start (used to bypass filters)
+    r"/\*"
+    r"|"
+    # UNION-based injection: UNION (ALL)? SELECT
+    r"\bUNION\s+(?:ALL\s+)?SELECT\b"
+    r"|"
+    # Script tag injection
+    r"<script"
+    r"|"
+    # JavaScript protocol injection
+    r"javascript:"
+    r"|"
+    # Inline event handler injection (onerror=, onclick=, etc.)
+    r"on\w+\s*="
+    r")",
     re.IGNORECASE,
 )
 

@@ -682,4 +682,14 @@ STRINGS = {
     "analytics_field_completed": "✅ 已完成",
     "analytics_field_ontime":    "⏱️ 准时完成率",
     "analytics_weekly_status":   "每周摘要",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 仪表板",
+    "proj_btn_board": "📋 看板",
+    "proj_btn_members": "👥 成员",
+    "proj_btn_activity": "📜 动态",
+    "proj_btn_add_task": "➕ 添加任务",
+    "proj_btn_files": "📎 文件",
+    "proj_btn_claim": "🙋 认领任务",
+    "proj_btn_back": "⬅️ 仪表板",
+}

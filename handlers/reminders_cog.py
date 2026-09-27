@@ -52,35 +52,40 @@ async def _build_digest_embed(
         hour=23, minute=59, second=59
     ).astimezone(UTC).isoformat()
 
-    today_tasks = await db.afetchall(
-        """SELECT task_id, task, deadline, priority
-           FROM tasks
-           WHERE owner_id=$1 AND status='Pending'
-             AND deadline BETWEEN $2 AND $3
-           ORDER BY priority DESC, deadline ASC LIMIT 10""",
-        (uid, day_start, day_end),
+    (
+        today_tasks,
+        overdue_row,
+        pending_row,
+        upcoming_tasks,
+    ) = await asyncio.gather(
+        db.afetchall(
+            """SELECT task_id, task, deadline, priority
+               FROM tasks
+               WHERE owner_id=$1 AND status='Pending'
+                 AND deadline BETWEEN $2 AND $3
+               ORDER BY priority DESC, deadline ASC LIMIT 10""",
+            (uid, day_start, day_end),
+        ),
+        db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+            (uid, utc_now.isoformat()),
+        ),
+        db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
+            (uid,),
+        ),
+        db.afetchall(
+            """SELECT task_id, task, deadline, priority
+               FROM tasks
+               WHERE owner_id=$1 AND status='Pending'
+                 AND deadline > $2 AND deadline <= $3
+               ORDER BY deadline ASC LIMIT 3""",
+            (uid, day_end, upcoming_end),
+        ),
     )
 
-    overdue_row = await db.afetchone(
-        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
-        (uid, utc_now.isoformat()),
-    )
     overdue_count = overdue_row["c"] if overdue_row else 0
-
-    pending_row = await db.afetchone(
-        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
-        (uid,),
-    )
     pending_total = pending_row["c"] if pending_row else 0
-
-    upcoming_tasks = await db.afetchall(
-        """SELECT task_id, task, deadline, priority
-           FROM tasks
-           WHERE owner_id=$1 AND status='Pending'
-             AND deadline > $2 AND deadline <= $3
-           ORDER BY deadline ASC LIMIT 3""",
-        (uid, day_end, upcoming_end),
-    )
 
     # Motivational message & color
     if overdue_count > 0:
@@ -447,10 +452,10 @@ class RemindersCog(commands.Cog, name="Reminders"):
             self._digest_sent_today = set()
             self._digest_day = today_key
 
-        # Only trigger near the :00 mark — allow up to 30s of event-loop drift
-        # so the loop never silently skips a whole minute due to lag.
-        if now.second > 30:
-            return
+        # Only trigger near the :00 mark of the minute — the HH:MM check below
+        # and the in-memory/DB idempotency guards prevent double-sending.
+        # We allow the full 60-second window so event-loop lag never silently
+        # drops a user's digest for the day.
 
         users = await db.afetchall(
             """SELECT user_id, channel_id, timezone, lang, last_digest_date,

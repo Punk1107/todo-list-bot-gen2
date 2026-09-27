@@ -10,7 +10,10 @@ class TestRemindersCogTypes(unittest.IsolatedAsyncioTestCase):
     async def test_reminder_loop_query_param_types(self):
         """Ensure reminder_loop query parameters are correctly typed for PostgreSQL/asyncpg."""
         bot = MagicMock()
-        cog = RemindersCog(bot)
+        bot.wait_until_ready = AsyncMock()
+
+        with patch("discord.ext.tasks.Loop.start"):
+            cog = RemindersCog(bot)
 
         # Mock db.afetchall
         mock_afetchall = AsyncMock(return_value=[])

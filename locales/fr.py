@@ -688,4 +688,14 @@ STRINGS = {
     "analytics_field_completed": "✅ Terminées",
     "analytics_field_ontime":    "⏱️ Taux de ponctualité",
     "analytics_weekly_status":   "Récapitulatif hebdomadaire",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 Tableau de bord",
+    "proj_btn_board": "📋 Kanban",
+    "proj_btn_members": "👥 Membres",
+    "proj_btn_activity": "📜 Activité",
+    "proj_btn_add_task": "➕ Ajouter une tâche",
+    "proj_btn_files": "📎 Fichiers",
+    "proj_btn_claim": "🙋 Prendre une tâche",
+    "proj_btn_back": "⬅️ Tableau de bord",
+}
