@@ -166,7 +166,7 @@ class RealtimeDispatcher:
         try:
             row = await db.fetchone(
                 """SELECT project_id, guild_id, name, emoji, color,
-                          channel_id, notification_channel_id
+                          channel_id, notification_channel_id, lang
                      FROM projects
                     WHERE project_id=$1 AND guild_id=$2""",
                 (project_id, guild_id),

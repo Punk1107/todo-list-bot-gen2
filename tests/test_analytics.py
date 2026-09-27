@@ -242,6 +242,24 @@ class TestAnalyticsCogRegistration:
         cmd_names = [cmd.name for cmd in bot.tree.get_commands()]
         assert "analytics" in cmd_names
 
+    @pytest.mark.asyncio
+    async def test_close_client_and_cog_unload(self):
+        """Verify close_client() gracefully shuts down the aiohttp session and resets client."""
+        import analytics.cog as cog_module
+
+        mock_client = AsyncMock()
+        cog_module._analytics_client = mock_client
+
+        await cog_module.close_client()
+        assert mock_client.close.called
+        assert cog_module._analytics_client is None
+
+        # Test cog_unload also triggers close_client
+        cog_module._analytics_client = mock_client
+        cog = cog_module.AnalyticsCog(MagicMock())
+        await cog.cog_unload()
+        assert cog_module._analytics_client is None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. Lang Support Regression Tests (Edge Function bug fix)

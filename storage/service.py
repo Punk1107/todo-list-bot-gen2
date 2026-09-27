@@ -247,7 +247,7 @@ async def delete_attachment(
         "DELETE FROM task_attachments WHERE attachment_id=$1",
         (attachment_id,),
     )
-    db.query_cache.invalidate_all()
+    db.query_cache.invalidate_table("task_attachments")
     log.info(
         "Attachment deleted: attachment_id=%d  path=%s  by=%s",
         attachment_id, storage_path, actor_id,
@@ -255,8 +255,11 @@ async def delete_attachment(
 
 
 async def close_client() -> None:
-    """Close the underlying aiohttp session gracefully."""
-    global _storage_client
+    """Close the underlying aiohttp sessions gracefully."""
+    global _storage_client, _http_session
     if _storage_client:
         await _storage_client.close()
         _storage_client = None
+    if _http_session and not _http_session.closed:
+        await _http_session.close()
+        _http_session = None

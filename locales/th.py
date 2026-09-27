@@ -759,4 +759,14 @@ STRINGS = {
     "analytics_field_completed": "✅ เสร็จสิ้น",
     "analytics_field_ontime":    "⏱️ อัตราส่งตรงเวลา",
     "analytics_weekly_status":   "สรุปรายสัปดาห์",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 แดชบอร์ด",
+    "proj_btn_board": "📋 บอร์ด",
+    "proj_btn_members": "👥 สมาชิก",
+    "proj_btn_activity": "📜 กิจกรรม",
+    "proj_btn_add_task": "➕ เพิ่มงาน",
+    "proj_btn_files": "📎 ไฟล์",
+    "proj_btn_claim": "🙋 รับงาน",
+    "proj_btn_back": "⬅️ แดชบอร์ด",
+}

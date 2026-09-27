@@ -41,11 +41,25 @@ def _get_client() -> AnalyticsClient | None:
     return _analytics_client
 
 
+async def close_client() -> None:
+    """Closes the shared AnalyticsClient HTTP session gracefully."""
+    global _analytics_client
+    if _analytics_client is not None:
+        try:
+            await _analytics_client.close()
+        except Exception as exc:
+            log.warning("Error closing AnalyticsClient: %s", exc)
+        _analytics_client = None
+
+
 class AnalyticsCog(commands.Cog, name="Analytics"):
     """Weekly productivity analytics powered by Supabase Edge Functions."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    async def cog_unload(self) -> None:
+        await close_client()
 
     # ── Slash Command Group ───────────────────────────────────────────────────
 

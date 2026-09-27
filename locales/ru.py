@@ -688,4 +688,14 @@ STRINGS = {
     "analytics_field_completed": "✅ Выполнено",
     "analytics_field_ontime":    "⏱️ Процент своевременных выполнений",
     "analytics_weekly_status":   "Еженедельный дайджест",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 Панель",
+    "proj_btn_board": "📋 Доска",
+    "proj_btn_members": "👥 Участники",
+    "proj_btn_activity": "📜 Активность",
+    "proj_btn_add_task": "➕ Добавить задачу",
+    "proj_btn_files": "📎 Файлы",
+    "proj_btn_claim": "🙋 Взять задачу",
+    "proj_btn_back": "⬅️ Панель",
+}

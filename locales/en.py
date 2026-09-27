@@ -758,4 +758,14 @@ STRINGS = {
     "analytics_field_completed": "✅ Completed",
     "analytics_field_ontime":    "⏱️ On-Time Rate",
     "analytics_weekly_status":   "Weekly Digest",
+
+    # ─── Project Dashboard Button Labels ─────────────────────────────────────
+    "proj_btn_dashboard": "📊 Dashboard",
+    "proj_btn_board":     "📋 Board",
+    "proj_btn_members":   "👥 Members",
+    "proj_btn_activity":  "📜 Activity",
+    "proj_btn_add_task":  "➕ Add Task",
+    "proj_btn_files":     "📎 Files",
+    "proj_btn_claim":     "🙋 Claim a Task",
+    "proj_btn_back":      "⬅️ Dashboard",
 }

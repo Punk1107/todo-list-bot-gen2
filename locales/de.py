@@ -733,4 +733,14 @@ STRINGS = {
     "analytics_field_completed": "✅ Erledigt",
     "analytics_field_ontime":    "⏱️ Pünktlichkeitsrate",
     "analytics_weekly_status":   "Wöchentliche Zusammenfassung",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 Dashboard",
+    "proj_btn_board": "📋 Kanban",
+    "proj_btn_members": "👥 Mitglieder",
+    "proj_btn_activity": "📜 Aktivität",
+    "proj_btn_add_task": "➕ Aufgabe hinzufügen",
+    "proj_btn_files": "📎 Dateien",
+    "proj_btn_claim": "🙋 Aufgabe beanspruchen",
+    "proj_btn_back": "⬅️ Dashboard",
+}

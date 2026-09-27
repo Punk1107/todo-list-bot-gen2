@@ -338,7 +338,7 @@ async def claim_task(
             " WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
             (task_id, project_id, guild_id),
         )
-    db.query_cache.invalidate_all()
+    db.query_cache.invalidate_tables(["tasks", "task_assignments"])
     await log_activity(project_id, guild_id, claimer_id, "task_claimed", task.task)
     return await get_project_task(task_id, project_id, guild_id)
 
@@ -380,7 +380,7 @@ async def assign_task(
             " WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
             (task_id, project_id, guild_id),
         )
-    db.query_cache.invalidate_all()
+    db.query_cache.invalidate_tables(["tasks", "task_assignments"])
     await log_activity(project_id, guild_id, actor_id, "task_assigned",
                        f"#{task_id} → {assignee_id}")
     return await get_project_task(task_id, project_id, guild_id)
@@ -422,7 +422,7 @@ async def update_task_status(
         " WHERE task_id=$2 AND project_id=$3 AND guild_id=$4",
         params,
     )
-    db.query_cache.invalidate_all()
+    db.query_cache.invalidate_tables(["tasks", "task_assignments"])
 
     action_map = {
         "In_Progress": "task_started",

@@ -681,4 +681,14 @@ STRINGS = {
     "analytics_field_completed": "✅ Completadas",
     "analytics_field_ontime":    "⏱️ Tasa puntual",
     "analytics_weekly_status":   "Resumen semanal",
-}
+
+    # --- Project Dashboard Button Labels ---
+    "proj_btn_dashboard": "📊 Panel",
+    "proj_btn_board": "📋 Tablero",
+    "proj_btn_members": "👥 Miembros",
+    "proj_btn_activity": "📜 Actividad",
+    "proj_btn_add_task": "➕ Añadir tarea",
+    "proj_btn_files": "📎 Archivos",
+    "proj_btn_claim": "🙋 Reclamar tarea",
+    "proj_btn_back": "⬅️ Panel",
+}
