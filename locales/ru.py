@@ -606,6 +606,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ Эту команду нельзя использовать в ЛС.",
     "btn_overview_tab":                  "📊 Обзор",
     "btn_speed_tab":                     "⏱️ Скорость и пунктуальность",
+    "btn_stats_refresh":                 "🔄 Обновить",
+    "btn_search_refresh":                "🔄 Обновить",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ Эта команда доступна только на сервере Discord.",

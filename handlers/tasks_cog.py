@@ -68,23 +68,39 @@ async def task_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list[app_commands.Choice[int]]:
-    """Autocomplete pending tasks for task_id parameters.
+    """Autocomplete pending/in-progress tasks for task_id parameters.
     Returns up to 25 matching choices in format: '#ID — Task name (time_left)'.
+    Filter is pushed into SQL via ILIKE so results are not limited by a pre-fetch cap.
     """
     uid = str(interaction.user.id)
     try:
-        rows = await db.afetchall(
-            """SELECT task_id, task, deadline, status
+        if current:
+            rows = await db.afetchall(
+                """SELECT task_id, task, deadline, status
                FROM tasks
                WHERE owner_id=$1
-                 AND status IN ('Pending', 'Overdue')
+                 AND status IN ('Pending', 'In_Progress')
+                 AND parent_task_id IS NULL
+                 AND (task ILIKE $2 OR CAST(task_id AS TEXT) ILIKE $2)
+               ORDER BY
+                 CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
+                 deadline ASC NULLS LAST
+               LIMIT 25""",
+                (uid, f"%{current}%"),
+            )
+        else:
+            rows = await db.afetchall(
+                """SELECT task_id, task, deadline, status
+               FROM tasks
+               WHERE owner_id=$1
+                 AND status IN ('Pending', 'In_Progress')
                  AND parent_task_id IS NULL
                ORDER BY
                  CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
                  deadline ASC NULLS LAST
                LIMIT 25""",
-            (uid,),
-        )
+                (uid,),
+            )
     except Exception:
         return []
 
@@ -94,8 +110,6 @@ async def task_autocomplete(
         name  = row["task"][:50]
         tl    = time_left_str(row["deadline"])
         label = f"#{tid} — {name} ({tl})"
-        if current and current.lower() not in label.lower() and current not in str(tid):
-            continue
         choices.append(app_commands.Choice(name=label[:100], value=tid))
     return choices[:25]
 
@@ -599,6 +613,10 @@ class TaskStatsView(discord.ui.View):
         self._username   = username
         self._avatar_url = avatar_url
         self._view_mode  = "overview"  # current active tab
+        # Localize button labels at init so they start in the user's language
+        self.btn_overview.label = t("btn_overview_tab", lang)
+        self.btn_speed.label    = t("btn_speed_tab", lang)
+        self.btn_refresh.label  = t("btn_stats_refresh", lang)
 
     @discord.ui.button(label="📊 Overview", style=discord.ButtonStyle.primary,
                        custom_id="stats_overview")

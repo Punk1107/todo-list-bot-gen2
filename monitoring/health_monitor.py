@@ -229,7 +229,7 @@ class HealthMonitor:
             lag_str = f"🔴 {snap.loop_lag_ms} ms"
 
         embed = discord.Embed(
-            title=t("health_status_title", lang).format(status=status_label),
+            title=t("health_status_title", lang, status=status_label),
             color=color,
             timestamp=discord.utils.utcnow(),
         )

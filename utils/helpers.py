@@ -423,9 +423,13 @@ _DELTA_RE = _re.compile(
 _TIME_RE = _re.compile(
     r"^(?P<h>\d{1,2})[:.](?P<m>\d{2})(?:น\.?)?$"
 )
-# Kanji/Hanzi date pattern: YYYY年MM月DD日 [HH:MM]
-_KANJI_DATE_RE = _re.compile(
-    r"^(?P<year>\d{4})\u5e74(?P<month>\d{1,2})\u6708(?P<day>\d{1,2})\u65e5"
+# Asian date pattern: supports Kanji/Hanzi (年/月/日) and Hangul (년/월/일)
+# Year is optional — when omitted, current/next year is inferred.
+# Optional whitespace between components is allowed.
+_ASIAN_DATE_RE = _re.compile(
+    r"^(?:(?P<year>\d{4})\s*(?:\u5e74|\ub144)\s*)?"
+    r"(?P<month>\d{1,2})\s*(?:\u6708|\uc6d4)\s*"
+    r"(?P<day>\d{1,2})\s*(?:\u65e5|\uc77c)"
     r"(?:\s+(?P<hour>\d{1,2}):(?P<minute>\d{2}))?$"
 )
 
@@ -473,19 +477,30 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         }[unit]
         return now_utc + timedelta(seconds=seconds)
 
-    # ── 2. Kanji/Hanzi date: YYYY年MM月DD日 [HH:MM] ─────────────────────────
-    km = _KANJI_DATE_RE.match(raw)
+    # ── 2. Asian date: YYYY年/년MM月/월DD日/일 [HH:MM]  (Kanji, Hanzi, Hangul)
+    #    Year is optional — when missing, current/next year is inferred.
+    km = _ASIAN_DATE_RE.match(raw)
     if km:
-        year   = int(km.group("year"))
+        year_str = km.group("year")
         month  = int(km.group("month"))
         day    = int(km.group("day"))
         hour   = int(km.group("hour"))   if km.group("hour")   else 23
         minute = int(km.group("minute")) if km.group("minute") else 59
-        if year >= 2400:  # Thai Buddhist Era
-            year -= 543
+        if year_str:
+            year = int(year_str)
+            if year >= 2400:  # Thai Buddhist Era
+                year -= 543
+        else:
+            # Infer year: use current year, roll to next if date already past
+            year = now_local.year
         try:
             naive = datetime(year, month, day, hour, minute)
-            return tz.localize(naive).astimezone(pytz.utc)
+            localized = tz.localize(naive)
+            # Roll to next year for yearless shorthand that is already past
+            if not year_str and localized.astimezone(pytz.utc) < now_utc:
+                naive = naive.replace(year=year + 1)
+                localized = tz.localize(naive)
+            return localized.astimezone(pytz.utc)
         except ValueError:
             pass
 
@@ -723,7 +738,7 @@ def build_task_embed(row, lang: str, tz_name: str,
             dt = datetime.fromisoformat(deadline)
         if dt.tzinfo is None:
             dt = pytz.utc.localize(dt)
-        if dt < datetime.now(pytz.utc) and status == "Pending":
+        if dt < datetime.now(pytz.utc) and status in ("Pending", "In_Progress"):
             status = "Overdue"
     except Exception:
         pass
@@ -926,7 +941,7 @@ def build_task_list_embed(
                     dt = datetime.fromisoformat(dl_val)
                 if dt.tzinfo is None:
                     dt = pytz.utc.localize(dt)
-                is_overdue = dt < now and row["status"] == "Pending"
+                is_overdue = dt < now and row["status"] in ("Pending", "In_Progress")
             except Exception:
                 is_overdue = False
 

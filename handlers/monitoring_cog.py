@@ -96,12 +96,12 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
                         channel = None
 
                 if channel is None:
-                    errors.append(t("monitoring_channel_not_found", lang).format(ch_id=ch_id))
+                    errors.append(t("monitoring_channel_not_found", lang, ch_id=ch_id))
                 elif not isinstance(channel, discord.abc.Messageable):
-                    errors.append(t("monitoring_channel_unsendable", lang).format(name=channel.name))
+                    errors.append(t("monitoring_channel_unsendable", lang, name=channel.name))
                 else:
                     await db.set_guild_setting(guild_id, "admin_log_channel_id", str(ch_id))
-                    saved.append(t("monitoring_log_channel_saved", lang).format(mention=channel.mention))
+                    saved.append(t("monitoring_log_channel_saved", lang, mention=channel.mention))
                     # Hot-update the live dispatcher for this specific guild
                     if hasattr(interaction.client, "_alert_dispatcher") and interaction.client._alert_dispatcher:
                         interaction.client._alert_dispatcher.update_guild_channel(guild_id, ch_id)
@@ -117,7 +117,7 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
                     errors.append(t("monitoring_health_interval_range", lang))
                 else:
                     await db.set_guild_setting(guild_id, "health_check_interval_min", str(hi))
-                    saved.append(t("monitoring_health_interval_saved", lang).format(value=hi))
+                    saved.append(t("monitoring_health_interval_saved", lang, value=hi))
             except ValueError:
                 errors.append(t("monitoring_health_interval_numeric", lang))
 
@@ -130,7 +130,7 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
                     errors.append(t("monitoring_alert_limit_range", lang))
                 else:
                     await db.set_guild_setting(guild_id, "alert_rate_limit_sec", str(ar))
-                    saved.append(t("monitoring_alert_limit_saved", lang).format(value=ar))
+                    saved.append(t("monitoring_alert_limit_saved", lang, value=ar))
                     if hasattr(interaction.client, "_alert_dispatcher") and interaction.client._alert_dispatcher:
                         interaction.client._alert_dispatcher._rate_limit_sec = ar
             except ValueError:
@@ -239,7 +239,7 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
 
             embed = discord.Embed(
                 title=t("monitoring_status_title", lang),
-                description=t("monitoring_status_desc", lang).format(guild=interaction.guild.name),
+                description=t("monitoring_status_desc", lang, guild=interaction.guild.name),
                 color=0x3498DB,
                 timestamp=discord.utils.utcnow(),
             )
@@ -251,7 +251,7 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
                 if ch:
                     ch_display = ch.mention
                 else:
-                    ch_display = t("monitoring_channel_not_found_display", lang).format(ch_id=ch_id_str)
+                    ch_display = t("monitoring_channel_not_found_display", lang, ch_id=ch_id_str)
             else:
                 ch_display = t("monitoring_not_configured_hint", lang)
 
@@ -262,14 +262,14 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             )
             embed.add_field(
                 name=t("monitoring_status_health_label", lang),
-                value=t("monitoring_status_health_value", lang).format(
+                value=t("monitoring_status_health_value", lang,
                     value=settings.get("health_check_interval_min", "5")
                 ),
                 inline=True,
             )
             embed.add_field(
                 name=t("monitoring_status_rate_label", lang),
-                value=t("monitoring_status_rate_value", lang).format(
+                value=t("monitoring_status_rate_value", lang,
                     value=settings.get("alert_rate_limit_sec", "300")
                 ),
                 inline=True,

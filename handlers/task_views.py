@@ -117,7 +117,7 @@ class AddTaskModal(ui.Modal):
         self.deadline = ui.TextInput(
             label=t("task_deadline_label", lang),
             placeholder=t("task_deadline_placeholder", lang),
-            max_length=20, required=True,
+            max_length=50, required=True,
         )
         self.description = ui.TextInput(
             label=t("task_desc_label", lang),

@@ -273,6 +273,7 @@ class SearchResultsView(ui.View):
             await interaction.response.send_message(
                 t("permission_denied", self.lang), ephemeral=True)
             return
+        button.label = t("btn_search_refresh", self.lang)
         await interaction.response.defer()
         await self._go_to_page(interaction, self.current_result.page)
 

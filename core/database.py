@@ -1276,7 +1276,7 @@ class DatabaseManager:
     def invalidate_stats(self, uid: str) -> None:
         """Call this after any task mutation to keep stats fresh."""
         self.stats_cache.invalidate(uid)
-        self.query_cache.invalidate_all()  # also bust L1 query cache
+        self.query_cache.invalidate_table("tasks")  # targeted bust — preserves other table caches
 
     # ── Productivity analytics (for /task-stats) ──────────────────────────────
 
