@@ -600,6 +600,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ このコマンドはDMで使用できません。",
     "btn_overview_tab":                  "📊 概要",
     "btn_speed_tab":                     "⏱️ スピードと時間遵守率",
+    "btn_stats_refresh":                 "🔄 更新",
+    "btn_search_refresh":                "🔄 更新",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ このコマンドはDiscordサーバー内でのみ使用できます。",

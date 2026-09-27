@@ -677,6 +677,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ ไม่สามารถใช้คำสั่งนี้ใน DM ได้",
     "btn_overview_tab":                  "📊 ภาพรวม",
     "btn_speed_tab":                     "⏱️ ความเร็ว & ความตรงเวลา",
+    "btn_stats_refresh":                 "🔄 รีเฟรช",
+    "btn_search_refresh":                "🔄 รีเฟรช",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ คำสั่งนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น",

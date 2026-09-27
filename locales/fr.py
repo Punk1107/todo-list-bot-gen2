@@ -606,6 +606,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ Cette commande ne peut pas etre utilisee en DM.",
     "btn_overview_tab":                  "📊 Apercu",
     "btn_speed_tab":                     "⏱️ Vitesse et ponctualite",
+    "btn_stats_refresh":                 "🔄 Actualiser",
+    "btn_search_refresh":                "🔄 Actualiser",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ Cette commande ne peut être utilisée que dans un serveur Discord.",

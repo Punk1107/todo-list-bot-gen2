@@ -202,6 +202,61 @@ class TestDateParserI18n(unittest.TestCase):
                 self.assertEqual(local_dt.hour, exp_h)
                 self.assertEqual(local_dt.minute, exp_min)
 
+    def test_korean_hangul_date_formats(self):
+        """Test Korean Hangul date formats: 년/월/일 with and without year,
+        with optional spaces, and time component."""
+        import pytz
+        tz = pytz.timezone(self.tz)
+        cases = [
+            # Full date with time
+            ("2026년 9월 27일 15:30", 2026, 9, 27, 15, 30),
+            ("2026년9월27일 15:30", 2026, 9, 27, 15, 30),   # no spaces
+            # Full date without time (default 23:59)
+            ("2026년9월27일", 2026, 9, 27, 23, 59),
+            ("2026년 09월 27일", 2026, 9, 27, 23, 59),
+            # Year-less shorthand (month+day only) -- year inferred
+            ("12월 25일 18:00", None, 12, 25, 18, 0),
+            ("12월25일 18:00",  None, 12, 25, 18, 0),
+            ("12월25일",         None, 12, 25, 23, 59),
+        ]
+        for text, exp_y, exp_m, exp_d, exp_h, exp_min in cases:
+            with self.subTest(text=text):
+                res = parse_deadline(text, self.tz)
+                self.assertIsNotNone(res, f"parse_deadline failed for Korean date '{text}'")
+                local_dt = res.astimezone(tz)
+                if exp_y is not None:
+                    self.assertEqual(local_dt.year, exp_y)
+                self.assertEqual(local_dt.month, exp_m)
+                self.assertEqual(local_dt.day, exp_d)
+                self.assertEqual(local_dt.hour, exp_h)
+                self.assertEqual(local_dt.minute, exp_min)
+
+    def test_asian_yearless_shorthand(self):
+        """Test year-less Asian shorthand (MM月/월DD日/일) for both Kanji and Hangul."""
+        import pytz
+        tz = pytz.timezone(self.tz)
+        cases = [
+            # Japanese/Chinese yearless
+            ("12月25日 18:00", None, 12, 25, 18, 0),
+            ("12月25日",       None, 12, 25, 23, 59),
+            # Spaced variants
+            ("12月 25日 18:00", None, 12, 25, 18, 0),
+            # Korean yearless
+            ("12월 25일 18:00", None, 12, 25, 18, 0),
+            ("12월 25일",       None, 12, 25, 23, 59),
+        ]
+        for text, exp_y, exp_m, exp_d, exp_h, exp_min in cases:
+            with self.subTest(text=text):
+                res = parse_deadline(text, self.tz)
+                self.assertIsNotNone(res, f"parse_deadline failed for yearless Asian date '{text}'")
+                local_dt = res.astimezone(tz)
+                if exp_y is not None:
+                    self.assertEqual(local_dt.year, exp_y)
+                self.assertEqual(local_dt.month, exp_m)
+                self.assertEqual(local_dt.day, exp_d)
+                self.assertEqual(local_dt.hour, exp_h)
+                self.assertEqual(local_dt.minute, exp_min)
+
 
 if __name__ == "__main__":
     unittest.main()

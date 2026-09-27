@@ -599,6 +599,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ Este comando no se puede usar en DMs.",
     "btn_overview_tab":                  "📊 Resumen",
     "btn_speed_tab":                     "⏱️ Velocidad y puntualidad",
+    "btn_stats_refresh":                 "🔄 Actualizar",
+    "btn_search_refresh":                "🔄 Actualizar",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ Este comando solo puede usarse dentro de un servidor de Discord.",

@@ -83,11 +83,13 @@ async function computeWeeklyMetrics(userId: string): Promise<WeeklySnapshotMetri
     : 0;
 
   // Daily completion counts (index 0 = startDate, index 6 = endDate)
+  // Use completed_at if available, otherwise fall back to updated_at then created_at
+  // so tasks are counted on the day they were finished, not the day they were created.
   const dailyCompletions = Array(7).fill(0);
   for (const t of completed) {
-    const createdDay = new Date(t.created_at);
+    const completedDay = new Date((t as Record<string, unknown>).completed_at as string ?? (t as Record<string, unknown>).updated_at as string ?? t.created_at);
     const diffDays = Math.floor(
-      (createdDay.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (completedDay.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
     );
     if (diffDays >= 0 && diffDays < 7) {
       dailyCompletions[diffDays]++;

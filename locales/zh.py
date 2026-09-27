@@ -600,6 +600,8 @@ STRINGS = {
     "err_dm_not_allowed":                "❌ 此命令不能在 DM 中使用。",
     "btn_overview_tab":                  "📊 总览",
     "btn_speed_tab":                     "⏱️ 速度与准时性",
+    "btn_stats_refresh":                 "🔄 刷新",
+    "btn_search_refresh":                "🔄 刷新",
 
     # ─── Monitoring Setup Modal & Validation ────────────────────────────────
     "monitoring_guild_only":             "❌ 此命令只能在 Discord 服务器中使用。",

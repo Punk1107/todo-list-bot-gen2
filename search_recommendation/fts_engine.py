@@ -180,7 +180,7 @@ LIMIT {limit_ph} OFFSET {offset_ph}
             # Count uses params without limit/offset (before those were added)
             count_row = await db.fetchone(count_sql, count_params)
             total = int(count_row["total"]) if count_row else 0
-            rows = await db.fetchall(data_sql, params)
+            rows = await db.fetchall(data_sql, params) if total > 0 else []
         except Exception as exc:
             log.error("ILIKE fallback query failed: %s", exc)
             return SearchResultPage(
