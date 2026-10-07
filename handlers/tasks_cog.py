@@ -143,6 +143,13 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await ensure_user(uid, lang)
 
+        # Validate priority if specified
+        if priority is not None and not (0 <= priority <= 7):
+            await interaction.response.send_message(
+                t("add_invalid_priority_choice", lang), ephemeral=True
+            )
+            return
+
         # ── 1-step quick add: task name provided as slash param ────────────────────────
         if task is not None:
             # Validate inputs
@@ -151,12 +158,6 @@ class TasksCog(commands.Cog, name="Tasks"):
                 await interaction.response.send_message(t(name_or_err, lang), ephemeral=True)
                 return
             task_name = name_or_err
-
-            if priority is not None and not (0 <= priority <= 7):
-                await interaction.response.send_message(
-                    t("add_invalid_priority_choice", lang), ephemeral=True
-                )
-                return
 
             # Validate deadline if given; default to +1 day end-of-day if omitted
             deadline_str = deadline or "+1d"
