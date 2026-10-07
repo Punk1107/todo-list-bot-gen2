@@ -20,6 +20,8 @@ from storage.models import TaskAttachment
 from collaboration.views import ProjectSelectDropdown, ProjectListView
 from collaboration.models import Project
 from handlers.settings_cog import build_help_embed, HelpCategorySelect
+from handlers.task_views import AddTaskModal
+from locales.i18n import SUPPORTED_LANGS, t
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -279,3 +281,51 @@ class TestHelpCategories:
             embed = build_help_embed(cat, "en")
             assert embed is not None
             assert len(embed.fields) > 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. AddTaskModal In-Modal Priority Selection (All 9 Languages)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAddTaskModalPriorityUX:
+    """Verify AddTaskModal in-modal priority dropdown functionality across all languages."""
+
+    def test_modal_components_all_languages(self):
+        """Ensure AddTaskModal has 5 components (4 inputs + 1 priority dropdown) in all 9 languages."""
+        for lang in SUPPORTED_LANGS:
+            modal = AddTaskModal(lang=lang, priority=0)
+            d = modal.to_dict()
+            assert len(d["components"]) == 5, f"Expected 5 components in {lang}, got {len(d['components'])}"
+            # Component 4 should be Label (type 18) wrapping Select (type 3)
+            assert d["components"][4]["type"] == 18
+            sel_data = d["components"][4]["component"]
+            assert sel_data["type"] == 3
+            assert len(sel_data["options"]) == 8
+
+            # Default option should be 0
+            p0 = [o for o in sel_data["options"] if o.get("default") is True]
+            assert len(p0) == 1 and p0[0]["value"] == "0"
+
+    def test_modal_preselects_specified_priority(self):
+        """Ensure specifying a priority when opening the modal correctly sets the default option."""
+        for prio in (1, 3, 5, 7):
+            modal = AddTaskModal(lang="en", priority=prio)
+            d = modal.to_dict()
+            sel_data = d["components"][4]["component"]
+            selected = [o for o in sel_data["options"] if o.get("default") is True]
+            assert len(selected) == 1
+            assert selected[0]["value"] == str(prio)
+
+    def test_modal_priority_fallback_and_extraction(self):
+        """Ensure priority value extraction in on_submit logic correctly parses selected values."""
+        modal = AddTaskModal(lang="th", priority=0)
+        # Simulate user choosing priority 6 (Urgent)
+        modal.priority_select._values = ["6"]
+        val = int(modal.priority_select.values[0]) if modal.priority_select.values else modal.priority
+        assert val == 6
+
+        # Simulate user keeping default (empty values fallback)
+        modal_def = AddTaskModal(lang="th", priority=3)
+        modal_def.priority_select._values = []
+        val_def = int(modal_def.priority_select.values[0]) if modal_def.priority_select.values else modal_def.priority
+        assert val_def == 3

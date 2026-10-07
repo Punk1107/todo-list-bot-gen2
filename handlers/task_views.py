@@ -87,6 +87,37 @@ def _disable_all(view: ui.View) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Priority constants — single source of truth for labels + colors
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (value, emoji, color_name) — used by AddTaskModal, PrioritySelect, and PriorityEditSelect
+_PRIORITY_OPTIONS = [
+    (0, "⬜", "priority_0"),
+    (1, "🟦", "priority_1"),
+    (2, "🟩", "priority_2"),
+    (3, "🟨", "priority_3"),
+    (4, "🟧", "priority_4"),
+    (5, "🟥", "priority_5"),
+    (6, "🔴", "priority_6"),
+    (7, "🆘", "priority_7"),
+]
+
+
+def _build_priority_options(lang: str, current: int = -1) -> list[discord.SelectOption]:
+    """Build the 8 priority SelectOptions with label + description from i18n."""
+    return [
+        discord.SelectOption(
+            label=t(f"priority_{v}", lang),
+            description=t(f"priority_{v}_desc", lang)[:100],
+            value=str(v),
+            emoji=emoji,
+            default=(v == current),
+        )
+        for v, emoji, _ in _PRIORITY_OPTIONS
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Modals
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -130,10 +161,21 @@ class AddTaskModal(ui.Modal):
             placeholder=t("task_tags_placeholder", lang),
             max_length=200, required=False,
         )
+        self.priority_select = ui.Select(
+            placeholder=t("priority_select_placeholder", lang),
+            options=_build_priority_options(lang, current=self.priority),
+            min_values=1,
+            max_values=1,
+        )
+        self.priority_label = ui.Label(
+            text=t("task_priority_label", lang),
+            component=self.priority_select,
+        )
         self.add_item(self.task_name)
         self.add_item(self.deadline)
         self.add_item(self.description)
         self.add_item(self.tags)
+        self.add_item(self.priority_label)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         uid  = str(interaction.user.id)
@@ -157,8 +199,14 @@ class AddTaskModal(ui.Modal):
             return
         task_name = name_or_err
 
-        # ── Priority already validated in Select View ──────────────
-        priority = self.priority
+        # ── Priority from modal dropdown (or fallback to initial priority) ───
+        if hasattr(self, "priority_select") and self.priority_select.values:
+            try:
+                priority = int(self.priority_select.values[0])
+            except (ValueError, TypeError):
+                priority = self.priority
+        else:
+            priority = self.priority
 
         # ── Validate description ─────────────────────────────────────────────
         description: Optional[str] = None
@@ -766,37 +814,6 @@ class TaskConflictView(ui.View):
                 await interaction.response.send_message(t("err_generic", self.lang), ephemeral=True)
         except Exception:
             pass
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Priority constants — single source of truth for labels + colors
-# ─────────────────────────────────────────────────────────────────────────────
-
-# (value, emoji, color_name) — used by both PrioritySelect and PriorityEditSelect
-_PRIORITY_OPTIONS = [
-    (0, "⬜", "priority_0"),
-    (1, "🟦", "priority_1"),
-    (2, "🟩", "priority_2"),
-    (3, "🟨", "priority_3"),
-    (4, "🟧", "priority_4"),
-    (5, "🟥", "priority_5"),
-    (6, "🔴", "priority_6"),
-    (7, "🆘", "priority_7"),
-]
-
-
-def _build_priority_options(lang: str, current: int = -1) -> list[discord.SelectOption]:
-    """Build the 8 priority SelectOptions with label + description from i18n."""
-    return [
-        discord.SelectOption(
-            label=t(f"priority_{v}", lang),
-            description=t(f"priority_{v}_desc", lang)[:100],
-            value=str(v),
-            emoji=emoji,
-            default=(v == current),
-        )
-        for v, emoji, _ in _PRIORITY_OPTIONS
-    ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
