@@ -329,3 +329,61 @@ class TestAddTaskModalPriorityUX:
         modal_def.priority_select._values = []
         val_def = int(modal_def.priority_select.values[0]) if modal_def.priority_select.values else modal_def.priority
         assert val_def == 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. TaskListView Component Layout & QuickAction (Row Conflict Prevention)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTaskListViewUX:
+    """Ensure TaskListView handles TaskFilterSelect + TaskQuickActionSelect without row collisions."""
+
+    def test_task_list_view_with_tasks_layout(self):
+        """TaskListView with tasks should have 4 action rows (Filter, QuickAction, Pagination, Refresh)."""
+        from handlers.task_views import TaskListView
+        sample_tasks = [
+            {
+                "task_id": 1,
+                "task": "Test Task 1",
+                "deadline": "2026-10-10T12:00:00Z",
+                "priority": 1,
+                "is_pinned": False,
+                "status": "Pending",
+            }
+        ]
+        view = TaskListView(uid="12345", lang="en", tz_name="UTC", filter_status="Pending")
+        view._update_quickaction(sample_tasks)
+        components = view.to_components()
+        assert len(components) == 4, f"Expected 4 action rows, got {len(components)}"
+        # Row 0: TaskFilterSelect (type 3)
+        assert components[0]["components"][0]["type"] == 3
+        # Row 1: TaskQuickActionSelect (type 3)
+        assert components[1]["components"][0]["type"] == 3
+        # Row 2: 5 Pagination buttons (type 2)
+        assert len(components[2]["components"]) == 5
+        # Row 3: Refresh button (type 2)
+        assert len(components[3]["components"]) == 1
+
+    def test_task_list_view_empty_tasks_layout(self):
+        """TaskListView without tasks should omit QuickAction and have 3 action rows."""
+        from handlers.task_views import TaskListView
+        view = TaskListView(uid="12345", lang="th", tz_name="Asia/Bangkok", filter_status="Pending")
+        view._update_quickaction([])
+        components = view.to_components()
+        assert len(components) == 3, f"Expected 3 action rows, got {len(components)}"
+        # Row 0: TaskFilterSelect
+        assert components[0]["components"][0]["type"] == 3
+        # Row 1: 5 Pagination buttons
+        assert len(components[1]["components"]) == 5
+        # Row 2: Refresh button
+        assert len(components[2]["components"]) == 1
+
+    def test_task_filter_select_all_languages(self):
+        """TaskFilterSelect should initialize on row 0 in all 9 supported languages."""
+        from handlers.task_views import TaskFilterSelect
+        for lang in SUPPORTED_LANGS:
+            sel = TaskFilterSelect(lang=lang, current="Pending", row=0)
+            assert sel.row == 0
+            assert len(sel.options) == 6
+            pending_opts = [o for o in sel.options if o.value == "Pending"]
+            assert len(pending_opts) == 1 and pending_opts[0].default is True

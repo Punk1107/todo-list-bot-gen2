@@ -1303,7 +1303,7 @@ class TaskActionView(ui.View):
 class TaskFilterSelect(ui.Select):
     """Dropdown to switch the active filter in a TaskListView."""
 
-    def __init__(self, lang: str, current: str) -> None:
+    def __init__(self, lang: str, current: str, row: int = 0) -> None:
         options = [
             discord.SelectOption(
                 label=t("tasks_filter_pending", lang), value="Pending",
@@ -1332,13 +1332,18 @@ class TaskFilterSelect(ui.Select):
         ]
         super().__init__(
             placeholder=t("list_filter_placeholder", lang),
-            options=options, row=1,
+            options=options, row=row,
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view: TaskListView = self.view  # type: ignore[assignment]
+        if str(interaction.user.id) != view.uid:
+            await _safe_respond(interaction, t("permission_denied", view.lang))
+            return
         view.filter_status = self.values[0]
         view.page = 1
+        for opt in self.options:
+            opt.default = (opt.value == view.filter_status)
         await interaction.response.defer()
         await view.update_message(interaction)
 
@@ -1364,7 +1369,7 @@ class TaskListView(ui.View):
         self.filter_status = filter_status
         self.page          = 1
         self._message: Optional[discord.Message] = None  # set by caller after send
-        self._filter_select = TaskFilterSelect(lang, filter_status)
+        self._filter_select = TaskFilterSelect(lang, filter_status, row=0)
         self.add_item(self._filter_select)
         self.refresh.label = t("btn_refresh", lang)
         # Initialize page indicator correctly before first render
@@ -1486,17 +1491,26 @@ class TaskListView(ui.View):
 
     @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary, custom_id="lv_refresh", row=3)
     async def refresh(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
         await interaction.response.defer()
         await self.update_message(interaction)
 
     @ui.button(emoji="⏮", style=discord.ButtonStyle.secondary, custom_id="lv_first", row=2)
     async def first_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
         await interaction.response.defer()
         self.page = 1
         await self.update_message(interaction)
 
     @ui.button(emoji="◀", style=discord.ButtonStyle.primary, custom_id="lv_prev", row=2)
     async def prev_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
         await interaction.response.defer()
         self.page -= 1
         await self.update_message(interaction)
@@ -1507,12 +1521,18 @@ class TaskListView(ui.View):
 
     @ui.button(emoji="▶", style=discord.ButtonStyle.primary, custom_id="lv_next", row=2)
     async def next_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
         await interaction.response.defer()
         self.page += 1
         await self.update_message(interaction)
 
     @ui.button(emoji="⏭", style=discord.ButtonStyle.secondary, custom_id="lv_last", row=2)
     async def last_page(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await _safe_respond(interaction, t("permission_denied", self.lang))
+            return
         await interaction.response.defer()
         _, _, total_pages = await self._fetch_page()
         self.page = total_pages
