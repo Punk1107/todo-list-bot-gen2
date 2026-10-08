@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 16   # bump when adding migrations below
+SCHEMA_VERSION = 17   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -802,6 +802,17 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_digest INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS lang TEXT DEFAULT 'th';
     INSERT INTO schema_version VALUES (16) ON CONFLICT (version) DO UPDATE SET version=16;
+    """),
+
+    # ── v17: project priority & manual_progress ──────────────────────────────
+    (17, """
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0
+        CHECK(priority BETWEEN 0 AND 7);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS manual_progress INTEGER
+        CHECK(manual_progress BETWEEN 0 AND 100);
+    CREATE INDEX IF NOT EXISTS idx_projects_guild_priority
+        ON projects(guild_id, priority DESC, updated_at DESC);
+    INSERT INTO schema_version VALUES (17) ON CONFLICT (version) DO UPDATE SET version=17;
     """),
 ]
 
