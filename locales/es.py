@@ -683,14 +683,52 @@ STRINGS = {
     "analytics_field_completed": "✅ Completadas",
     "analytics_field_ontime":    "⏱️ Tasa puntual",
     "analytics_weekly_status":   "Resumen semanal",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 Panel",
-    "proj_btn_board": "📋 Tablero",
-    "proj_btn_members": "👥 Miembros",
-    "proj_btn_activity": "📜 Actividad",
-    "proj_btn_add_task": "➕ Añadir tarea",
-    "proj_btn_files": "📎 Archivos",
-    "proj_btn_claim": "🙋 Reclamar tarea",
-    "proj_btn_back": "⬅️ Panel",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 Panel",
+
+    "proj_btn_board": "📋 Tablero",
+
+    "proj_btn_members": "👥 Miembros",
+
+    "proj_btn_activity": "📜 Actividad",
+
+    "proj_btn_add_task": "➕ Añadir tarea",
+
+    "proj_btn_files": "📎 Archivos",
+
+    "proj_btn_claim": "🙋 Reclamar tarea",
+
+    "proj_btn_back": "⬅️ Panel",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ Agregar miembro",
+    "proj_btn_complete_task": "✅ Completar tarea",
+    "proj_add_member_ui_title": "Agregar miembro al proyecto",
+    "proj_add_member_ui_desc": "Selecciona un usuario a continuación para invitarlo a **{project}**.\nTambién recibirá una notificación por mensaje directo.",
+    "proj_add_member_select_placeholder": "Selecciona un miembro para agregar...",
+    "proj_member_added_title": "¡Miembro agregado!",
+    "proj_member_added_desc": "{user} ha sido añadido a **{project}** como **{role}**.\n{dm_status}",
+    "proj_member_dm_title": "¡Has sido agregado a un proyecto!",
+    "proj_member_dm_body": "👋 ¡Hola! **{actor}** te ha agregado a {project_emoji} **{project_name}** en **{guild_name}** como **{role}**.",
+    "proj_dm_desc_field": "Descripción",
+    "proj_dm_hint_title": "Recordatorio",
+    "proj_member_dm_hint": "¡Proyecto listo! ¡No olvides revisar y colaborar con el equipo en `/project board`! 🚀",
+    "proj_member_dm_sent": "📬 Se ha enviado un mensaje directo al usuario.",
+    "proj_member_dm_failed": "⚠️ No se pudo enviar un mensaje directo (es posible que tenga los mensajes directos desactivados).",
+    "proj_member_bot_error": "❌ No puedes agregar bots a un proyecto.",
+    "proj_role_lead": "Líder (Lead)",
+    "proj_role_member": "Miembro (Member)",
+    "proj_role_viewer": "Espectador (Viewer)",
+    "proj_complete_select_title": "Completar una tarea",
+    "proj_complete_select_desc": "Selecciona una tarea activa a continuación para marcarla como **Completada**.\n¡Cualquier persona que pertenezca a este proyecto puede completar tareas! 🎉",
+    "proj_complete_select_placeholder": "Selecciona una tarea para completar...",
+    "proj_no_completable": "✅ ¡No hay tareas pendientes o en progreso para completar!",
+    "proj_task_completed_title": "¡Tarea completada!",
+    "proj_task_completed_desc": "{user} ha marcado la tarea **#{task_id} — {name}** como **Completada**. ¡Buen trabajo! 🎉",
+    "proj_task_completed_footer": "El estado de la tarea se actualizó a Completada.",
+}
+

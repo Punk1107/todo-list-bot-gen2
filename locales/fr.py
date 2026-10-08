@@ -690,14 +690,52 @@ STRINGS = {
     "analytics_field_completed": "✅ Terminées",
     "analytics_field_ontime":    "⏱️ Taux de ponctualité",
     "analytics_weekly_status":   "Récapitulatif hebdomadaire",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 Tableau de bord",
-    "proj_btn_board": "📋 Kanban",
-    "proj_btn_members": "👥 Membres",
-    "proj_btn_activity": "📜 Activité",
-    "proj_btn_add_task": "➕ Ajouter une tâche",
-    "proj_btn_files": "📎 Fichiers",
-    "proj_btn_claim": "🙋 Prendre une tâche",
-    "proj_btn_back": "⬅️ Tableau de bord",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 Tableau de bord",
+
+    "proj_btn_board": "📋 Kanban",
+
+    "proj_btn_members": "👥 Membres",
+
+    "proj_btn_activity": "📜 Activité",
+
+    "proj_btn_add_task": "➕ Ajouter une tâche",
+
+    "proj_btn_files": "📎 Fichiers",
+
+    "proj_btn_claim": "🙋 Prendre une tâche",
+
+    "proj_btn_back": "⬅️ Tableau de bord",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ Ajouter un membre",
+    "proj_btn_complete_task": "✅ Terminer la tâche",
+    "proj_add_member_ui_title": "Ajouter un membre au projet",
+    "proj_add_member_ui_desc": "Sélectionnez un utilisateur ci-dessous pour l'inviter dans **{project}**.\nIl recevra également un message privé.",
+    "proj_add_member_select_placeholder": "Sélectionnez un membre à ajouter...",
+    "proj_member_added_title": "Membre ajouté !",
+    "proj_member_added_desc": "{user} a été ajouté à **{project}** en tant que **{role}**.\n{dm_status}",
+    "proj_member_dm_title": "Vous avez été ajouté à un projet !",
+    "proj_member_dm_body": "👋 Bonjour ! **{actor}** vous a ajouté à {project_emoji} **{project_name}** sur **{guild_name}** en tant que **{role}**.",
+    "proj_dm_desc_field": "Description",
+    "proj_dm_hint_title": "Remarque",
+    "proj_member_dm_hint": "Le projet est prêt ! N'oubliez pas de collaborer avec l'équipe sur `/project board` ! 🚀",
+    "proj_member_dm_sent": "📬 Un message privé de notification a été envoyé à l'utilisateur.",
+    "proj_member_dm_failed": "⚠️ Impossible d'envoyer un MP (les messages privés sont peut-être désactivés).",
+    "proj_member_bot_error": "❌ Impossible d'ajouter un bot au projet.",
+    "proj_role_lead": "Chef de projet (Lead)",
+    "proj_role_member": "Membre",
+    "proj_role_viewer": "Observateur",
+    "proj_complete_select_title": "Terminer une tâche",
+    "proj_complete_select_desc": "Sélectionnez une tâche active ci-dessous pour la marquer comme **Terminée**.\nTous les membres de ce projet peuvent fermer des tâches ! 🎉",
+    "proj_complete_select_placeholder": "Sélectionnez une tâche à terminer...",
+    "proj_no_completable": "✅ Il n'y a aucune tâche en attente ou en cours à terminer !",
+    "proj_task_completed_title": "Tâche terminée !",
+    "proj_task_completed_desc": "{user} a marqué la tâche **#{task_id} — {name}** comme **Terminée** ! Bravo ! 🎉",
+    "proj_task_completed_footer": "Statut de la tâche mis à jour sur Terminée.",
+}
+

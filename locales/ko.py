@@ -683,14 +683,52 @@ STRINGS = {
     "analytics_field_completed": "✅ 완료됨",
     "analytics_field_ontime":    "⏱️ 정시 완료율",
     "analytics_weekly_status":   "주간 다이제스트",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 대시보드",
-    "proj_btn_board": "📋 보드",
-    "proj_btn_members": "👥 멤버",
-    "proj_btn_activity": "📜 활동",
-    "proj_btn_add_task": "➕ 작업 추가",
-    "proj_btn_files": "📎 파일",
-    "proj_btn_claim": "🙋 작업 맡기",
-    "proj_btn_back": "⬅️ 대시보드",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 대시보드",
+
+    "proj_btn_board": "📋 보드",
+
+    "proj_btn_members": "👥 멤버",
+
+    "proj_btn_activity": "📜 활동",
+
+    "proj_btn_add_task": "➕ 작업 추가",
+
+    "proj_btn_files": "📎 파일",
+
+    "proj_btn_claim": "🙋 작업 맡기",
+
+    "proj_btn_back": "⬅️ 대시보드",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ 멤버 추가",
+    "proj_btn_complete_task": "✅ 작업 완료",
+    "proj_add_member_ui_title": "프로젝트에 멤버 추가",
+    "proj_add_member_ui_desc": "아래에서 사용자를 선택하여 **{project}** 에 초대하세요。\n해당 사용자에게 DM으로도 알림이 전송됩니다.",
+    "proj_add_member_select_placeholder": "추가할 멤버를 선택하세요...",
+    "proj_member_added_title": "멤버가 추가되었습니다!",
+    "proj_member_added_desc": "{user} 님이 **{role}**(으)로 **{project}** 에 추가되었습니다。\n{dm_status}",
+    "proj_member_dm_title": "새 프로젝트에 초대되었습니다!",
+    "proj_member_dm_body": "👋 안녕하세요! **{actor}** 님이 **{guild_name}** 서버의 {project_emoji} **{project_name}** 프로젝트에 당신을 **{role}**(으)로 추가했습니다.",
+    "proj_dm_desc_field": "프로젝트 설명",
+    "proj_dm_hint_title": "안내",
+    "proj_member_dm_hint": "프로젝트가 준비되었습니다! `/project board` 를 확인하고 팀과 함께 작업하는 것을 잊지 마세요! 🚀",
+    "proj_member_dm_sent": "📬 사용자에게 DM 알림을 성공적으로 보냈습니다.",
+    "proj_member_dm_failed": "⚠️ 사용자에게 DM을 보낼 수 없습니다 (DM 수신이 비활성화되었을 수 있습니다).",
+    "proj_member_bot_error": "❌ 봇 계정은 프로젝트에 추가할 수 없습니다.",
+    "proj_role_lead": "리더 (Lead)",
+    "proj_role_member": "멤버 (Member)",
+    "proj_role_viewer": "뷰어 (Viewer)",
+    "proj_complete_select_title": "작업 완료하기",
+    "proj_complete_select_desc": "아래에서 작업을 선택하여 **완료 (Completed)** 상태로 변경하세요。\n이 프로젝트의 구성원이라면 누구나 작업을 마감할 수 있습니다! 🎉",
+    "proj_complete_select_placeholder": "완료할 작업을 선택하세요...",
+    "proj_no_completable": "✅ 완료할 수 있는 대기 중 또는 진행 중인 작업이 없습니다!",
+    "proj_task_completed_title": "작업이 완료되었습니다!",
+    "proj_task_completed_desc": "{user} 님이 작업 **#{task_id} — {name}** 을(를) **완료** 처리했습니다! 수고하셨습니다! 🎉",
+    "proj_task_completed_footer": "작업 상태가 완료로 업데이트되었습니다.",
+}
+

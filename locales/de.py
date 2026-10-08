@@ -735,14 +735,52 @@ STRINGS = {
     "analytics_field_completed": "✅ Erledigt",
     "analytics_field_ontime":    "⏱️ Pünktlichkeitsrate",
     "analytics_weekly_status":   "Wöchentliche Zusammenfassung",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 Dashboard",
-    "proj_btn_board": "📋 Kanban",
-    "proj_btn_members": "👥 Mitglieder",
-    "proj_btn_activity": "📜 Aktivität",
-    "proj_btn_add_task": "➕ Aufgabe hinzufügen",
-    "proj_btn_files": "📎 Dateien",
-    "proj_btn_claim": "🙋 Aufgabe beanspruchen",
-    "proj_btn_back": "⬅️ Dashboard",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 Dashboard",
+
+    "proj_btn_board": "📋 Kanban",
+
+    "proj_btn_members": "👥 Mitglieder",
+
+    "proj_btn_activity": "📜 Aktivität",
+
+    "proj_btn_add_task": "➕ Aufgabe hinzufügen",
+
+    "proj_btn_files": "📎 Dateien",
+
+    "proj_btn_claim": "🙋 Aufgabe beanspruchen",
+
+    "proj_btn_back": "⬅️ Dashboard",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ Mitglied hinzufügen",
+    "proj_btn_complete_task": "✅ Aufgabe abschließen",
+    "proj_add_member_ui_title": "Mitglied zum Projekt hinzufügen",
+    "proj_add_member_ui_desc": "Wähle unten einen Benutzer aus, um ihn zu **{project}** einzuladen.\nEr erhält außerdem eine Benachrichtigung per Direktnachricht.",
+    "proj_add_member_select_placeholder": "Wähle ein Mitglied zum Hinzufügen...",
+    "proj_member_added_title": "Mitglied hinzugefügt!",
+    "proj_member_added_desc": "{user} wurde als **{role}** zu **{project}** hinzugefügt.\n{dm_status}",
+    "proj_member_dm_title": "Du wurdest zu einem Projekt hinzugefügt!",
+    "proj_member_dm_body": "👋 Hallo! **{actor}** hat dich zu {project_emoji} **{project_name}** auf **{guild_name}** als **{role}** hinzugefügt.",
+    "proj_dm_desc_field": "Beschreibung",
+    "proj_dm_hint_title": "Hinweis",
+    "proj_member_dm_hint": "Projekt erstellt! Vergiss nicht, auf `/project board` vorbeizuschauen und mit dem Team zusammenzuarbeiten! 🚀",
+    "proj_member_dm_sent": "📬 Eine Benachrichtigung per Direktnachricht wurde an den Benutzer gesendet.",
+    "proj_member_dm_failed": "⚠️ Direktnachricht konnte nicht gesendet werden (Benutzer hat DMs möglicherweise deaktiviert).",
+    "proj_member_bot_error": "❌ Bots können nicht zu einem Projekt hinzugefügt werden.",
+    "proj_role_lead": "Projektleiter (Lead)",
+    "proj_role_member": "Mitglied (Member)",
+    "proj_role_viewer": "Beobachter (Viewer)",
+    "proj_complete_select_title": "Aufgabe abschließen",
+    "proj_complete_select_desc": "Wähle unten eine aktive Aufgabe aus, um sie als **Abgeschlossen** zu markieren.\nJedes Projektmitglied kann Aufgaben abschließen! 🎉",
+    "proj_complete_select_placeholder": "Wähle eine Aufgabe zum Abschließen...",
+    "proj_no_completable": "✅ Es gibt derzeit keine offenen Aufgaben zum Abschließen!",
+    "proj_task_completed_title": "Aufgabe abgeschlossen!",
+    "proj_task_completed_desc": "{user} hat die Aufgabe **#{task_id} — {name}** als **Abgeschlossen** markiert! Gute Arbeit! 🎉",
+    "proj_task_completed_footer": "Aufgabenstatus auf Abgeschlossen aktualisiert.",
+}
+

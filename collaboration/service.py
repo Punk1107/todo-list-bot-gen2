@@ -17,6 +17,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import discord
+
 from collaboration.models import (
     BoardData, Project, ProjectActivity, ProjectMember, ProjectStats, ProjectTask,
 )
@@ -176,7 +178,7 @@ async def add_member(
     project_id: int, guild_id: str,
     target_user_id: str, role: str,
     actor_id: str, is_guild_admin: bool = False,
-) -> None:
+) -> Project:
     """Add or update a member's role. Requires Lead or Admin."""
     project = await get_project(project_id, guild_id)
     await require_role(project, actor_id, "lead", is_guild_admin)
@@ -190,6 +192,7 @@ async def add_member(
     )
     await log_activity(project_id, guild_id, actor_id, "member_added",
                        f"{target_user_id} as {role}")
+    return project
 
 
 async def remove_member(
@@ -219,6 +222,68 @@ async def get_project_members(project_id: int, guild_id: str) -> list[ProjectMem
         (project_id,),
     )
     return [ProjectMember.from_record(r) for r in rows] if rows else []
+
+
+async def send_project_invite_dm(
+    target_user: discord.User | discord.Member,
+    project: Project,
+    guild_name: str,
+    actor: discord.User | discord.Member,
+    role: str,
+) -> bool:
+    """
+    Send an invitation/notification DM to a newly added project member.
+    Returns True if sent successfully, False if DMs are disabled or failed.
+    """
+    from utils.helpers import get_user_lang
+    from locales.i18n import t
+
+    try:
+        lang = await get_user_lang(str(target_user.id))
+    except Exception:
+        lang = "th"
+
+    color = int(project.color.lstrip("#"), 16) if project.color.startswith("#") else 0x5865F2
+    role_label = t(f"proj_role_{role}", lang) if role in ("lead", "member", "viewer") else role.capitalize()
+
+    embed = discord.Embed(
+        title=f"📁 {t('proj_member_dm_title', lang)}",
+        description=t(
+            "proj_member_dm_body", lang,
+            project_emoji=project.emoji,
+            project_name=project.name,
+            guild_name=guild_name,
+            role=role_label,
+            actor=actor.mention,
+        ),
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    if project.description:
+        embed.add_field(
+            name=f"📝 {t('proj_dm_desc_field', lang)}",
+            value=f"> {project.description[:300]}",
+            inline=False,
+        )
+
+    embed.add_field(
+        name=f"💡 {t('proj_dm_hint_title', lang)}",
+        value=t("proj_member_dm_hint", lang),
+        inline=False,
+    )
+
+    embed.set_footer(text=f"{project.emoji} {project.name} · To-Do List Bot Gen 2")
+
+    try:
+        await target_user.send(embed=embed)
+        return True
+    except discord.Forbidden:
+        log.debug("Could not send project invite DM to %s (DMs disabled)", target_user.id)
+        return False
+    except Exception as exc:
+        log.warning("send_project_invite_dm failed for %s: %s", target_user.id, exc)
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -405,8 +470,15 @@ async def update_task_status(
     is_creator  = task.owner_id == actor_id
     actor_role  = await get_member_role(project_id, actor_id)
     is_lead     = actor_role == "lead" or project.owner_id == actor_id
+    is_member   = actor_role is not None
 
-    if not (is_assignee or is_creator or is_lead or is_guild_admin):
+    # Anyone who is a member of the project can mark tasks as Completed
+    if new_status == "Completed":
+        allowed = is_member or is_assignee or is_creator or is_lead or is_guild_admin
+    else:
+        allowed = is_assignee or is_creator or is_lead or is_guild_admin
+
+    if not allowed:
         raise ProjectPermissionError("member")
 
     extra_sql = ""

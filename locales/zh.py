@@ -684,14 +684,52 @@ STRINGS = {
     "analytics_field_completed": "✅ 已完成",
     "analytics_field_ontime":    "⏱️ 准时完成率",
     "analytics_weekly_status":   "每周摘要",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 仪表板",
-    "proj_btn_board": "📋 看板",
-    "proj_btn_members": "👥 成员",
-    "proj_btn_activity": "📜 动态",
-    "proj_btn_add_task": "➕ 添加任务",
-    "proj_btn_files": "📎 文件",
-    "proj_btn_claim": "🙋 认领任务",
-    "proj_btn_back": "⬅️ 仪表板",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 仪表板",
+
+    "proj_btn_board": "📋 看板",
+
+    "proj_btn_members": "👥 成员",
+
+    "proj_btn_activity": "📜 动态",
+
+    "proj_btn_add_task": "➕ 添加任务",
+
+    "proj_btn_files": "📎 文件",
+
+    "proj_btn_claim": "🙋 认领任务",
+
+    "proj_btn_back": "⬅️ 仪表板",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ 添加成员",
+    "proj_btn_complete_task": "✅ 完成任务",
+    "proj_add_member_ui_title": "添加成员到项目",
+    "proj_add_member_ui_desc": "在下方选择要邀请加入 **{project}** 的成员。\n他们还将收到一条私信提醒。",
+    "proj_add_member_select_placeholder": "选择要添加的成员...",
+    "proj_member_added_title": "成员添加成功！",
+    "proj_member_added_desc": "{user} 已作为 **{role}** 加入 **{project}**。\n{dm_status}",
+    "proj_member_dm_title": "你已被添加到新项目中！",
+    "proj_member_dm_body": "👋 你好！**{actor}** 已在 **{guild_name}** 将你添加到项目 {project_emoji} **{project_name}**，担任 **{role}**。",
+    "proj_dm_desc_field": "项目描述",
+    "proj_dm_hint_title": "提示",
+    "proj_member_dm_hint": "项目已创建！别忘了查看并在 `/project board` 上与团队一起推进任务哦！🚀",
+    "proj_member_dm_sent": "📬 已向该用户发送私信通知。",
+    "proj_member_dm_failed": "⚠️ 无法发送私信（该用户可能关闭了私信功能）。",
+    "proj_member_bot_error": "❌ 无法将机器人添加到项目中。",
+    "proj_role_lead": "负责人 (Lead)",
+    "proj_role_member": "成员 (Member)",
+    "proj_role_viewer": "观察员 (Viewer)",
+    "proj_complete_select_title": "完成任务",
+    "proj_complete_select_desc": "在下方选择要标记为 **已完成** 的任务。\n只要在本项目中的成员均可关闭任务！🎉",
+    "proj_complete_select_placeholder": "选择要完成的任务...",
+    "proj_no_completable": "✅ 当前没有待处理或进行中的任务可供完成！",
+    "proj_task_completed_title": "任务已完成！",
+    "proj_task_completed_desc": "{user} 已将任务 **#{task_id} — {name}** 标记为 **已完成**！干得漂亮！🎉",
+    "proj_task_completed_footer": "任务状态已更新为已完成。",
+}
+

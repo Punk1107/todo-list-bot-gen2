@@ -479,6 +479,7 @@ class ProjectDashboardView(ui.View):
             return
         embed = build_board_embed(board, lang, "pending")
         view  = ProjectBoardView(self.project_id, self.guild_id, lang, self.user, board)
+        view._message = interaction.message
         await interaction.message.edit(embed=embed, view=view)
 
     @ui.button(label="👥 Members", style=discord.ButtonStyle.secondary, custom_id="proj_dash_members")
@@ -493,6 +494,7 @@ class ProjectDashboardView(ui.View):
             return
         embed = build_members_embed(members, project, lang)
         view  = MembersView(project, lang, self.user, members)
+        view._message = interaction.message
         await interaction.message.edit(embed=embed, view=view)
 
     @ui.button(label="📜 Activity", style=discord.ButtonStyle.secondary, custom_id="proj_dash_activity")
@@ -609,10 +611,11 @@ class ProjectBoardView(ui.View):
         # Column selector dropdown
         self.add_item(BoardColumnSelect(project_id, guild_id, lang, user, board, current_col))
         # Localize button labels
-        self.btn_claim.label = t("proj_btn_claim", lang)
-        self.btn_back.label  = t("proj_btn_back",  lang)
+        self.btn_claim.label    = t("proj_btn_claim", lang)
+        self.btn_complete.label = t("proj_btn_complete_task", lang)
+        self.btn_back.label     = t("proj_btn_back",  lang)
 
-    @ui.button(label="🙋 Claim a Task", style=discord.ButtonStyle.success, custom_id="board_claim_btn")
+    @ui.button(label="🙋 Claim a Task", style=discord.ButtonStyle.success, custom_id="board_claim_btn", row=1)
     async def btn_claim(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer(ephemeral=True)
@@ -635,7 +638,39 @@ class ProjectBoardView(ui.View):
         )
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-    @ui.button(label="⬅️ Dashboard", style=discord.ButtonStyle.secondary, custom_id="board_back_btn")
+    @ui.button(label="✅ Complete Task", style=discord.ButtonStyle.primary, custom_id="board_complete_btn", row=1)
+    async def btn_complete(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        try:
+            board = await service.get_project_board(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+
+        # Permission check: Any member of the project can complete tasks!
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        role = await service.get_member_role(self.project_id, actor_id)
+        if not (role is not None or is_admin):
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        # Active tasks (In Progress + Pending) that can be completed
+        completable = board.in_progress + board.pending
+        if not completable:
+            await interaction.followup.send(t("proj_no_completable", lang), ephemeral=True)
+            return
+
+        view = CompleteTaskView(self.project_id, self.guild_id, lang, completable, parent_board_view=self)
+        embed = discord.Embed(
+            title=f"✅ {t('proj_complete_select_title', lang)}",
+            description=t("proj_complete_select_desc", lang),
+            color=0x57F287,
+        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @ui.button(label="⬅️ Dashboard", style=discord.ButtonStyle.secondary, custom_id="board_back_btn", row=1)
     async def btn_back(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer()
         try:
@@ -698,6 +733,154 @@ class ClaimSelectView(ui.View):
         self.add_item(ClaimTaskSelect(project_id, guild_id, lang, tasks))
 
 
+class CompleteTaskSelect(ui.Select):
+    """Dropdown for selecting which task to mark as Completed."""
+
+    def __init__(self, project_id: int, guild_id: str, lang: str, tasks: list[ProjectTask], parent_board_view: Optional[ProjectBoardView] = None) -> None:
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.parent_board_view = parent_board_view
+        options = [
+            discord.SelectOption(
+                label=f"#{tk.task_id} {tk.task[:70]}",
+                value=str(tk.task_id),
+                description=f"[{tk.status}] " + (f"📅 {format_deadline(tk.deadline, 'UTC')}" if tk.deadline else ""),
+                emoji="⚡" if tk.status == "In_Progress" else "📋",
+            )
+            for tk in tasks[:25]
+        ]
+        super().__init__(placeholder=t("proj_complete_select_placeholder", lang), options=options)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        lang    = self.lang
+        task_id = int(self.values[0])
+        uid     = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        await interaction.response.defer(ephemeral=True)
+        try:
+            task = await service.update_task_status(
+                task_id, self.project_id, self.guild_id,
+                "Completed", uid, is_guild_admin=is_admin
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+        except service.TaskNotFound:
+            await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"🎉 {t('proj_task_completed_title', lang)}",
+            description=t(
+                "proj_task_completed_desc", lang,
+                user=interaction.user.mention, task_id=task.task_id, name=task.task
+            ),
+            color=0x57F287,
+        )
+        embed.set_footer(text=t("proj_task_completed_footer", lang))
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # Refresh Kanban board view in original message if available
+        if self.parent_board_view and hasattr(self.parent_board_view, "_message") and self.parent_board_view._message:
+            try:
+                board = await service.get_project_board(self.project_id, self.guild_id)
+                self.parent_board_view._board = board
+                new_embed = build_board_embed(board, self.lang, self.parent_board_view.current_col)
+                await self.parent_board_view._message.edit(embed=new_embed, view=self.parent_board_view)
+            except Exception:
+                pass
+
+
+class CompleteTaskView(ui.View):
+    """View containing the task selection dropdown for completing a task."""
+    def __init__(self, project_id: int, guild_id: str, lang: str, tasks: list[ProjectTask], parent_board_view: Optional[ProjectBoardView] = None) -> None:
+        super().__init__(timeout=120)
+        self.add_item(CompleteTaskSelect(project_id, guild_id, lang, tasks, parent_board_view=parent_board_view))
+
+
+class AddMemberSelect(ui.UserSelect):
+    """User select dropdown to pick a member to add to the project."""
+
+    def __init__(self, project: Project, lang: str, parent_view: Optional[MembersView] = None) -> None:
+        super().__init__(
+            placeholder=t("proj_add_member_select_placeholder", lang),
+            min_values=1, max_values=1, custom_id="add_member_user_select"
+        )
+        self.project = project
+        self.lang = lang
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        target_user = self.values[0]
+        if target_user.bot:
+            await interaction.followup.send(t("proj_member_bot_error", self.lang), ephemeral=True)
+            return
+
+        guild_id = str(interaction.guild.id) if interaction.guild else self.project.guild_id
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+
+        try:
+            await service.add_member(
+                self.project.project_id, guild_id,
+                str(target_user.id), "member",
+                actor_id, is_guild_admin=is_admin,
+            )
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        # Send DM notification to the invited user
+        guild_name = interaction.guild.name if interaction.guild else "Server"
+        dm_sent = await service.send_project_invite_dm(
+            target_user, self.project, guild_name, interaction.user, "member"
+        )
+        dm_status = t("proj_member_dm_sent", self.lang) if dm_sent else t("proj_member_dm_failed", self.lang)
+
+        desc = t(
+            "proj_member_added_desc", self.lang,
+            user=target_user.mention,
+            project=f"{self.project.emoji} {self.project.name}",
+            role=t("proj_role_member", self.lang),
+            dm_status=dm_status,
+        )
+        embed = discord.Embed(
+            title=f"🎉 {t('proj_member_added_title', self.lang)}",
+            description=desc,
+            color=0x57F287,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # Refresh members view in parent message if available
+        if self.parent_view and hasattr(self.parent_view, "_message") and self.parent_view._message:
+            try:
+                updated_members = await service.get_project_members(self.project.project_id, guild_id)
+                self.parent_view.members = updated_members
+                new_embed = build_members_embed(updated_members, self.project, self.lang)
+                await self.parent_view._message.edit(embed=new_embed, view=self.parent_view)
+            except Exception:
+                pass
+
+
+class AddMemberView(ui.View):
+    """View containing the AddMemberSelect dropdown."""
+
+    def __init__(self, project: Project, lang: str, user: discord.User | discord.Member, parent_view: Optional[MembersView] = None) -> None:
+        super().__init__(timeout=180)
+        self.project = project
+        self.lang = lang
+        self.user = user
+        self.add_item(AddMemberSelect(project, lang, parent_view=parent_view))
+
+
 class MembersView(ui.View):
     """Members list with management options for the project lead."""
 
@@ -707,8 +890,28 @@ class MembersView(ui.View):
         self.lang    = lang
         self.user    = user
         self.members = members
+        self._message: Optional[discord.Message] = None
         # Localize button labels
-        self.btn_back.label = t("proj_btn_back", lang)
+        self.btn_add_member.label = t("proj_btn_add_member", lang)
+        self.btn_back.label       = t("proj_btn_back", lang)
+
+    @ui.button(label="➕ Add Member", style=discord.ButtonStyle.success, custom_id="members_add_btn")
+    async def btn_add_member(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        actor_role = await service.get_member_role(self.project.project_id, actor_id)
+        is_lead = actor_role == "lead" or self.project.owner_id == actor_id
+        if not (is_lead or is_admin):
+            await interaction.response.send_message(t("proj_no_permission", self.lang), ephemeral=True)
+            return
+
+        view = AddMemberView(self.project, self.lang, interaction.user, parent_view=self)
+        embed = discord.Embed(
+            title=f"{self.project.emoji} {t('proj_add_member_ui_title', self.lang)}",
+            description=t("proj_add_member_ui_desc", self.lang, project=self.project.name),
+            color=int(self.project.color.lstrip("#"), 16) if self.project.color.startswith("#") else 0x5865F2,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @ui.button(label="⬅️ Dashboard", style=discord.ButtonStyle.secondary, custom_id="members_back")
     async def btn_back(self, interaction: discord.Interaction, button: ui.Button) -> None:

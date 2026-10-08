@@ -684,14 +684,52 @@ STRINGS = {
     "analytics_field_completed": "✅ 完了",
     "analytics_field_ontime":    "⏱️ 期限厳守率",
     "analytics_weekly_status":   "週次ダイジェスト",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 ダッシュボード",
-    "proj_btn_board": "📋 ボード",
-    "proj_btn_members": "👥 メンバー",
-    "proj_btn_activity": "📜 アクティビティ",
-    "proj_btn_add_task": "➕ タスク追加",
-    "proj_btn_files": "📎 ファイル",
-    "proj_btn_claim": "🙋 タスクを担当",
-    "proj_btn_back": "⬅️ ダッシュボード",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 ダッシュボード",
+
+    "proj_btn_board": "📋 ボード",
+
+    "proj_btn_members": "👥 メンバー",
+
+    "proj_btn_activity": "📜 アクティビティ",
+
+    "proj_btn_add_task": "➕ タスク追加",
+
+    "proj_btn_files": "📎 ファイル",
+
+    "proj_btn_claim": "🙋 タスクを担当",
+
+    "proj_btn_back": "⬅️ ダッシュボード",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ メンバー追加",
+    "proj_btn_complete_task": "✅ タスク完了",
+    "proj_add_member_ui_title": "プロジェクトにメンバーを追加",
+    "proj_add_member_ui_desc": "以下からユーザーを選択して **{project}** に招待します。\nユーザーにはDMでも通知が届きます。",
+    "proj_add_member_select_placeholder": "追加するメンバーを選択...",
+    "proj_member_added_title": "メンバーを追加しました！",
+    "proj_member_added_desc": "{user} が **{role}** として **{project}** に追加されました。\n{dm_status}",
+    "proj_member_dm_title": "新しいプロジェクトに追加されました！",
+    "proj_member_dm_body": "👋 こんにちは！**{actor}** が **{guild_name}** のプロジェクト {project_emoji} **{project_name}** にあなたを **{role}** として追加しました。",
+    "proj_dm_desc_field": "プロジェクト概要",
+    "proj_dm_hint_title": "メモ",
+    "proj_member_dm_hint": "プロジェクトが作成されました！`/project board` を確認して、チームと一緒に進めましょう！🚀",
+    "proj_member_dm_sent": "📬 ユーザーにDMで通知を送信しました。",
+    "proj_member_dm_failed": "⚠️ ユーザーにDMを送信できませんでした（DMが無効になっている可能性があります）。",
+    "proj_member_bot_error": "❌ Bot アカウントをプロジェクトに追加することはできません。",
+    "proj_role_lead": "リーダー (Lead)",
+    "proj_role_member": "メンバー (Member)",
+    "proj_role_viewer": "閲覧者 (Viewer)",
+    "proj_complete_select_title": "タスクを完了する",
+    "proj_complete_select_desc": "以下からアクティブなタスクを選択して **完了** にします。\nこのプロジェクトのメンバーなら誰でも完了できます！🎉",
+    "proj_complete_select_placeholder": "完了するタスクを選択...",
+    "proj_no_completable": "✅ 完了できる保留中または進行中のタスクはありません！",
+    "proj_task_completed_title": "タスクを完了しました！",
+    "proj_task_completed_desc": "{user} がタスク **#{task_id} — {name}** を **完了** にしました！素晴らしい！🎉",
+    "proj_task_completed_footer": "タスクのステータスを完了に更新しました。",
+}
+

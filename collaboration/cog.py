@@ -174,6 +174,7 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         embed = build_board_embed(board, lang, "pending")
         view  = ProjectBoardView(project_id, guild_id, lang, interaction.user, board)
         await interaction.followup.send(embed=embed, view=view)
+        view._message = await interaction.original_response()
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project add-task
@@ -207,6 +208,62 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         from collaboration.views import AddProjectTaskModal
         modal = AddProjectTaskModal(project, lang)
         await interaction.response.send_modal(modal)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project complete-task
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(name="complete-task", description="✅ ปิดงานในโปรเจกต์ / Mark a project task as completed")
+    @app_commands.describe(
+        project_id="Project ID number",
+        task_id="Task ID number to complete",
+    )
+    @rate_limit_check("command")
+    async def project_complete_task(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        task_id: int,
+    ) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer()
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        try:
+            task = await service.update_task_status(
+                task_id, project_id, guild_id,
+                "Completed", uid, is_guild_admin=is_admin
+            )
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=project_id), ephemeral=True
+            )
+            return
+        except service.TaskNotFound:
+            await interaction.followup.send(
+                t("proj_task_not_found", lang, task_id=task_id), ephemeral=True
+            )
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=f"🎉 {t('proj_task_completed_title', lang)}",
+            description=t(
+                "proj_task_completed_desc", lang,
+                user=interaction.user.mention, task_id=task.task_id, name=task.task
+            ),
+            color=0x57F287,
+        )
+        embed.set_footer(text=f"{project.emoji} {project.name} · #{project.project_id}")
+        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project my-tasks
@@ -254,6 +311,80 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         from collaboration.views import MembersView
         view  = MembersView(project, lang, interaction.user, members)
         await interaction.followup.send(embed=embed, view=view)
+        view._message = await interaction.original_response()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project add-member
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(name="add-member", description="➕ เพิ่มสมาชิกเข้าโปรเจกต์ / Add a member to a project")
+    @app_commands.describe(
+        project_id="Project ID number",
+        user="Member to add to the project",
+        role="Role in the project (member or lead)",
+    )
+    @app_commands.choices(role=[
+        app_commands.Choice(name="👤 Member / สมาชิกทั่วไป", value="member"),
+        app_commands.Choice(name="👑 Lead / หัวหน้าโปรเจกต์", value="lead"),
+    ])
+    @rate_limit_check("command")
+    async def project_add_member(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        user: discord.Member,
+        role: str = "member",
+    ) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer()
+
+        if user.bot:
+            await interaction.followup.send(t("proj_member_bot_error", lang), ephemeral=True)
+            return
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        try:
+            project = await service.add_member(
+                project_id, guild_id,
+                str(user.id), role,
+                uid, is_guild_admin=is_admin,
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=project_id), ephemeral=True
+            )
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        # Send DM notification to the invited user
+        guild_name = interaction.guild.name if interaction.guild else "Server"
+        dm_sent = await service.send_project_invite_dm(
+            user, project, guild_name, interaction.user, role
+        )
+        dm_status = t("proj_member_dm_sent", lang) if dm_sent else t("proj_member_dm_failed", lang)
+
+        role_label = t(f"proj_role_{role}", lang) if role in ("lead", "member", "viewer") else role.capitalize()
+        desc = t(
+            "proj_member_added_desc", lang,
+            user=user.mention,
+            project=f"{project.emoji} {project.name}",
+            role=role_label,
+            dm_status=dm_status,
+        )
+        embed = discord.Embed(
+            title=f"🎉 {t('proj_member_added_title', lang)}",
+            description=desc,
+            color=int(project.color.lstrip("#"), 16) if project.color.startswith("#") else 0x57F287,
+        )
+        embed.set_footer(text=t("proj_footer_id", lang, project_id=project.project_id))
+        await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project activity
