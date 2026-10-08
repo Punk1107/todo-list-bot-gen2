@@ -221,6 +221,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang    = await get_user_lang(uid)
         tz_name = await get_user_timezone(uid)
         await ensure_user(uid, lang)
+        await interaction.response.defer()
 
         view             = TaskListView(uid, lang, tz_name, "Pending")
         tasks, page, tot = await view._fetch_page()
@@ -244,7 +245,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         )
         view._update_nav_buttons(page, tot)
         view._update_quickaction(tasks)
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.followup.send(embed=embed, view=view)
         # Store message so on_timeout can edit it with disabled buttons
         view._message = await interaction.original_response()
 
