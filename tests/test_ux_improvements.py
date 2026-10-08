@@ -156,6 +156,57 @@ class TestAutocompleteHelper:
             assert choices[1].value == 99
             assert "#99" in choices[1].name
 
+    @pytest.mark.asyncio
+    async def test_autocomplete_empty_current_passes_parameterized_now_iso(self):
+        """When current is empty, query must use parameterized now_iso ($2), not NOW()."""
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = "123456789"
+
+        with patch("core.database.db.afetchall", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            await task_autocomplete(mock_interaction, "")
+
+            mock_fetch.assert_called_once()
+            sql, params = mock_fetch.call_args[0]
+            # Ensure NOW() is NOT in the SQL query (would cause type mismatch with TEXT column)
+            assert "NOW()" not in sql
+            assert "deadline < $2" in sql
+            assert len(params) == 2
+            assert params[0] == "123456789"
+            # Param 1 is an ISO timestamp string
+            assert "T" in params[1]
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_filtered_current_passes_parameterized_now_iso(self):
+        """When current is provided, query must use parameterized now_iso ($3), not NOW()."""
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = "123456789"
+
+        with patch("core.database.db.afetchall", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            await task_autocomplete(mock_interaction, "deploy")
+
+            mock_fetch.assert_called_once()
+            sql, params = mock_fetch.call_args[0]
+            assert "NOW()" not in sql
+            assert "deadline < $3" in sql
+            assert len(params) == 3
+            assert params[0] == "123456789"
+            assert params[1] == "%deploy%"
+            assert "T" in params[2]
+
+    @pytest.mark.asyncio
+    async def test_autocomplete_db_error_handles_gracefully(self):
+        """When db.afetchall raises an error, return [] without propagating exception."""
+        mock_interaction = MagicMock()
+        mock_interaction.user.id = "123456789"
+
+        with patch("core.database.db.afetchall", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.side_effect = RuntimeError("Database unreachable")
+            choices = await task_autocomplete(mock_interaction, "")
+            assert choices == []
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Subtask Checklist Rendering in Task Embed
