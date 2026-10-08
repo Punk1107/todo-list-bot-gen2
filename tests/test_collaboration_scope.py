@@ -11,6 +11,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import discord
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -41,11 +42,11 @@ def _mock_project(project_id=1, guild_id="guild_A", owner_id="owner_1", status="
     return row
 
 
-def _make_project(project_id=1, guild_id="guild_A", owner_id="owner_1", status="active") -> Project:
+def _make_project(project_id=1, guild_id="guild_A", owner_id="owner_1", status="active", name="Test Project") -> Project:
     return Project(
         project_id  = project_id,
         guild_id    = guild_id,
-        name        = "Test Project",
+        name        = name,
         description = "A test project",
         owner_id    = owner_id,
         status      = status,
@@ -325,7 +326,152 @@ class TestGetUserAssignedTasksSQL:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. Locale Key Integrity — all proj_* keys must exist in all 9 languages
+# 6. Add Member, DM Notification & Close Task (Collaboration Features)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAddMemberAndCompleteTask:
+    """Tests for adding project members, invite DM sending, and task completion permissions."""
+
+    @pytest.mark.asyncio
+    async def test_add_member_returns_project(self):
+        """add_member must insert into project_members and return the Project object."""
+        project = _make_project(project_id=1, owner_id="lead_1")
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.require_role", AsyncMock()), \
+             patch("utils.helpers.ensure_user", AsyncMock()), \
+             patch("collaboration.service.db", mock_db), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            result = await service.add_member(
+                project_id=1, guild_id="guild_A",
+                target_user_id="user_2", role="member",
+                actor_id="lead_1", is_guild_admin=False,
+            )
+        assert result == project
+        mock_db.execute.assert_called_once()
+        assert "INSERT INTO project_members" in mock_db.execute.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_add_member_requires_lead_or_admin(self):
+        """Regular members cannot add other members."""
+        project = _make_project(project_id=1, owner_id="owner_1")
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value="member")):
+            with pytest.raises(service.ProjectPermissionError):
+                await service.add_member(
+                    project_id=1, guild_id="guild_A",
+                    target_user_id="user_2", role="member",
+                    actor_id="member_1", is_guild_admin=False,
+                )
+
+    @pytest.mark.asyncio
+    async def test_send_project_invite_dm_success(self):
+        """send_project_invite_dm sends embed to target user and returns True."""
+        project = _make_project(project_id=1, name="Alpha Project")
+        target_user = MagicMock()
+        target_user.id = 123456
+        target_user.send = AsyncMock()
+        actor = MagicMock()
+        actor.mention = "<@999>"
+
+        with patch("utils.helpers.get_user_lang", AsyncMock(return_value="th")):
+            sent = await service.send_project_invite_dm(
+                target_user=target_user,
+                project=project,
+                guild_name="Test Guild",
+                actor=actor,
+                role="member",
+            )
+        assert sent is True
+        target_user.send.assert_called_once()
+        sent_embed = target_user.send.call_args[1]["embed"]
+        assert "Alpha Project" in sent_embed.description
+        assert "Test Guild" in sent_embed.description
+
+    @pytest.mark.asyncio
+    async def test_send_project_invite_dm_forbidden(self):
+        """When user has DMs disabled (discord.Forbidden), gracefully return False."""
+        project = _make_project(project_id=1, name="Alpha Project")
+        target_user = MagicMock()
+        target_user.id = 123456
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.reason = "Forbidden"
+        target_user.send = AsyncMock(side_effect=discord.Forbidden(mock_response, "Cannot send messages to this user"))
+        actor = MagicMock()
+        actor.mention = "<@999>"
+
+        with patch("utils.helpers.get_user_lang", AsyncMock(return_value="en")):
+            sent = await service.send_project_invite_dm(
+                target_user=target_user,
+                project=project,
+                guild_name="Test Guild",
+                actor=actor,
+                role="member",
+            )
+        assert sent is False
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_completed_by_any_project_member(self):
+        """Any user with membership in the project can mark tasks as Completed."""
+        project = _make_project(project_id=1, owner_id="owner_1")
+        pending_task = _make_task(task_id=10, project_id=1, owner_id="owner_1", status="Pending", assignees=[])
+        completed_task = _make_task(task_id=10, project_id=1, owner_id="owner_1", status="Completed", assignees=[])
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock()
+        mock_db.invalidate_stats = MagicMock()
+        mock_db.query_cache = MagicMock()
+
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(side_effect=[pending_task, completed_task])), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value="member")), \
+             patch("collaboration.service.db", mock_db), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            # member_user is not creator, not assignee, not lead, but is a member
+            res = await service.update_task_status(
+                task_id=10, project_id=1, guild_id="guild_A",
+                new_status="Completed", actor_id="member_user", is_guild_admin=False,
+            )
+        assert res.status == "Completed"
+        mock_db.execute.assert_called_once()
+        assert "completed_at=NOW()" in mock_db.execute.call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_completed_by_non_member_fails(self):
+        """Users outside the project (not a member, assignee, creator, or admin) cannot complete tasks."""
+        project = _make_project(project_id=1, owner_id="owner_1")
+        pending_task = _make_task(task_id=10, project_id=1, owner_id="owner_1", status="Pending", assignees=[])
+
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=pending_task)), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value=None)):
+            with pytest.raises(service.ProjectPermissionError):
+                await service.update_task_status(
+                    task_id=10, project_id=1, guild_id="guild_A",
+                    new_status="Completed", actor_id="outsider", is_guild_admin=False,
+                )
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_other_status_requires_specific_roles(self):
+        """Transitions other than 'Completed' (e.g. Cancelled) still require assignee, creator, lead, or admin."""
+        project = _make_project(project_id=1, owner_id="owner_1")
+        pending_task = _make_task(task_id=10, project_id=1, owner_id="owner_1", status="Pending", assignees=["assignee_1"])
+
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=pending_task)), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value="member")):
+            # random member who is not assignee, not creator, not lead cannot cancel task
+            with pytest.raises(service.ProjectPermissionError):
+                await service.update_task_status(
+                    task_id=10, project_id=1, guild_id="guild_A",
+                    new_status="Cancelled", actor_id="member_other", is_guild_admin=False,
+                )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Locale Key Integrity — all proj_* keys must exist in all 9 languages
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestLocaleCollaborationKeys:
@@ -347,6 +493,18 @@ class TestLocaleCollaborationKeys:
         "proj_activity_title", "proj_activity_empty",
         "proj_my_tasks_title", "proj_my_tasks_empty", "proj_my_tasks_footer",
         "proj_archived_success", "proj_completed_success",
+        # Added keys for add-members, DM, and complete-task
+        "proj_btn_add_member", "proj_btn_complete_task",
+        "proj_add_member_ui_title", "proj_add_member_ui_desc",
+        "proj_add_member_select_placeholder", "proj_member_added_title",
+        "proj_member_added_desc", "proj_member_dm_title",
+        "proj_member_dm_body", "proj_dm_desc_field", "proj_dm_hint_title",
+        "proj_member_dm_hint", "proj_member_dm_sent", "proj_member_dm_failed",
+        "proj_member_bot_error", "proj_role_lead", "proj_role_member",
+        "proj_role_viewer", "proj_complete_select_title",
+        "proj_complete_select_desc", "proj_complete_select_placeholder",
+        "proj_no_completable", "proj_task_completed_title",
+        "proj_task_completed_desc", "proj_task_completed_footer",
     ]
 
     def test_all_collab_keys_present_in_all_locales(self):

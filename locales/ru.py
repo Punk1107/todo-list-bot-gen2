@@ -690,14 +690,52 @@ STRINGS = {
     "analytics_field_completed": "✅ Выполнено",
     "analytics_field_ontime":    "⏱️ Процент своевременных выполнений",
     "analytics_weekly_status":   "Еженедельный дайджест",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 Панель",
-    "proj_btn_board": "📋 Доска",
-    "proj_btn_members": "👥 Участники",
-    "proj_btn_activity": "📜 Активность",
-    "proj_btn_add_task": "➕ Добавить задачу",
-    "proj_btn_files": "📎 Файлы",
-    "proj_btn_claim": "🙋 Взять задачу",
-    "proj_btn_back": "⬅️ Панель",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 Панель",
+
+    "proj_btn_board": "📋 Доска",
+
+    "proj_btn_members": "👥 Участники",
+
+    "proj_btn_activity": "📜 Активность",
+
+    "proj_btn_add_task": "➕ Добавить задачу",
+
+    "proj_btn_files": "📎 Файлы",
+
+    "proj_btn_claim": "🙋 Взять задачу",
+
+    "proj_btn_back": "⬅️ Панель",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ Добавить участника",
+    "proj_btn_complete_task": "✅ Завершить задачу",
+    "proj_add_member_ui_title": "Добавить участника в проект",
+    "proj_add_member_ui_desc": "Выберите пользователя ниже, чтобы пригласить в **{project}**.\nЕму также будет отправлено личное сообщение.",
+    "proj_add_member_select_placeholder": "Выберите участника для добавления...",
+    "proj_member_added_title": "Участник добавлен!",
+    "proj_member_added_desc": "{user} добавлен в проект **{project}** с ролью **{role}**.\n{dm_status}",
+    "proj_member_dm_title": "Вас добавили в проект!",
+    "proj_member_dm_body": "👋 Привет! **{actor}** добавил(а) вас в проект {project_emoji} **{project_name}** на сервере **{guild_name}** как **{role}**.",
+    "proj_dm_desc_field": "Описание",
+    "proj_dm_hint_title": "Примечание",
+    "proj_member_dm_hint": "Проект создан! Не забудьте заглянуть на `/project board` и поработать вместе с командой! 🚀",
+    "proj_member_dm_sent": "📬 Личное сообщение с уведомлением отправлено пользователю.",
+    "proj_member_dm_failed": "⚠️ Не удалось отправить личное сообщение (возможно, у пользователя отключены ЛС).",
+    "proj_member_bot_error": "❌ Нельзя добавлять ботов в проект.",
+    "proj_role_lead": "Руководитель (Lead)",
+    "proj_role_member": "Участник (Member)",
+    "proj_role_viewer": "Наблюдатель (Viewer)",
+    "proj_complete_select_title": "Завершить задачу",
+    "proj_complete_select_desc": "Выберите активную задачу ниже, чтобы отметить её как **Завершённую**.\nЛюбой участник этого проекта может закрывать задачи! 🎉",
+    "proj_complete_select_placeholder": "Выберите задачу для завершения...",
+    "proj_no_completable": "✅ Нет задач в ожидании или в процессе для завершения!",
+    "proj_task_completed_title": "Задача выполнена!",
+    "proj_task_completed_desc": "{user} отметил(а) задачу **#{task_id} — {name}** как **Завершённую**! Отличная работа! 🎉",
+    "proj_task_completed_footer": "Статус задачи обновлен на Завершена.",
+}
+

@@ -761,14 +761,52 @@ STRINGS = {
     "analytics_field_completed": "✅ เสร็จสิ้น",
     "analytics_field_ontime":    "⏱️ อัตราส่งตรงเวลา",
     "analytics_weekly_status":   "สรุปรายสัปดาห์",
-
-    # --- Project Dashboard Button Labels ---
-    "proj_btn_dashboard": "📊 แดชบอร์ด",
-    "proj_btn_board": "📋 บอร์ด",
-    "proj_btn_members": "👥 สมาชิก",
-    "proj_btn_activity": "📜 กิจกรรม",
-    "proj_btn_add_task": "➕ เพิ่มงาน",
-    "proj_btn_files": "📎 ไฟล์",
-    "proj_btn_claim": "🙋 รับงาน",
-    "proj_btn_back": "⬅️ แดชบอร์ด",
-}
+
+
+    # --- Project Dashboard Button Labels ---
+
+    "proj_btn_dashboard": "📊 แดชบอร์ด",
+
+    "proj_btn_board": "📋 บอร์ด",
+
+    "proj_btn_members": "👥 สมาชิก",
+
+    "proj_btn_activity": "📜 กิจกรรม",
+
+    "proj_btn_add_task": "➕ เพิ่มงาน",
+
+    "proj_btn_files": "📎 ไฟล์",
+
+    "proj_btn_claim": "🙋 รับงาน",
+
+    "proj_btn_back": "⬅️ แดชบอร์ด",
+
+
+    # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
+    "proj_btn_add_member": "➕ เพิ่มสมาชิก",
+    "proj_btn_complete_task": "✅ ปิดงาน",
+    "proj_add_member_ui_title": "เพิ่มสมาชิกเข้าโปรเจกต์",
+    "proj_add_member_ui_desc": "เลือกผู้ใช้ด้านล่างเพื่อเชิญเข้า **{project}**\nระบบจะส่งข้อความแจ้งเตือนไปยังแชทส่วนตัว (DM) ของผู้ใช้ด้วย",
+    "proj_add_member_select_placeholder": "เลือกสมาชิกที่จะเพิ่ม...",
+    "proj_member_added_title": "เพิ่มสมาชิกเรียบร้อย!",
+    "proj_member_added_desc": "เพิ่ม {user} เข้าสู่โปรเจกต์ **{project}** ในตำแหน่ง **{role}** เรียบร้อยแล้ว!\n{dm_status}",
+    "proj_member_dm_title": "คุณได้รับเชิญเข้าสู่โปรเจกต์ใหม่!",
+    "proj_member_dm_body": "👋 สวัสดีครับ! **{actor}** ได้เพิ่มคุณเข้าสู่โปรเจกต์ {project_emoji} **{project_name}** บนเซิร์ฟเวอร์ **{guild_name}** ในตำแหน่ง **{role}**",
+    "proj_dm_desc_field": "รายละเอียดโปรเจกต์",
+    "proj_dm_hint_title": "คำแนะนำ",
+    "proj_member_dm_hint": "สร้างโปรเจกต์แล้วและมีโปรเจกต์นะ อย่าลืมมาร่วมมือและช่วยกันทำงานนะ! ลุยเลย 🚀",
+    "proj_member_dm_sent": "📬 ส่งข้อความแจ้งเตือนทางแชทส่วนตัว (DM) ให้เรียบร้อยแล้ว",
+    "proj_member_dm_failed": "⚠️ ไม่สามารถส่งข้อความส่วนตัวได้ (ผู้ใช้อาจปิดรับ DM หรือบล็อกไว้)",
+    "proj_member_bot_error": "❌ ไม่สามารถเพิ่มบอทเข้าสู่โปรเจกต์ได้",
+    "proj_role_lead": "หัวหน้าโปรเจกต์ (Lead)",
+    "proj_role_member": "สมาชิก (Member)",
+    "proj_role_viewer": "ผู้ดู (Viewer)",
+    "proj_complete_select_title": "ปิดงาน / ทำงานเสร็จสิ้น",
+    "proj_complete_select_desc": "เลือกงานที่ต้องการปิดสถานะเป็น **เสร็จสิ้น (Completed)** ด้านล่าง\nผู้ที่มีรายชื่อในโปรเจกต์ทุกคนสามารถกดปิดงานได้ 🎉",
+    "proj_complete_select_placeholder": "เลือกงานที่จะกดปิด...",
+    "proj_no_completable": "✅ ไม่มีงานที่รอดำเนินการหรือกำลังทำอยู่ให้ปิดงานในขณะนี้!",
+    "proj_task_completed_title": "ปิดงานเรียบร้อยแล้ว!",
+    "proj_task_completed_desc": "{user} ได้ปิดงาน **#{task_id} — {name}** เรียบร้อยแล้ว! สุดยอดมาก 🎉",
+    "proj_task_completed_footer": "อัปเดตสถานะงานเป็นเสร็จสิ้นแล้ว",
+}
+
