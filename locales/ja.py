@@ -703,6 +703,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 タスクを担当",
 
     "proj_btn_back": "⬅️ ダッシュボード",
+    "proj_priority_label": "優先度",
+    "proj_btn_advance_progress": "📈 進捗を進める",
+    "proj_btn_complete_project": "🏁 プロジェクトを完了",
+    "proj_btn_change_priority": "🎯 優先度変更",
+    "proj_advance_select_title": "プロジェクトの進捗を進める",
+    "proj_advance_select_desc": "完了にするタスクを選択して、プロジェクトの進捗を進めます。",
+    "proj_advance_select_placeholder": "完了にするタスクを選択...",
+    "proj_advance_success": "✅ タスク **#{task_id}** を完了しました！進捗が更新されました。",
+    "proj_complete_confirm_title": "プロジェクトの完了確認",
+    "proj_complete_confirm_desc": "プロジェクト **{name}** を完了としてマークしますか？",
+    "proj_complete_all_btn": "✅ プロジェクトと全タスクを完了",
+    "proj_complete_status_only_btn": "🏁 プロジェクトのみ完了",
+    "proj_already_completed": "このプロジェクトは既に完了しています。",
+    "proj_priority_select_title": "プロジェクト優先度の変更",
+    "proj_priority_select_desc": "プロジェクト **{project}** の新しい優先度を選択してください (現在: {current}):",
+    "proj_priority_select_placeholder": "優先度を選択...",
+    "proj_priority_updated": "🎯 プロジェクトの優先度を **{priority}** に更新しました！",
+    "proj_manual_progress_desc": "アクティブなタスクがありません。進捗率を直接調整できます:",
+    "proj_manual_progress_modal_title": "進捗率の更新",
+    "proj_manual_progress_input_label": "進捗率 (0-100)",
+    "proj_manual_progress_updated": "📈 プロジェクトの進捗率を **{progress}%** に更新しました！",
 
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────

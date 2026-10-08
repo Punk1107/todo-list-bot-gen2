@@ -505,6 +505,15 @@ class TestLocaleCollaborationKeys:
         "proj_complete_select_desc", "proj_complete_select_placeholder",
         "proj_no_completable", "proj_task_completed_title",
         "proj_task_completed_desc", "proj_task_completed_footer",
+        # Added keys for priority and progress controls
+        "proj_priority_label", "proj_btn_advance_progress", "proj_btn_complete_project",
+        "proj_btn_change_priority", "proj_advance_select_title", "proj_advance_select_desc",
+        "proj_advance_select_placeholder", "proj_advance_success", "proj_complete_confirm_title",
+        "proj_complete_confirm_desc", "proj_complete_all_btn", "proj_complete_status_only_btn",
+        "proj_already_completed", "proj_priority_select_title", "proj_priority_select_desc",
+        "proj_priority_select_placeholder", "proj_priority_updated", "proj_manual_progress_desc",
+        "proj_manual_progress_modal_title", "proj_manual_progress_input_label",
+        "proj_manual_progress_updated",
     ]
 
     def test_all_collab_keys_present_in_all_locales(self):
@@ -544,3 +553,91 @@ class TestLocaleCollaborationKeys:
                         f"[{lang}] Key '{key}': EN={en_vars} vs {lang.upper()}={lang_vars}"
                     )
         assert not failures, "Placeholder mismatch in collaboration keys:\n" + "\n".join(failures)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Project Priority & Progress Controls
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProjectPriorityAndProgressControls:
+    """Unit tests for the new Priority and Progress features."""
+
+    def test_project_priority_emojis(self):
+        emojis = ["⬜", "🟦", "🟩", "🟨", "🟧", "🟥", "🔴", "🆘"]
+        for p_val, expected_emoji in enumerate(emojis):
+            p = _make_project(project_id=1, guild_id="g1", owner_id="u1")
+            p.priority = p_val
+            assert p.priority_emoji == expected_emoji
+
+        # Fallback for out of range
+        p = _make_project(project_id=1, guild_id="g1", owner_id="u1")
+        p.priority = 99
+        assert p.priority_emoji == "⬜"
+
+    @pytest.mark.asyncio
+    async def test_create_project_with_priority(self):
+        mock_row = {
+            "project_id": 42, "guild_id": "g1", "name": "Priority Proj",
+            "description": "Desc", "owner_id": "u1", "status": "active",
+            "color": "#5865F2", "emoji": "📁", "channel_id": None, "role_id": None,
+            "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc),
+            "priority": 4, "manual_progress": None,
+        }
+        with patch("core.database.db.fetchone", AsyncMock(return_value=mock_row)) as mock_fetchone, \
+             patch("core.database.db.execute", AsyncMock()), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            proj = await service.create_project("g1", "Priority Proj", "u1", priority=4)
+            assert proj.priority == 4
+            assert proj.priority_emoji == "🟧"
+            # Verify priority passed to SQL INSERT
+            args = mock_fetchone.call_args[0][1]
+            assert 4 in args
+
+    @pytest.mark.asyncio
+    async def test_update_project_priority_lead_permission(self):
+        proj = _make_project(project_id=10, guild_id="g1", owner_id="lead_user")
+        proj_updated = _make_project(project_id=10, guild_id="g1", owner_id="lead_user")
+        proj_updated.priority = 6
+
+        with patch("collaboration.service.get_project", AsyncMock(side_effect=[proj, proj_updated])), \
+             patch("collaboration.service.require_role", AsyncMock()) as mock_req, \
+             patch("core.database.db.execute", AsyncMock()), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            res = await service.update_project_priority(10, "g1", 6, "lead_user")
+            mock_req.assert_awaited_once_with(proj, "lead_user", "lead", False)
+            assert res.priority == 6
+            assert res.priority_emoji == "🔴"
+
+    @pytest.mark.asyncio
+    async def test_update_project_manual_progress(self):
+        proj = _make_project(project_id=10, guild_id="g1", owner_id="lead_user")
+        with patch("collaboration.service.get_project", AsyncMock(return_value=proj)), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value="member")), \
+             patch("core.database.db.execute", AsyncMock()), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            res = await service.update_project_manual_progress(10, "g1", 75, "user_1")
+            assert res is not None
+
+    @pytest.mark.asyncio
+    async def test_complete_project_with_tasks(self):
+        proj = _make_project(project_id=10, guild_id="g1", owner_id="lead_user")
+        proj_done = _make_project(project_id=10, guild_id="g1", owner_id="lead_user", status="completed")
+
+        with patch("collaboration.service.get_project", AsyncMock(side_effect=[proj, proj_done])), \
+             patch("collaboration.service.require_role", AsyncMock()), \
+             patch("core.database.db.execute", AsyncMock()) as mock_exec, \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            res = await service.complete_project_with_tasks(10, "g1", "lead_user", complete_all_tasks=True)
+            assert res.status == "completed"
+            assert mock_exec.await_count >= 2
+
+    def test_dashboard_view_components(self):
+        from collaboration.views import ProjectDashboardView
+        view = ProjectDashboardView(1, "g1", "en", None)
+        custom_ids = [getattr(c, "custom_id", None) for c in view.children]
+        assert "proj_dash_advance" in custom_ids
+        assert "proj_dash_complete" in custom_ids
+        assert "proj_dash_priority" in custom_ids
+        assert "proj_dash_add_task" in custom_ids
+        assert "proj_dash_dashboard" in custom_ids
+        assert "proj_dash_board" in custom_ids

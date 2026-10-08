@@ -49,7 +49,7 @@ def build_project_list_embed(projects: list[Project], guild_name: str, lang: str
     lines = []
     for p in projects:
         lines.append(
-            f"{p.status_emoji} {p.emoji} **{p.name}** `#{p.project_id}`\n"
+            f"{p.status_emoji} {p.priority_emoji} {p.emoji} **{p.name}** `#{p.project_id}`\n"
             f"   ╰ {p.description[:60] + '…' if p.description and len(p.description) > 60 else (p.description or '—')}"
         )
     embed.description = "\n".join(lines)
@@ -132,6 +132,7 @@ def build_project_dashboard_embed(stats: ProjectStats, lang: str) -> discord.Emb
         embed.add_field(name=f"🚨 {t('proj_overdue', lang)}", value=str(stats.overdue), inline=True)
     embed.add_field(name=f"👥 {t('proj_members', lang)}", value=str(stats.members), inline=True)
     embed.add_field(name=f"📊 {t('proj_status_label', lang)}", value=p.status_emoji + " " + p.status.capitalize(), inline=True)
+    embed.add_field(name=f"🎯 {t('proj_priority_label', lang)}", value=f"{p.priority_emoji} {t(f'priority_{p.priority}', lang)} (P{p.priority})", inline=True)
 
     if stats.leaderboard:
         lb_lines = []
@@ -254,7 +255,7 @@ def build_my_tasks_embed(tasks: list[ProjectTask], lang: str, username: str) -> 
 class CreateProjectModal(ui.Modal):
     """Form for creating a new shared project in the current guild."""
 
-    def __init__(self, lang: str) -> None:
+    def __init__(self, lang: str, priority: int = 0) -> None:
         super().__init__(title=t("proj_create_modal_title", lang))
         self.lang = lang
 
@@ -279,10 +280,17 @@ class CreateProjectModal(ui.Modal):
             placeholder="📁",
             max_length=4, required=False,
         )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            placeholder="0-7 (0=⬜, 1=🟦, 2=🟩, 3=🟨, 4=🟧, 5=🟥, 6=🔴, 7=🆘)",
+            default=str(max(0, min(7, int(priority)))),
+            max_length=1, required=False,
+        )
         self.add_item(self.name)
         self.add_item(self.description)
         self.add_item(self.color)
         self.add_item(self.emoji_field)
+        self.add_item(self.priority)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         lang = self.lang
@@ -302,6 +310,11 @@ class CreateProjectModal(ui.Modal):
 
         emoji_val = self.emoji_field.value.strip() if self.emoji_field.value else "📁"
 
+        # Validate priority
+        prio_val = 0
+        if self.priority.value and self.priority.value.strip().isdigit():
+            prio_val = max(0, min(7, int(self.priority.value.strip())))
+
         await ensure_user(owner_id, lang)
         try:
             project = await service.create_project(
@@ -311,6 +324,7 @@ class CreateProjectModal(ui.Modal):
                 description = self.description.value.strip() or None,
                 color       = color_val,
                 emoji       = emoji_val,
+                priority    = prio_val,
             )
         except Exception as exc:
             log.error("CreateProjectModal error: %s", exc)
@@ -334,7 +348,7 @@ class CreateProjectModal(ui.Modal):
 class AddProjectTaskModal(ui.Modal):
     """Form for adding a new task to a shared project."""
 
-    def __init__(self, project: Project, lang: str) -> None:
+    def __init__(self, project: Project, lang: str, priority: int = 0) -> None:
         super().__init__(title=t("proj_add_task_modal_title", lang, name=project.name[:30]))
         self.project = project
         self.lang    = lang
@@ -355,9 +369,16 @@ class AddProjectTaskModal(ui.Modal):
             style=discord.TextStyle.paragraph,
             max_length=500, required=False,
         )
+        self.priority = ui.TextInput(
+            label=t("task_priority_label", lang),
+            placeholder="0-7 (0=⬜, 1=🟦, 2=🟩, 3=🟨, 4=🟧, 5=🟥, 6=🔴, 7=🆘)",
+            default=str(max(0, min(7, int(priority)))),
+            max_length=1, required=False,
+        )
         self.add_item(self.task_name)
         self.add_item(self.deadline)
         self.add_item(self.description_field)
+        self.add_item(self.priority)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         lang = self.lang
@@ -373,6 +394,10 @@ class AddProjectTaskModal(ui.Modal):
             await interaction.response.send_message(t(e.i18n_key, lang, **e.kwargs), ephemeral=True)
             return
 
+        prio_val = 0
+        if self.priority.value and self.priority.value.strip().isdigit():
+            prio_val = max(0, min(7, int(self.priority.value.strip())))
+
         try:
             task = await service.add_project_task(
                 project_id  = self.project.project_id,
@@ -380,6 +405,7 @@ class AddProjectTaskModal(ui.Modal):
                 task_name   = self.task_name.value.strip(),
                 deadline_iso= dt.isoformat(),
                 creator_id  = uid,
+                priority    = prio_val,
                 description = self.description_field.value.strip() or None,
             )
         except service.ProjectPermissionError:
@@ -418,6 +444,7 @@ async def _register_live_dashboard(
     """
     try:
         msg = await interaction.original_response()
+        view._message = msg
         from realtime.dashboard_tracker import dashboard_tracker
         dashboard_tracker.register(
             project_id=view.project_id,
@@ -431,8 +458,371 @@ async def _register_live_dashboard(
         log.debug("Could not register live dashboard (non-fatal): %s", exc)
 
 
+class AdvanceProgressSelect(ui.Select):
+    """Dropdown for choosing an active task to mark as Completed to advance project progress."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        tasks: list[ProjectTask],
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.parent_dashboard_view = parent_dashboard_view
+        options = [
+            discord.SelectOption(
+                label=f"#{tk.task_id} {tk.task[:70]}",
+                value=str(tk.task_id),
+                description=f"[{tk.status}] " + (f"📅 {format_deadline(tk.deadline, 'UTC')}" if tk.deadline else ""),
+                emoji="⚡" if tk.status == "In_Progress" else "📋",
+            )
+            for tk in tasks[:25]
+        ]
+        super().__init__(placeholder=t("proj_advance_select_placeholder", lang), options=options)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        lang     = self.lang
+        task_id  = int(self.values[0])
+        uid      = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        await interaction.response.defer(ephemeral=True)
+        try:
+            task = await service.update_task_status(
+                task_id, self.project_id, self.guild_id,
+                "Completed", uid, is_guild_admin=is_admin,
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+        except service.TaskNotFound:
+            await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        embed = discord.Embed(
+            title=f"📈 {t('proj_advance_select_title', lang)}",
+            description=t("proj_advance_success", lang, task_id=task.task_id) + f"\n\n{_progress_bar(stats.progress_pct)}",
+            color=0x57F287,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+
+class AdvanceProgressSelectView(ui.View):
+    """View containing the task selection dropdown to advance progress."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        tasks: list[ProjectTask],
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.add_item(AdvanceProgressSelect(project_id, guild_id, lang, tasks, parent_dashboard_view=parent_dashboard_view))
+
+
+class ManualProgressModal(ui.Modal):
+    """Modal for entering a manual progress percentage for a project."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        super().__init__(title=t("proj_manual_progress_modal_title", lang))
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.parent_dashboard_view = parent_dashboard_view
+
+        self.progress_input = ui.TextInput(
+            label=t("proj_manual_progress_input_label", lang),
+            placeholder="0 - 100",
+            max_length=3,
+            required=True,
+        )
+        self.add_item(self.progress_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        val_str = self.progress_input.value.strip()
+        if not val_str.isdigit() or not (0 <= int(val_str) <= 100):
+            await interaction.response.send_message(t("err_generic", self.lang), ephemeral=True)
+            return
+
+        prog = int(val_str)
+        uid = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            await service.update_project_manual_progress(self.project_id, self.guild_id, prog, uid, is_guild_admin=is_admin)
+        except Exception as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        await interaction.response.send_message(
+            t("proj_manual_progress_updated", self.lang, progress=prog) + f"\n\n{_progress_bar(stats.progress_pct)}",
+            ephemeral=True,
+        )
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+
+class ManualProgressView(ui.View):
+    """Buttons to advance project progress when no tasks exist."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.parent_dashboard_view = parent_dashboard_view
+
+    async def _set_pct(self, interaction: discord.Interaction, pct: int) -> None:
+        uid = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            await service.update_project_manual_progress(self.project_id, self.guild_id, pct, uid, is_guild_admin=is_admin)
+        except Exception as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        await interaction.response.send_message(
+            t("proj_manual_progress_updated", self.lang, progress=pct) + f"\n\n{_progress_bar(stats.progress_pct)}",
+            ephemeral=True,
+        )
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+    @ui.button(label="+10%", style=discord.ButtonStyle.secondary)
+    async def btn_p10(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        new_val = min(100, int(stats.progress_pct) + 10)
+        await self._set_pct(interaction, new_val)
+
+    @ui.button(label="+25%", style=discord.ButtonStyle.secondary)
+    async def btn_p25(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        new_val = min(100, int(stats.progress_pct) + 25)
+        await self._set_pct(interaction, new_val)
+
+    @ui.button(label="+50%", style=discord.ButtonStyle.secondary)
+    async def btn_p50(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        stats = await service.get_project_stats(self.project_id, self.guild_id)
+        new_val = min(100, int(stats.progress_pct) + 50)
+        await self._set_pct(interaction, new_val)
+
+    @ui.button(label="100% (Done)", style=discord.ButtonStyle.success)
+    async def btn_100(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await self._set_pct(interaction, 100)
+
+    @ui.button(label="✏️ Custom %", style=discord.ButtonStyle.primary)
+    async def btn_custom(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        modal = ManualProgressModal(self.project_id, self.guild_id, self.lang, parent_dashboard_view=self.parent_dashboard_view)
+        await interaction.response.send_modal(modal)
+
+
+class ProjectCompleteConfirmView(ui.View):
+    """Confirmation view before completing a project."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        project: Project,
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        super().__init__(timeout=60)
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.project    = project
+        self.parent_dashboard_view = parent_dashboard_view
+
+        self.btn_complete_all.label = t("proj_complete_all_btn", lang)
+        self.btn_complete_only.label = t("proj_complete_status_only_btn", lang)
+        self.btn_cancel.label = t("cancel", lang)
+
+    @ui.button(label="✅ Complete Project & All Tasks", style=discord.ButtonStyle.success)
+    async def btn_complete_all(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        uid = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            await service.complete_project_with_tasks(self.project_id, self.guild_id, uid, complete_all_tasks=True, is_guild_admin=is_admin)
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        self.stop()
+        embed = discord.Embed(
+            title=t("proj_completed_success", self.lang, name=self.project.name),
+            color=0x57F287,
+        )
+        embed.set_footer(text=t("proj_footer_id", self.lang, project_id=self.project_id))
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                stats = await service.get_project_stats(self.project_id, self.guild_id)
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+    @ui.button(label="🏁 Complete Project Only", style=discord.ButtonStyle.primary)
+    async def btn_complete_only(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await interaction.response.defer(ephemeral=True)
+        uid = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            await service.complete_project_with_tasks(self.project_id, self.guild_id, uid, complete_all_tasks=False, is_guild_admin=is_admin)
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        self.stop()
+        embed = discord.Embed(
+            title=t("proj_completed_success", self.lang, name=self.project.name),
+            color=0x57F287,
+        )
+        embed.set_footer(text=t("proj_footer_id", self.lang, project_id=self.project_id))
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                stats = await service.get_project_stats(self.project_id, self.guild_id)
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+    @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
+    async def btn_cancel(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(content=t("cancel", self.lang), embed=None, view=None)
+
+
+class ProjectPrioritySelect(ui.Select):
+    """Dropdown for changing a project's priority (0-7)."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        current_priority: int = 0,
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        self.project_id = project_id
+        self.guild_id   = guild_id
+        self.lang       = lang
+        self.parent_dashboard_view = parent_dashboard_view
+
+        options = [
+            discord.SelectOption(
+                label=f"{emoji} {t(f'priority_{v}', lang)} (P{v})",
+                value=str(v),
+                default=(v == current_priority),
+            )
+            for v, emoji in [
+                (0, "⬜"),
+                (1, "🟦"),
+                (2, "🟩"),
+                (3, "🟨"),
+                (4, "🟧"),
+                (5, "🟥"),
+                (6, "🔴"),
+                (7, "🆘"),
+            ]
+        ]
+        super().__init__(
+            placeholder=t("proj_priority_select_placeholder", lang),
+            options=options,
+            min_values=1,
+            max_values=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        new_prio = int(self.values[0])
+        uid = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            updated = await service.update_project_priority(
+                self.project_id, self.guild_id, new_prio, uid, is_guild_admin=is_admin
+            )
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        prio_text = f"{updated.priority_emoji} {t(f'priority_{updated.priority}', self.lang)} (P{updated.priority})"
+        await interaction.followup.send(
+            t("proj_priority_updated", self.lang, priority=prio_text),
+            ephemeral=True,
+        )
+
+        if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
+            try:
+                stats = await service.get_project_stats(self.project_id, self.guild_id)
+                new_dash_embed = build_project_dashboard_embed(stats, self.lang)
+                await self.parent_dashboard_view._message.edit(embed=new_dash_embed, view=self.parent_dashboard_view)
+            except Exception:
+                pass
+
+
+class ProjectPrioritySelectView(ui.View):
+    """View containing the project priority select dropdown."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        current_priority: int = 0,
+        parent_dashboard_view: Optional["ProjectDashboardView"] = None,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.add_item(ProjectPrioritySelect(project_id, guild_id, lang, current_priority, parent_dashboard_view=parent_dashboard_view))
+
+
 class ProjectDashboardView(ui.View):
-    """Main project dashboard with navigation buttons."""
+    """Main project dashboard with navigation and action buttons."""
 
     def __init__(
         self,
@@ -446,15 +836,21 @@ class ProjectDashboardView(ui.View):
         self.guild_id   = guild_id
         self.lang       = lang
         self.user       = user
-        # Localize button labels after init (Discord requires static labels on @ui.button decorator)
+        self._message: Optional[discord.Message] = None
+
+        # Localize button labels after init
         self.btn_dashboard.label = t("proj_btn_dashboard", lang)
         self.btn_board.label     = t("proj_btn_board",     lang)
         self.btn_members.label   = t("proj_btn_members",   lang)
         self.btn_activity.label  = t("proj_btn_activity",  lang)
-        self.btn_add_task.label  = t("proj_btn_add_task",  lang)
         self.btn_files.label     = t("proj_btn_files",     lang)
 
-    @ui.button(label="📊 Dashboard", style=discord.ButtonStyle.primary,  custom_id="proj_dash_dashboard")
+        self.btn_add_task.label  = t("proj_btn_add_task",  lang)
+        self.btn_advance.label   = t("proj_btn_advance_progress", lang)
+        self.btn_complete.label  = t("proj_btn_complete_project", lang)
+        self.btn_priority.label  = t("proj_btn_change_priority",  lang)
+
+    @ui.button(label="📊 Dashboard", style=discord.ButtonStyle.primary, custom_id="proj_dash_dashboard", row=0)
     async def btn_dashboard(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer()
@@ -464,11 +860,11 @@ class ProjectDashboardView(ui.View):
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_project_dashboard_embed(stats, lang)
+        self._message = interaction.message
         await interaction.message.edit(embed=embed, view=self)
-        # Register this message as the live dashboard so Realtime can auto-update it
         await _register_live_dashboard(self, interaction)
 
-    @ui.button(label="📋 Board", style=discord.ButtonStyle.secondary, custom_id="proj_dash_board")
+    @ui.button(label="📋 Board", style=discord.ButtonStyle.secondary, custom_id="proj_dash_board", row=0)
     async def btn_board(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer()
@@ -482,7 +878,7 @@ class ProjectDashboardView(ui.View):
         view._message = interaction.message
         await interaction.message.edit(embed=embed, view=view)
 
-    @ui.button(label="👥 Members", style=discord.ButtonStyle.secondary, custom_id="proj_dash_members")
+    @ui.button(label="👥 Members", style=discord.ButtonStyle.secondary, custom_id="proj_dash_members", row=0)
     async def btn_members(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer()
@@ -497,7 +893,7 @@ class ProjectDashboardView(ui.View):
         view._message = interaction.message
         await interaction.message.edit(embed=embed, view=view)
 
-    @ui.button(label="📜 Activity", style=discord.ButtonStyle.secondary, custom_id="proj_dash_activity")
+    @ui.button(label="📜 Activity", style=discord.ButtonStyle.secondary, custom_id="proj_dash_activity", row=0)
     async def btn_activity(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer()
@@ -508,20 +904,10 @@ class ProjectDashboardView(ui.View):
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
         embed = build_activity_embed(activities, project, lang)
+        self._message = interaction.message
         await interaction.message.edit(embed=embed, view=self)
 
-    @ui.button(label="➕ Add Task", style=discord.ButtonStyle.success, custom_id="proj_dash_add_task")
-    async def btn_add_task(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        lang = self.lang
-        try:
-            project = await service.get_project(self.project_id, self.guild_id)
-        except service.ProjectNotFound:
-            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
-            return
-        modal = AddProjectTaskModal(project, lang)
-        await interaction.response.send_modal(modal)
-
-    @ui.button(label="📎 Files", style=discord.ButtonStyle.secondary, custom_id="proj_dash_files")
+    @ui.button(label="📎 Files", style=discord.ButtonStyle.secondary, custom_id="proj_dash_files", row=0)
     async def btn_files(self, interaction: discord.Interaction, button: ui.Button) -> None:
         """Show attachments across all project tasks."""
         lang = self.lang
@@ -531,9 +917,7 @@ class ProjectDashboardView(ui.View):
         if not bot_config.storage.enabled:
             await interaction.followup.send(t("storage_disabled", lang), ephemeral=True)
             return
-        # Fetch all tasks belonging to this project, then list attachments
         from core.database import db
-        # Single query via project_id index instead of N+1 per-task queries
         att_rows = await db.fetchall(
             """SELECT * FROM task_attachments
                 WHERE project_id=$1
@@ -561,6 +945,110 @@ class ProjectDashboardView(ui.View):
             lang=lang,
         )
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @ui.button(label="➕ Add Task", style=discord.ButtonStyle.secondary, custom_id="proj_dash_add_task", row=1)
+    async def btn_add_task(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+        modal = AddProjectTaskModal(project, lang)
+        await interaction.response.send_modal(modal)
+
+    @ui.button(label="📈 Advance Progress", style=discord.ButtonStyle.primary, custom_id="proj_dash_advance", row=1)
+    async def btn_advance(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        try:
+            board = await service.get_project_board(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        role = await service.get_member_role(self.project_id, actor_id)
+        if not (role is not None or is_admin):
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        completable = board.in_progress + board.pending
+        if completable:
+            self._message = interaction.message
+            view = AdvanceProgressSelectView(self.project_id, self.guild_id, lang, completable, parent_dashboard_view=self)
+            embed = discord.Embed(
+                title=f"📈 {t('proj_advance_select_title', lang)}",
+                description=t("proj_advance_select_desc", lang),
+                color=0x5865F2,
+            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        else:
+            self._message = interaction.message
+            view = ManualProgressView(self.project_id, self.guild_id, lang, parent_dashboard_view=self)
+            embed = discord.Embed(
+                title=f"📈 {t('proj_advance_select_title', lang)}",
+                description=t("proj_manual_progress_desc", lang),
+                color=0x5865F2,
+            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @ui.button(label="🏁 Complete Project", style=discord.ButtonStyle.success, custom_id="proj_dash_complete", row=1)
+    async def btn_complete(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+
+        actor_role = await service.get_member_role(self.project_id, actor_id)
+        is_lead = actor_role == "lead" or project.owner_id == actor_id
+        if not (is_lead or is_admin):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        if project.status == "completed":
+            await interaction.response.send_message(t("proj_already_completed", lang), ephemeral=True)
+            return
+
+        self._message = interaction.message
+        view = ProjectCompleteConfirmView(self.project_id, self.guild_id, lang, project, parent_dashboard_view=self)
+        embed = discord.Embed(
+            title=f"🏁 {t('proj_complete_confirm_title', lang)}",
+            description=t("proj_complete_confirm_desc", lang, name=project.name),
+            color=0x57F287,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @ui.button(label="🎯 Priority", style=discord.ButtonStyle.secondary, custom_id="proj_dash_priority", row=1)
+    async def btn_priority(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+
+        actor_role = await service.get_member_role(self.project_id, actor_id)
+        is_lead = actor_role == "lead" or project.owner_id == actor_id
+        if not (is_lead or is_admin):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        self._message = interaction.message
+        view = ProjectPrioritySelectView(self.project_id, self.guild_id, lang, project.priority, parent_dashboard_view=self)
+        embed = discord.Embed(
+            title=f"🎯 {t('proj_priority_select_title', lang)}",
+            description=t("proj_priority_select_desc", lang, project=project.name, current=f"{project.priority_emoji} {t(f'priority_{project.priority}', lang)}"),
+            color=0x5865F2,
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 

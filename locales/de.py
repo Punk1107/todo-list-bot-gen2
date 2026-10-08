@@ -754,7 +754,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 Aufgabe beanspruchen",
 
     "proj_btn_back": "⬅️ Dashboard",
-
+    "proj_priority_label": "Priorität",
+    "proj_btn_advance_progress": "📈 Fortschritt erhöhen",
+    "proj_btn_complete_project": "🏁 Projekt abschließen",
+    "proj_btn_change_priority": "🎯 Priorität",
+    "proj_advance_select_title": "Projektfortschritt erhöhen",
+    "proj_advance_select_desc": "Wähle eine Aufgabe aus, um sie abzuschließen und den Projektfortschritt zu erhöhen.",
+    "proj_advance_select_placeholder": "Aufgabe auswählen...",
+    "proj_advance_success": "✅ Aufgabe **#{task_id}** abgeschlossen! Projektfortschritt erhöht.",
+    "proj_complete_confirm_title": "Projekt abschließen",
+    "proj_complete_confirm_desc": "Möchtest du das Projekt **{name}** wirklich als abgeschlossen markieren?",
+    "proj_complete_all_btn": "✅ Projekt & alle Aufgaben abschließen",
+    "proj_complete_status_only_btn": "🏁 Nur Projekt abschließen",
+    "proj_already_completed": "Projekt ist bereits abgeschlossen.",
+    "proj_priority_select_title": "Projektpriorität ändern",
+    "proj_priority_select_desc": "Wähle eine neue Priorität für Projekt **{project}** (Aktuell: {current}):",
+    "proj_priority_select_placeholder": "Priorität wählen...",
+    "proj_priority_updated": "🎯 Projektpriorität aktualisiert auf **{priority}**!",
+    "proj_manual_progress_desc": "Keine aktiven Aufgaben vorhanden. Passe den Fortschritt direkt an:",
+    "proj_manual_progress_modal_title": "Projektfortschritt anpassen",
+    "proj_manual_progress_input_label": "Fortschritt in Prozent (0-100)",
+    "proj_manual_progress_updated": "📈 Projektfortschritt auf **{progress}%** aktualisiert!",
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
     "proj_btn_add_member": "➕ Mitglied hinzufügen",

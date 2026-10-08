@@ -702,6 +702,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 작업 맡기",
 
     "proj_btn_back": "⬅️ 대시보드",
+    "proj_priority_label": "우선순위",
+    "proj_btn_advance_progress": "📈 진행도 올리기",
+    "proj_btn_complete_project": "🏁 프로젝트 완료",
+    "proj_btn_change_priority": "🎯 우선순위 변경",
+    "proj_advance_select_title": "프로젝트 진행도 올리기",
+    "proj_advance_select_desc": "완료할 작업을 선택하여 프로젝트 진행도를 올립니다.",
+    "proj_advance_select_placeholder": "완료할 작업 선택...",
+    "proj_advance_success": "✅ 작업 **#{task_id}** 완료! 프로젝트 진행도가 반영되었습니다.",
+    "proj_complete_confirm_title": "프로젝트 완료 확인",
+    "proj_complete_confirm_desc": "프로젝트 **{name}**을(를) 완료로 표시하시겠습니까?",
+    "proj_complete_all_btn": "✅ 프로젝트 및 모든 작업 완료",
+    "proj_complete_status_only_btn": "🏁 프로젝트만 완료",
+    "proj_already_completed": "이미 완료된 프로젝트입니다.",
+    "proj_priority_select_title": "프로젝트 우선순위 변경",
+    "proj_priority_select_desc": "프로젝트 **{project}**의 새 우선순위를 선택하세요 (현재: {current}):",
+    "proj_priority_select_placeholder": "우선순위 선택...",
+    "proj_priority_updated": "🎯 프로젝트 우선순위가 **{priority}**(으)로 업데이트되었습니다!",
+    "proj_manual_progress_desc": "활성 작업이 없습니다. 진행률을 직접 조정하세요:",
+    "proj_manual_progress_modal_title": "프로젝트 진행률 업데이트",
+    "proj_manual_progress_input_label": "진행률 (0-100)",
+    "proj_manual_progress_updated": "📈 프로젝트 진행률이 **{progress}%**(으)로 업데이트되었습니다!",
 
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────

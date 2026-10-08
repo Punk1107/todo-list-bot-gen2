@@ -702,6 +702,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 Reclamar tarea",
 
     "proj_btn_back": "⬅️ Panel",
+    "proj_priority_label": "Prioridad",
+    "proj_btn_advance_progress": "📈 Avanzar progreso",
+    "proj_btn_complete_project": "🏁 Completar proyecto",
+    "proj_btn_change_priority": "🎯 Prioridad",
+    "proj_advance_select_title": "Avanzar progreso del proyecto",
+    "proj_advance_select_desc": "Selecciona una tarea para completarla y avanzar el progreso del proyecto.",
+    "proj_advance_select_placeholder": "Seleccionar tarea a completar...",
+    "proj_advance_success": "✅ ¡Tarea **#{task_id}** completada! Progreso del proyecto avanzado.",
+    "proj_complete_confirm_title": "Completar proyecto",
+    "proj_complete_confirm_desc": "¿Estás seguro de que deseas marcar el proyecto **{name}** como completado?",
+    "proj_complete_all_btn": "✅ Completar proyecto y todas las tareas",
+    "proj_complete_status_only_btn": "🏁 Completar solo el proyecto",
+    "proj_already_completed": "El proyecto ya está completado.",
+    "proj_priority_select_title": "Cambiar prioridad del proyecto",
+    "proj_priority_select_desc": "Selecciona una nueva prioridad para **{project}** (Actual: {current}):",
+    "proj_priority_select_placeholder": "Elegir prioridad...",
+    "proj_priority_updated": "🎯 ¡Prioridad del proyecto actualizada a **{priority}**!",
+    "proj_manual_progress_desc": "No hay tareas activas en este proyecto. Ajusta el progreso directamente:",
+    "proj_manual_progress_modal_title": "Actualizar progreso del proyecto",
+    "proj_manual_progress_input_label": "Porcentaje de progreso (0-100)",
+    "proj_manual_progress_updated": "📈 ¡Progreso del proyecto actualizado a **{progress}%**!",
 
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────

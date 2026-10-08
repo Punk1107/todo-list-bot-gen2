@@ -53,22 +53,41 @@ class Project:
     role_id:     Optional[int]
     created_at:  datetime
     updated_at:  datetime
+    priority:    int = 0
+    manual_progress: Optional[int] = None
 
     @classmethod
     def from_record(cls, row) -> "Project":
+        priority = 0
+        manual_progress = None
+        try:
+            val = row["priority"]
+            if val is not None:
+                priority = int(val)
+        except (KeyError, TypeError, IndexError):
+            pass
+        try:
+            val = row["manual_progress"]
+            if val is not None:
+                manual_progress = int(val)
+        except (KeyError, TypeError, IndexError):
+            pass
+
         return cls(
-            project_id  = row["project_id"],
-            guild_id    = row["guild_id"],
-            name        = row["name"],
-            description = row["description"],
-            owner_id    = row["owner_id"],
-            status      = row["status"],
-            color       = row["color"],
-            emoji       = row["emoji"],
-            channel_id  = row["channel_id"],
-            role_id     = row["role_id"],
-            created_at  = row["created_at"],
-            updated_at  = row["updated_at"],
+            project_id      = row["project_id"],
+            guild_id        = row["guild_id"],
+            name            = row["name"],
+            description     = row["description"],
+            owner_id        = row["owner_id"],
+            status          = row["status"],
+            color           = row["color"],
+            emoji           = row["emoji"],
+            channel_id      = row["channel_id"],
+            role_id         = row["role_id"],
+            created_at      = row["created_at"],
+            updated_at      = row["updated_at"],
+            priority        = priority,
+            manual_progress = manual_progress,
         )
 
     @property
@@ -78,6 +97,11 @@ class Project:
             "archived":  "📦",
             "completed": "✅",
         }.get(self.status, "⚪")
+
+    @property
+    def priority_emoji(self) -> str:
+        return ["⬜", "🟦", "🟩", "🟨", "🟧", "🟥", "🔴", "🆘"][self.priority] \
+            if isinstance(self.priority, int) and 0 <= self.priority <= 7 else "⬜"
 
 
 @dataclass
@@ -213,6 +237,8 @@ class BoardData:
     def progress_pct(self) -> float:
         non_cancelled = self.total - len(self.cancelled)
         if non_cancelled <= 0:
+            if self.project and self.project.manual_progress is not None:
+                return float(self.project.manual_progress)
             return 0.0
         return round(self.done_count / non_cancelled * 100, 1)
 

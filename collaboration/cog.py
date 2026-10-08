@@ -83,14 +83,25 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
     # ─────────────────────────────────────────────────────────────────────────
 
     @project.command(name="create", description="🎉 สร้างโปรเจกต์ร่วมใหม่ในเซิร์ฟเวอร์ / Create a new shared project")
+    @app_commands.describe(priority="ระดับความสำคัญ / Priority level (0-7, default: 0)")
+    @app_commands.choices(priority=[
+        app_commands.Choice(name="⬜ 0: Normal / ปกติ",     value=0),
+        app_commands.Choice(name="🟦 1: Low / ต่ำ",          value=1),
+        app_commands.Choice(name="🟩 2: Medium / ปานกลาง",   value=2),
+        app_commands.Choice(name="🟨 3: High / สูง",         value=3),
+        app_commands.Choice(name="🟧 4: Urgent / ด่วน",      value=4),
+        app_commands.Choice(name="🟥 5: Immediate / ด่วนมาก", value=5),
+        app_commands.Choice(name="🔴 6: Critical / วิกฤต",   value=6),
+        app_commands.Choice(name="🆘 7: Emergency / ฉุกเฉิน", value=7),
+    ])
     @rate_limit_check("command")
-    async def project_create(self, interaction: discord.Interaction) -> None:
+    async def project_create(self, interaction: discord.Interaction, priority: Optional[int] = 0) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         if not await _guild_only(interaction, lang):
             return
         await ensure_user(uid, lang)
-        modal = CreateProjectModal(lang)
+        modal = CreateProjectModal(lang, priority=priority or 0)
         await interaction.response.send_modal(modal)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -146,7 +157,8 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
 
         embed = build_project_dashboard_embed(stats, lang)
         view  = ProjectDashboardView(project_id, guild_id, lang, interaction.user)
-        await interaction.followup.send(embed=embed, view=view)
+        msg   = await interaction.followup.send(embed=embed, view=view)
+        view._message = msg
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project board
@@ -181,9 +193,24 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
     # ─────────────────────────────────────────────────────────────────────────
 
     @project.command(name="add-task", description="➕ เพิ่ม Task เข้าโปรเจกต์ / Add a task to a project")
-    @app_commands.describe(project_id="Project ID number")
+    @app_commands.describe(
+        project_id="Project ID number",
+        priority="ระดับความสำคัญ / Priority level (0-7, default: 0)",
+    )
+    @app_commands.choices(priority=[
+        app_commands.Choice(name="⬜ 0: Normal / ปกติ",     value=0),
+        app_commands.Choice(name="🟦 1: Low / ต่ำ",          value=1),
+        app_commands.Choice(name="🟩 2: Medium / ปานกลาง",   value=2),
+        app_commands.Choice(name="🟨 3: High / สูง",         value=3),
+        app_commands.Choice(name="🟧 4: Urgent / ด่วน",      value=4),
+        app_commands.Choice(name="🟥 5: Immediate / ด่วนมาก", value=5),
+        app_commands.Choice(name="🔴 6: Critical / วิกฤต",   value=6),
+        app_commands.Choice(name="🆘 7: Emergency / ฉุกเฉิน", value=7),
+    ])
     @rate_limit_check("command")
-    async def project_add_task(self, interaction: discord.Interaction, project_id: int) -> None:
+    async def project_add_task(
+        self, interaction: discord.Interaction, project_id: int, priority: Optional[int] = 0
+    ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         if not await _guild_only(interaction, lang):
@@ -206,8 +233,60 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             return
 
         from collaboration.views import AddProjectTaskModal
-        modal = AddProjectTaskModal(project, lang)
+        modal = AddProjectTaskModal(project, lang, priority=priority or 0)
         await interaction.response.send_modal(modal)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project set-priority
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(name="set-priority", description="🎯 ตั้งระดับความสำคัญของโปรเจกต์ / Set project priority")
+    @app_commands.describe(
+        project_id="Project ID number",
+        priority="Priority level (0-7)",
+    )
+    @app_commands.choices(priority=[
+        app_commands.Choice(name="⬜ 0: Normal / ปกติ",     value=0),
+        app_commands.Choice(name="🟦 1: Low / ต่ำ",          value=1),
+        app_commands.Choice(name="🟩 2: Medium / ปานกลาง",   value=2),
+        app_commands.Choice(name="🟨 3: High / สูง",         value=3),
+        app_commands.Choice(name="🟧 4: Urgent / ด่วน",      value=4),
+        app_commands.Choice(name="🟥 5: Immediate / ด่วนมาก", value=5),
+        app_commands.Choice(name="🔴 6: Critical / วิกฤต",   value=6),
+        app_commands.Choice(name="🆘 7: Emergency / ฉุกเฉิน", value=7),
+    ])
+    @rate_limit_check("command")
+    async def project_set_priority(
+        self, interaction: discord.Interaction, project_id: int, priority: int
+    ) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        try:
+            updated = await service.update_project_priority(
+                project_id, guild_id, priority, uid, is_guild_admin=is_admin
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except Exception as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        prio_text = f"{updated.priority_emoji} {t(f'priority_{updated.priority}', lang)} (P{updated.priority})"
+        await interaction.followup.send(
+            t("proj_priority_updated", lang, priority=prio_text),
+            ephemeral=True,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project complete-task

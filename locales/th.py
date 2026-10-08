@@ -780,7 +780,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 รับงาน",
 
     "proj_btn_back": "⬅️ แดชบอร์ด",
-
+    "proj_priority_label": "ระดับความสำคัญ",
+    "proj_btn_advance_progress": "📈 เพิ่มความคืบหน้า",
+    "proj_btn_complete_project": "🏁 เสร็จสิ้นโปรเจกต์",
+    "proj_btn_change_priority": "🎯 ระดับความสำคัญ",
+    "proj_advance_select_title": "เพิ่มความคืบหน้าโปรเจกต์",
+    "proj_advance_select_desc": "เลือกงานที่ต้องการทำให้เสร็จ เพื่อเลื่อนแถบความคืบหน้าของโปรเจกต์",
+    "proj_advance_select_placeholder": "เลือกงานที่จะเสร็จสิ้น...",
+    "proj_advance_success": "✅ ทำงาน **#{task_id}** เสร็จแล้ว! ความคืบหน้าโปรเจกต์เพิ่มขึ้น",
+    "proj_complete_confirm_title": "ยืนยันเสร็จสิ้นโปรเจกต์",
+    "proj_complete_confirm_desc": "คุณต้องการปิดเสร็จสิ้นโปรเจกต์ **{name}** ใช่หรือไม่?",
+    "proj_complete_all_btn": "✅ เสร็จสิ้นและปิดทุกงานที่เหลือ",
+    "proj_complete_status_only_btn": "🏁 เสร็จสิ้นเฉพาะโปรเจกต์",
+    "proj_already_completed": "โปรเจกต์นี้อยู่ในสถานะเสร็จสิ้นแล้ว",
+    "proj_priority_select_title": "เปลี่ยนระดับความสำคัญของโปรเจกต์",
+    "proj_priority_select_desc": "เลือกระดับความสำคัญใหม่สำหรับโปรเจกต์ **{project}** (ปัจจุบัน: {current}):",
+    "proj_priority_select_placeholder": "เลือกระดับความสำคัญ...",
+    "proj_priority_updated": "🎯 อัปเดตระดับความสำคัญของโปรเจกต์เป็น **{priority}** สำเร็จแล้ว!",
+    "proj_manual_progress_desc": "ไม่พบงานค้างในโปรเจกต์นี้ คุณสามารถปรับความคืบหน้าโดยตรงได้:",
+    "proj_manual_progress_modal_title": "ปรับระดับความคืบหน้าโปรเจกต์",
+    "proj_manual_progress_input_label": "เปอร์เซ็นต์ความคืบหน้า (0-100)",
+    "proj_manual_progress_updated": "📈 อัปเดตความคืบหน้าของโปรเจกต์เป็น **{progress}%** สำเร็จแล้ว!",
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────
     "proj_btn_add_member": "➕ เพิ่มสมาชิก",

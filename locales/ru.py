@@ -709,6 +709,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 Взять задачу",
 
     "proj_btn_back": "⬅️ Панель",
+    "proj_priority_label": "Приоритет",
+    "proj_btn_advance_progress": "📈 Продвинуть прогресс",
+    "proj_btn_complete_project": "🏁 Завершить проект",
+    "proj_btn_change_priority": "🎯 Приоритет",
+    "proj_advance_select_title": "Продвижение прогресса проекта",
+    "proj_advance_select_desc": "Выберите задачу для завершения, чтобы увеличить общий прогресс проекта.",
+    "proj_advance_select_placeholder": "Выберите задачу...",
+    "proj_advance_success": "✅ Задача **#{task_id}** завершена! Прогресс проекта увеличен.",
+    "proj_complete_confirm_title": "Завершение проекта",
+    "proj_complete_confirm_desc": "Вы уверены, что хотите завершить проект **{name}**?",
+    "proj_complete_all_btn": "✅ Завершить проект и все задачи",
+    "proj_complete_status_only_btn": "🏁 Завершить только проект",
+    "proj_already_completed": "Проект уже завершён.",
+    "proj_priority_select_title": "Изменить приоритет проекта",
+    "proj_priority_select_desc": "Выберите новый приоритет для проекта **{project}** (Текущий: {current}):",
+    "proj_priority_select_placeholder": "Выберите приоритет...",
+    "proj_priority_updated": "🎯 Приоритет проекта изменён на **{priority}**!",
+    "proj_manual_progress_desc": "В проекте нет активных задач. Укажите прогресс вручную:",
+    "proj_manual_progress_modal_title": "Обновить прогресс проекта",
+    "proj_manual_progress_input_label": "Процент выполнения (0-100)",
+    "proj_manual_progress_updated": "📈 Прогресс проекта обновлён до **{progress}%**!",
 
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────

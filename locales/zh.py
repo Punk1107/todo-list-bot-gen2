@@ -703,6 +703,27 @@ STRINGS = {
     "proj_btn_claim": "🙋 认领任务",
 
     "proj_btn_back": "⬅️ 仪表板",
+    "proj_priority_label": "优先级",
+    "proj_btn_advance_progress": "📈 推进进度",
+    "proj_btn_complete_project": "🏁 完成项目",
+    "proj_btn_change_priority": "🎯 更改优先级",
+    "proj_advance_select_title": "推进项目进度",
+    "proj_advance_select_desc": "选择要完成的任务以推进整个项目的进度。",
+    "proj_advance_select_placeholder": "选择要完成的任务...",
+    "proj_advance_success": "✅ 任务 **#{task_id}** 已完成！项目进度已推进。",
+    "proj_complete_confirm_title": "完成项目确认",
+    "proj_complete_confirm_desc": "确定要将项目 **{name}** 标记为已完成吗？",
+    "proj_complete_all_btn": "✅ 完成项目及所有任务",
+    "proj_complete_status_only_btn": "🏁 仅完成项目",
+    "proj_already_completed": "该项目已处于完成状态。",
+    "proj_priority_select_title": "更改项目优先级",
+    "proj_priority_select_desc": "为项目 **{project}** 选择新的优先级（当前：{current}）：",
+    "proj_priority_select_placeholder": "选择优先级...",
+    "proj_priority_updated": "🎯 项目优先级已更新为 **{priority}**！",
+    "proj_manual_progress_desc": "此项目暂无活动任务。可直接调整进度百分比：",
+    "proj_manual_progress_modal_title": "更新项目进度",
+    "proj_manual_progress_input_label": "进度百分比 (0-100)",
+    "proj_manual_progress_updated": "📈 项目进度已更新为 **{progress}%**！",
 
 
     # ─── Project Collaboration (Add Members, DM, Complete Task) ───────────────

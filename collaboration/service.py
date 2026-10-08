@@ -98,17 +98,19 @@ async def create_project(
     emoji: str = "📁",
     channel_id: Optional[int] = None,
     role_id: Optional[int] = None,
+    priority: int = 0,
 ) -> Project:
     """
     Create a new Shared Project scoped to guild_id.
     The creator is automatically added as a Lead member.
     """
+    prio_val = max(0, min(7, int(priority)))
     row = await db.fetchone(
         """INSERT INTO projects
-           (guild_id, name, description, owner_id, color, emoji, channel_id, role_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (guild_id, name, description, owner_id, color, emoji, channel_id, role_id, priority)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            RETURNING *""",
-        (guild_id, name, description, owner_id, color, emoji, channel_id, role_id),
+        (guild_id, name, description, owner_id, color, emoji, channel_id, role_id, prio_val),
     )
     project = Project.from_record(row)
     # Auto-add creator as Lead
@@ -118,7 +120,7 @@ async def create_project(
         (project.project_id, owner_id),
     )
     await log_activity(project.project_id, guild_id, owner_id, "project_created", name)
-    log.info("Project created: guild=%s project_id=%s name=%r", guild_id, project.project_id, name)
+    log.info("Project created: guild=%s project_id=%s name=%r priority=%s", guild_id, project.project_id, name, prio_val)
     return project
 
 
@@ -143,12 +145,12 @@ async def get_guild_projects(guild_id: str, status: Optional[str] = "active") ->
     """
     if status:
         rows = await db.fetchall(
-            "SELECT * FROM projects WHERE guild_id=$1 AND status=$2 ORDER BY updated_at DESC",
+            "SELECT * FROM projects WHERE guild_id=$1 AND status=$2 ORDER BY priority DESC, updated_at DESC",
             (guild_id, status),
         )
     else:
         rows = await db.fetchall(
-            "SELECT * FROM projects WHERE guild_id=$1 ORDER BY updated_at DESC",
+            "SELECT * FROM projects WHERE guild_id=$1 ORDER BY priority DESC, updated_at DESC",
             (guild_id,),
         )
     return [Project.from_record(r) for r in rows] if rows else []
@@ -167,6 +169,69 @@ async def update_project_status(
     )
     action = "project_archived" if new_status == "archived" else "project_completed"
     await log_activity(project_id, guild_id, actor_id, action)
+    return await get_project(project_id, guild_id)
+
+
+async def update_project_priority(
+    project_id: int, guild_id: str, priority: int,
+    actor_id: str, is_guild_admin: bool = False,
+) -> Project:
+    """Change a project's priority (0-7). Requires Lead or Admin."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "lead", is_guild_admin)
+    prio_val = max(0, min(7, int(priority)))
+    await db.execute(
+        "UPDATE projects SET priority=$1, updated_at=NOW() WHERE project_id=$2 AND guild_id=$3",
+        (prio_val, project_id, guild_id),
+    )
+    db.query_cache.invalidate_tables(["projects"])
+    await log_activity(project_id, guild_id, actor_id, "project_priority_changed", str(prio_val))
+    return await get_project(project_id, guild_id)
+
+
+async def update_project_manual_progress(
+    project_id: int, guild_id: str, progress: int,
+    actor_id: str, is_guild_admin: bool = False,
+) -> Project:
+    """Update manual progress percentage (0-100) for projects. Requires Member, Lead, or Admin."""
+    project = await get_project(project_id, guild_id)
+    actor_role = await get_member_role(project_id, actor_id)
+    if not (actor_role is not None or is_guild_admin):
+        raise ProjectPermissionError("member")
+    prog_val = max(0, min(100, int(progress)))
+    await db.execute(
+        "UPDATE projects SET manual_progress=$1, updated_at=NOW() WHERE project_id=$2 AND guild_id=$3",
+        (prog_val, project_id, guild_id),
+    )
+    db.query_cache.invalidate_tables(["projects"])
+    await log_activity(project_id, guild_id, actor_id, "project_progress_updated", f"{prog_val}%")
+    return await get_project(project_id, guild_id)
+
+
+async def complete_project_with_tasks(
+    project_id: int, guild_id: str,
+    actor_id: str, complete_all_tasks: bool = True,
+    is_guild_admin: bool = False,
+) -> Project:
+    """Mark project as completed, optionally auto-completing all remaining pending/in_progress tasks. Requires Lead or Admin."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "lead", is_guild_admin)
+
+    if complete_all_tasks:
+        await db.execute(
+            """UPDATE tasks
+               SET status='Completed', completed_at=NOW(), updated_at=NOW()
+               WHERE project_id=$1 AND guild_id=$2 AND status IN ('Pending', 'In_Progress')""",
+            (project_id, guild_id),
+        )
+        db.query_cache.invalidate_tables(["tasks", "task_assignments"])
+
+    await db.execute(
+        "UPDATE projects SET status='completed', updated_at=NOW() WHERE project_id=$1 AND guild_id=$2",
+        (project_id, guild_id),
+    )
+    db.query_cache.invalidate_tables(["projects"])
+    await log_activity(project_id, guild_id, actor_id, "project_completed", "Completed via dashboard")
     return await get_project(project_id, guild_id)
 
 
@@ -602,7 +667,12 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
     leaderboard = [(r["user_id"], int(r["done"])) for r in (lb_rows or [])]
 
     non_cancelled = totals["total"] - totals["cancelled"]
-    progress = round(totals["completed"] / non_cancelled * 100, 1) if non_cancelled > 0 else 0.0
+    if non_cancelled > 0:
+        progress = round(totals["completed"] / non_cancelled * 100, 1)
+    elif project.manual_progress is not None:
+        progress = float(project.manual_progress)
+    else:
+        progress = 0.0
 
     return ProjectStats(
         project      = project,
