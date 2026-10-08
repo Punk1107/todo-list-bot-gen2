@@ -74,6 +74,7 @@ async def task_autocomplete(
     """
     uid = str(interaction.user.id)
     try:
+        now_iso = datetime.now(timezone.utc).isoformat()
         if current:
             rows = await db.afetchall(
                 """SELECT task_id, task, deadline, status
@@ -83,10 +84,10 @@ async def task_autocomplete(
                  AND parent_task_id IS NULL
                  AND (task ILIKE $2 OR CAST(task_id AS TEXT) ILIKE $2)
                ORDER BY
-                 CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
+                 CASE WHEN deadline < $3 THEN 0 ELSE 1 END,
                  deadline ASC NULLS LAST
                LIMIT 25""",
-                (uid, f"%{current}%"),
+                (uid, f"%{current}%", now_iso),
             )
         else:
             rows = await db.afetchall(
@@ -96,12 +97,13 @@ async def task_autocomplete(
                  AND status IN ('Pending', 'In_Progress')
                  AND parent_task_id IS NULL
                ORDER BY
-                 CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
+                 CASE WHEN deadline < $2 THEN 0 ELSE 1 END,
                  deadline ASC NULLS LAST
                LIMIT 25""",
-                (uid,),
+                (uid, now_iso),
             )
-    except Exception:
+    except Exception as exc:
+        log.warning("task_autocomplete error: %s", exc)
         return []
 
     choices = []
