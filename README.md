@@ -11,7 +11,7 @@
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
 ![Deno](https://img.shields.io/badge/Deno-TypeScript-black?logo=deno&logoColor=white)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
-![Tests](https://img.shields.io/badge/Tests-213%20Passed%20(100%25)-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-235%20Passed%20(100%25)-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
@@ -39,18 +39,18 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v16, RLS Policies |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v17 (Priority 0–7, Manual Progress %, RLS Policies) |
 | **Architecture** | Monolithic | Modular Cogs | **Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
-| **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log |
+| **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
 | **Search** | Basic text match | Basic text match | **PostgreSQL Full-Text Search** (`search_vector` GIN index, `ts_rank_cd`, multi-column weighted ranking) |
 | **AI Prioritization** | None | None | **`/recommend`** — Composite Scoring (Urgency + Priority + Staleness), 3 Strategy Presets |
 | **File Attachments** | None | None | **Supabase Storage** (`/attach`, `/attachments`), image preview, per-task file management |
 | **Realtime Sync** | None | None | **Supabase Realtime CDC** (Phoenix WebSocket), live Discord embed updates with 1.5s debounce |
 | **Analytics** | None | None | **`/task-stats`** Productivity Dashboard + **Deno Edge Function** weekly visual reports via QuickChart API |
 | **Monitoring** | None | None | **Health Monitor**, Error Tracker, Commands Audit, Discord Alert Dispatcher |
-| **Automated Testing** | None | Not documented | **213 Unit & Integration Tests, 100% passing** |
+| **Automated Testing** | None | Not documented | **235 Unit & Integration Tests, 100% passing** |
 | **Event Loop** | Default | Default | **uvloop** (Linux/macOS) for 2–4× faster I/O throughput |
 
 ---
@@ -93,7 +93,7 @@ graph TD
     end
 
     subgraph Supabase["☁️ Supabase Cloud Infrastructure"]
-        PG[(PostgreSQL 15+ Schema v16 GIN Search Vectors RLS)]
+        PG[(PostgreSQL 15+ Schema v17 GIN Search Vectors RLS)]
         ST[Storage task-attachments bucket]
         RTDB[Realtime Publication]
         EF[Edge Functions Deno TypeScript weekly-analytics]
@@ -116,25 +116,25 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v16), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v17), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
 | `handlers/task_views.py` | `task_views.py` | TaskActionView, TaskListView, AddTaskModal, DeleteConfirmView, SnoozePresetView, persistent view registration |
 | `handlers/settings_cog.py` | `settings_cog.py` | `/setup`, `/lang`, `/category`, `/help` |
 | `handlers/reminders_cog.py` | `reminders_cog.py` | 5 background loops (reminder, recurring, daily digest, DM alarm, cleanup) |
 | `handlers/monitoring_cog.py` | `monitoring_cog.py` | Admin `/health`, `/errors`, `/cmdstats`, `/monitoring` |
-| `collaboration/cog.py` | `collaboration/` | Shared Projects, Kanban Board, Member Roles, Activity Log |
-| `storage/cog.py` | `storage/` | Supabase Storage integration, `/attach`, `/attachments` |
-| `search_recommendation/cog.py` | `search_recommendation/` | PostgreSQL FTS `/search`, AI-scoring `/recommend` |
-| `analytics/cog.py` | `analytics/` | `/task-stats`, `/analytics` (calls Edge Function) |
-| `realtime/` | `realtime/` | Phoenix WebSocket client, CDC event dispatcher, debounced embed updater |
-| `monitoring/` | `monitoring/` | Health monitor, error tracker, structured JSON logging |
-| `security_rls/` | `security_rls/` | RLS SQL policies, migration runner |
+| `collaboration/` | `cog.py`, `models.py`, `service.py`, `views.py` | Shared Projects, Kanban Board, Member Roles, Activity Log, Project Priority 0–7, Advance & Complete Project controls |
+| `storage/` | `cog.py`, `client.py`, `models.py`, `service.py`, `views.py` | Supabase Storage integration, `/attach`, `/attachments`, MIME type guards, presigned public URLs |
+| `search_recommendation/` | `cog.py`, `fts_engine.py`, `models.py`, `protocols.py`, `query_builder.py`, `recommendation.py`, `service.py`, `views.py` | PostgreSQL FTS `/search` (tsvector GIN), Composite AI Scoring `/recommend` (Urgency + Priority + Staleness) |
+| `analytics/` | `cog.py`, `client.py`, `models.py` | `/task-stats` productivity dashboard, `/analytics` weekly & on-demand Edge Function reports |
+| `realtime/` | `client.py`, `dashboard_tracker.py`, `dispatcher.py`, `notifications.py`, `service.py` | Phoenix WebSocket CDC client, CDC event dispatcher, debounced embed updater, live dashboard rehydrator |
+| `monitoring/` | `alert_dispatcher.py`, `commands_log.py`, `error_tracker.py`, `health_monitor.py`, `logger_setup.py` | Health monitor, error tracker, structured JSON logging, Discord alert dispatcher |
+| `security_rls/` | `sql/*.sql`, `client.py`, `context.py`, `migration_runner.py` | PostgreSQL Row Level Security policies, scoped context managers, migration runner CLI (`--dry-run`/`--apply`/`--rollback`) |
 | `locales/` | `th.py en.py zh.py ja.py ko.py es.py ru.py fr.py de.py` | 9-language string tables |
-| `locales/i18n.py` | `i18n.py` | `t()` translation engine with `_SafeDict` |
+| `locales/i18n.py` | `i18n.py` | `t()` translation engine with `_SafeDict`, `DISCORD_LOCALE_MAP` |
 | `utils/helpers.py` | `helpers.py` | `parse_deadline()` NLP engine, embed builders, `time_left_str()`, CSV export |
 | `utils/conflict_resolver.py` | `conflict_resolver.py` | `validate_deadline_defensive()`, `DeadlineValidationError`, optimistic concurrency lock |
-| `supabase/functions/weekly-analytics/` | `index.ts` | Deno TypeScript Edge Function |
+| `supabase/functions/weekly-analytics/` | `index.ts`, `chart_builder.ts`, `discord_delivery.ts`, `types.ts`, `deno.json` | Deno TypeScript Edge Function, QuickChart API chart generation, Discord DM delivery |
 
 ---
 
@@ -250,31 +250,36 @@ tomorrow 09:30
 | `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
 | `/export` | — | Export all tasks to a UTF-8 BOM CSV file (Excel-compatible). Rate-limited: 5/day. |
 
-> **Priority Scale:** `0` = Normal · `1–2` = Low · `3–4` = Medium · `5–6` = Important · `7` = 🔴 Critical
+> **Priority Scale (0–7):**
+> `0` ⬜ Normal / ปกติ · `1` 🟦 Low / ต่ำ · `2` 🟩 Medium / ปานกลาง · `3` 🟨 High / สูง · `4` 🟧 Urgent / ด่วน · `5` 🟥 Immediate / ด่วนมาก · `6` 🔴 Critical / วิกฤต · `7` 🆘 Emergency / ฉุกเฉิน
 
 ---
 
 ### 🤝 Shared Projects & Collaboration
 
-All project commands are under the `/project` group and operate within the **current guild (server)**.
+All project commands are under the `/project` group and operate within the **current guild (server)** with full guild-tenancy isolation.
 
 | Command | Parameters | Description |
 |---|---|---|
-| `/project create` | `name` `[description]` | Create a new shared project in the current server. |
-| `/project list` | `[status]` | List server projects filtered by `Active` / `Completed` / `Archived` / `All`. |
-| `/project view` | `project_id` | Project overview: description, member count, task progress bar, recent activity. |
+| `/project create` | `[priority]` | Create a new shared project in the current server. Opens modal for name, description, emoji, color, and priority (0–7). |
+| `/project list` | `[status]` | List server projects filtered by `Active` / `Completed` / `Archived` / `All`. Sorted by Priority (DESC) and recent activity. |
+| `/project view` | `project_id` | Interactive **Project Dashboard** with metrics, member count, progress bar, navigation tabs, and action controls. |
 | `/project board` | `project_id` | Interactive **Kanban Board** with column navigation buttons (Pending → In\_Progress → Completed). |
-| `/project add-task` | `project_id` | Add a new task to the project (opens task creation modal, assigns to project). |
+| `/project add-task` | `project_id` `[priority]` | Add a new task to the project with priority level 0–7, deadline, and tags. |
+| `/project set-priority` | `project_id` `priority` | Update project priority (0–7: ⬜ Normal to 🆘 Emergency) on the fly (Lead or server Admin). |
+| `/project complete-task` | `project_id` `task_id` | Mark a specific project task as Completed with a celebratory announcement embed. |
 | `/project my-tasks` | — | All tasks across server projects assigned to the caller. |
 | `/project members` | `project_id` | View and manage project members. Leads can assign roles: `lead`, `member`, `viewer`. |
+| `/project add-member` | `project_id` `user` `[role]` | Add member (`member` or `lead`) to the project and automatically send a private Discord DM invite card. |
 | `/project activity` | `project_id` | Paginated activity log for the project (task changes, member joins, status updates). |
-| `/project archive` | `project_id` | Archive a completed project (Lead or server Admin only). |
+| `/project archive` | `project_id` `[action]` | Archive project (`archived`) or conclude project (`completed`) (Lead or server Admin only). |
+| `/project set-channel` | `project_id` `channel` | Set dedicated Discord channel for Realtime announcements and completion broadcasts (Lead or Admin). |
 
 **Member Roles:**
 
-- 👑 **Lead** — Full control: edit project, manage members, archive.
+- 👑 **Lead** — Full control: edit project, set priority/channel, manage members, archive/complete.
 - 👤 **Member** — Create and manage tasks within the project.
-- 👁️ **Viewer** — Read-only: view board and activity.
+- 👁️ **Viewer** — Read-only: view board, files, and activity.
 
 ---
 
@@ -350,9 +355,9 @@ All project commands are under the `/project` group and operate within the **cur
 
 ## 🎛️ Interactive UI & Defensive Design
 
-### TaskActionView
+### 📝 Personal Task Panel (`TaskActionView`)
 
-Every task embed comes with a persistent 5-row button panel:
+Every personal task embed comes with a persistent 5-row button panel:
 
 | Row | Components |
 |---|---|
@@ -360,7 +365,29 @@ Every task embed comes with a persistent 5-row button panel:
 | 2 | 🗑️ Delete · ⏰ Snooze (preset picker) |
 | 3 | ➕ Add Subtask |
 | 4 | 🏷️ Category dropdown (loaded dynamically) |
-| 5 | ⚡ Priority dropdown (0–7) |
+| 5 | ⚡ Priority dropdown (0–7: ⬜ Normal to 🆘 Emergency) |
+
+### 🤝 Project Dashboard Panel (`ProjectDashboardView`)
+
+Project dashboards (`/project view`) feature a dual-row interactive control panel adhering to Discord's 5-button-per-row layout rules:
+
+| Row | Type | Components & Capabilities |
+|---|---|---|
+| **Row 0** | **Navigation Tabs** | 📊 **Dashboard** (metrics & summary) · 📋 **Board** (interactive Kanban) · 👥 **Members** (roster & roles) · 📜 **Activity** (audit feed) · 📁 **Files** (attachments) |
+| **Row 1** | **Action Controls** | ➕ **Add Task** (`AddProjectTaskModal` with priority 0–7)<br>📈 **Advance Progress** (`AdvanceProgressSelectView` / `ManualProgressView`)<br>🏁 **Complete Project** (`ProjectCompleteConfirmView`)<br>🎯 **Priority** (`ProjectPrioritySelectView` 0–7 dropdown) |
+
+#### Interactive Progress & Completion Controls
+
+- **📈 Advance Progress**:
+  - If the project has active tasks: opens `AdvanceProgressSelectView` with an interactive select menu listing remaining tasks. Selecting a task marks it Completed and automatically updates progress metrics. Also includes a button to switch to manual % adjustment.
+  - If no tasks exist or manual mode is selected: opens `ManualProgressView` with quick preset buttons (`+10%`, `+25%`, `+50%`, `100%`) and a modal button for custom percentage values (0–100%).
+- **🏁 Complete Project**:
+  - Opens `ProjectCompleteConfirmView` with dual completion options:
+    1. **Mark Project & All Tasks Completed**: Automatically sets status of all remaining project tasks to `Completed`.
+    2. **Complete Project Only**: Concludes project status while keeping task states intact.
+  - Enforces role protection: only Project Owner, Lead, or Server Admin can perform completion.
+- **🎯 Project Priority Selector**:
+  - `ProjectPrioritySelectView` provides an interactive select menu displaying all 8 priority levels (⬜ 0 to 🆘 7). Updates project priority and sorts server project lists accordingly.
 
 ### Persistent View Registration
 
@@ -613,7 +640,7 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
 1. Create a new Supabase project
 2. From **Project Settings → Database → Connection string (Direct connection)**, copy `SUPABASE_HOST`, `SUPABASE_USER`, `SUPABASE_PASSWORD`, `SUPABASE_DB`
 3. From **Project Settings → API**, copy **Project URL** → `SUPABASE_URL` and **service\_role key** → `SUPABASE_KEY`
-4. The database schema (all 16 migration versions) runs **automatically** on first `python main.py`
+4. The database schema (all 17 migration versions) runs **automatically** on first `python main.py`
 5. *(Optional)* Apply RLS policies: `python -m security_rls.migration_runner --apply`
 
 ### Cloud Deployment (Render / Railway / Heroku)
@@ -730,7 +757,7 @@ Log files are created automatically in `logs/`:
 
 ## 🧪 Test Suite & Quality Assurance
 
-The project has **213 automated tests** covering all major subsystems, all passing at 100%.
+The project has **235 automated tests** covering all major subsystems, all passing at 100%.
 
 ```bash
 # Run the full test suite
@@ -740,26 +767,28 @@ pytest
 pytest -v
 
 # Run a specific module
-pytest tests/test_i18n_date_parser.py -v
+pytest tests/test_collaboration_scope.py -v
 ```
 
 ### Test Coverage by Module
 
-| Test File | Coverage Area |
-|---|---|
-| `test_analytics.py` | Productivity metrics calculation, scoring formulas |
-| `test_collaboration.py` | Project CRUD, member role isolation, guild-scope activity log |
-| `test_conflict_resolver.py` | Optimistic concurrency detection, `DeadlineValidationError` edge cases |
-| `test_i18n_date_parser.py` | Date parsing for all 9 languages, edge cases, Buddhist Era conversion, timezone normalisation |
-| `test_locales.py` | **String completeness** — every key in `th.py` must exist in all 8 other locale files |
-| `test_realtime.py` | Phoenix WebSocket event dispatch, debounce logic, reconnect backoff |
-| `test_reminders.py` | Bitmask deduplication (`dm_reminded`), loop trigger conditions, recurring renewal |
-| `test_rls.py` | RLS policy SQL generation, migration runner `--dry-run` / `--apply` / `--rollback` modes |
-| `test_search.py` | FTS query construction, `ts_rank_cd` ordering, scope filtering, priority filter |
-| `test_storage.py` | File type guards, size limits, path generation, Supabase Storage API integration |
-| `test_ux.py` | Modal validation, persistent view registration, TaskActionView button flows |
+| Test File | Tests | Coverage Area |
+|---|---|---|
+| `test_analytics.py` | 23 | Productivity metrics calculation, turnaround formulas, scoring models, Edge Function client |
+| `test_collaboration_scope.py` | 37 | Project CRUD, member roles, activity log, priority (0–7), advance progress, complete project |
+| `test_conflict_resolution.py` | 25 | Defensive deadline validation, duplicate task suggestions, defensive snoozing |
+| `test_date_parser_i18n.py` | 10 | 9-language natural date parsing (Buddhist Era, Asian Kanji/Hangul, European dots) |
+| `test_locales.py` | 9 | Complete 1:1 translation key parity across all 9 supported languages |
+| `test_realtime.py` | 15 | Phoenix WebSocket CDC client, heartbeat, debounced embed updater, reconnection |
+| `test_reminders.py` | 1 | Background reminder loop query parameter types and timezone compatibility |
+| `test_rls_policies.py` | 11 | PostgreSQL RLS policy parsing, session user context isolation, migration runner |
+| `test_search_recommendation.py` | 51 | PostgreSQL Full-Text Search (`tsvector`, `ts_rank_cd`) & AI recommendation scoring presets |
+| `test_sql_split.py` | 5 | SQL parser tokenizer (dollar-quotes `$$`, block comments, semicolons) |
+| `test_storage.py` | 22 | Supabase Storage client, file size & MIME validation, object storage paths |
+| `test_ux_improvements.py` | 26 | Persistent view rehydration, modal components, task autocomplete, subtask rendering |
+| **Total** | **235** | **100% Passing Test Suite** |
 
-> **Note on `test_locales.py`:** This test is the primary guard against cross-language regressions. When a new string key is added to the Thai locale, the test immediately fails for any of the 8 other locale files missing that key — preventing the "feature works in Thai but crashes in German" class of bug.
+> **Note on `test_locales.py`:** This test is the primary guard against cross-language regressions. When a new string key is added to the English/Thai locale, the test immediately fails for any of the other locale files missing that key — preventing the "feature works in Thai but crashes in German" class of bug.
 
 ---
 
@@ -773,19 +802,19 @@ pytest tests/test_i18n_date_parser.py -v
 │
 ├── core/
 │   ├── config.py                   # Centralised env validation (frozen dataclasses)
-│   ├── database.py                 # asyncpg pool, migrations, QueryCache, BulkWriter
+│   ├── database.py                 # asyncpg pool, migrations (v1-v17), QueryCache, BulkWriter
 │   └── security.py                 # InputValidator, token-bucket rate limiter
 │
 ├── handlers/
 │   ├── tasks_cog.py                # Personal task slash commands
-│   ├── task_views.py               # Discord UI (Views, Modals, persistent registration)
+│   ├── task_views.py               # Discord UI (TaskActionView, Modals, persistent registration)
 │   ├── settings_cog.py             # /setup /lang /category /help
 │   ├── reminders_cog.py            # 5 background automation loops
 │   └── monitoring_cog.py           # Admin /health /errors /cmdstats /monitoring
 │
 ├── locales/
 │   ├── i18n.py                     # t() engine, _SafeDict, DISCORD_LOCALE_MAP
-│   ├── th.py                       # Thai
+│   ├── th.py                       # Thai (Reference table)
 │   ├── en.py                       # English
 │   ├── zh.py                       # Chinese
 │   ├── ja.py                       # Japanese
@@ -796,31 +825,68 @@ pytest tests/test_i18n_date_parser.py -v
 │   └── de.py                       # German
 │
 ├── collaboration/
-│   └── cog.py                      # /project command group
+│   ├── cog.py                      # /project command group (13 slash commands)
+│   ├── models.py                   # Project, ProjectMember, ProjectTask, BoardData models
+│   ├── service.py                  # Project CRUD, priority, advance progress, completion service
+│   └── views.py                    # ProjectDashboardView, Kanban, Modals, Priority & Progress controls
 │
 ├── search_recommendation/
-│   └── cog.py                      # /search (FTS) + /recommend (AI scoring)
+│   ├── cog.py                      # /search (FTS) + /recommend (AI scoring)
+│   ├── fts_engine.py               # PostgreSQL ts_rank_cd full-text engine
+│   ├── query_builder.py            # Sanitised SQL builder for FTS & filter search
+│   ├── recommendation.py           # Composite multi-rule scoring engine
+│   ├── models.py                   # Search query, filter, and score breakdown models
+│   ├── protocols.py                # Protocols and interfaces
+│   ├── service.py                  # Search and recommendation business logic
+│   └── views.py                    # Paginated search results and recommendation views
 │
 ├── storage/
-│   └── cog.py                      # /attach /attachments (Supabase Storage)
+│   ├── cog.py                      # /attach /attachments (Supabase Storage)
+│   ├── client.py                   # Supabase Storage HTTP client
+│   ├── models.py                   # TaskAttachment model
+│   ├── service.py                  # File upload, size/extension validation, path builder
+│   └── views.py                    # Attachment browser and management views
 │
 ├── analytics/
-│   └── cog.py                      # /task-stats /analytics (Edge Function caller)
+│   ├── cog.py                      # /task-stats /analytics (Edge Function caller)
+│   ├── client.py                   # Supabase Edge Function HTTP caller
+│   └── models.py                   # Productivity analytics data models
 │
-├── realtime/                       # Phoenix WebSocket CDC client & dispatcher
-├── monitoring/                     # Health monitor, error tracker, structured logging
-├── security_rls/                   # RLS SQL migrations + migration_runner.py
+├── realtime/
+│   ├── client.py                   # Phoenix WebSocket client
+│   ├── dispatcher.py               # CDC postgres_changes event dispatcher
+│   ├── dashboard_tracker.py        # Active dashboard message tracker
+│   ├── notifications.py            # Channel notification helpers
+│   └── service.py                  # Realtime lifecycle manager
+│
+├── monitoring/
+│   ├── health_monitor.py           # Heartbeat and resource telemetry
+│   ├── error_tracker.py            # 24-hour error aggregator
+│   ├── alert_dispatcher.py         # Rate-limited Discord alert webhook/channel dispatcher
+│   ├── commands_log.py             # Structured JSON command audit logger
+│   └── logger_setup.py             # Multi-handler logging configurator
+│
+├── security_rls/
+│   ├── sql/                        # 4 versioned RLS SQL migration files
+│   ├── client.py                   # Scoped RLS database client
+│   ├── context.py                  # ContextVar scoped user session manager
+│   └── migration_runner.py         # CLI tool for RLS migrations (--dry-run/apply/rollback)
 │
 ├── utils/
-│   ├── helpers.py                  # parse_deadline(), embed builders, CSV export
-│   └── conflict_resolver.py        # validate_deadline_defensive(), concurrency lock
+│   ├── helpers.py                  # parse_deadline() 9-lang NLP engine, embed builders, CSV export
+│   ├── conflict_resolver.py        # validate_deadline_defensive(), concurrency lock
+│   └── webserver.py                # aiohttp async keep-alive health/metrics server
 │
 ├── supabase/
 │   └── functions/
 │       └── weekly-analytics/
-│           └── index.ts            # Deno TypeScript Edge Function
+│           ├── index.ts            # Deno TypeScript Edge Function entrypoint
+│           ├── chart_builder.ts    # QuickChart API visual chart builder
+│           ├── discord_delivery.ts # Direct Message delivery engine
+│           ├── types.ts            # TypeScript interfaces
+│           └── deno.json           # Deno configuration & import map
 │
-├── tests/                          # 213 automated tests (pytest)
+├── tests/                          # 235 automated tests (pytest, 100% passing)
 ├── logs/                           # Auto-created: bot.log, errors.log, commands.log
 └── data/                           # Reserved directory (schema auto-migrates on startup)
 ```
