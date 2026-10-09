@@ -818,5 +818,11 @@ STRINGS = {
     "proj_task_completed_title":     "Task Completed!",
     "proj_task_completed_desc":      "{user} marked task **#{task_id} — {name}** as **Completed**! Great job! 🎉",
     "proj_task_completed_footer":    "Task status updated to Completed.",
+    "proj_broadcast_completed_title": "🏆 Project Completed!",
+    "proj_broadcast_completed_desc":  "{actor} marked project {project} as **Completed**! Great job everyone! 🎉",
+    "proj_dm_completed_title":        "🏆 Project Completed: {name}",
+    "proj_dm_completed_desc":         "Project {project} in **{guild}** has been marked as completed by {actor}!",
+    "proj_complete_all_note":         "All remaining project tasks have been marked as completed.",
+    "proj_complete_status_only_note": "Project status closed (tasks kept in current state).",
 }
 

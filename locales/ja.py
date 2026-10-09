@@ -752,5 +752,11 @@ STRINGS = {
     "proj_task_completed_title": "タスクを完了しました！",
     "proj_task_completed_desc": "{user} がタスク **#{task_id} — {name}** を **完了** にしました！素晴らしい！🎉",
     "proj_task_completed_footer": "タスクのステータスを完了に更新しました。",
+    "proj_broadcast_completed_title": "🏆 プロジェクトが完了しました！",
+    "proj_broadcast_completed_desc":  "{actor} がプロジェクト {project} を **完了** にしました！皆さんお疲れ様でした！🎉",
+    "proj_dm_completed_title":        "🏆 プロジェクト完了: {name}",
+    "proj_dm_completed_desc":         "サーバー **{guild}** のプロジェクト {project} が {actor} によって完了になりました！",
+    "proj_complete_all_note":         "残りのすべてのプロジェクトタスクが完了としてマークされました。",
+    "proj_complete_status_only_note": "プロジェクトステータスのみ完了（タスクは現在の状態を維持）。",
 }
 

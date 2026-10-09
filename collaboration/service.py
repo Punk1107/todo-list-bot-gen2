@@ -23,6 +23,7 @@ from collaboration.models import (
     BoardData, Project, ProjectActivity, ProjectMember, ProjectStats, ProjectTask,
 )
 from core.database import db
+from utils.helpers import get_user_lang
 
 log = logging.getLogger(__name__)
 
@@ -349,6 +350,201 @@ async def send_project_invite_dm(
     except Exception as exc:
         log.warning("send_project_invite_dm failed for %s: %s", target_user.id, exc)
         return False
+
+
+async def get_project_stakeholder_ids(project_id: int, guild_id: str) -> set[str]:
+    """
+    Return all unique user IDs associated with a project:
+    - Project owner
+    - Members in project_members
+    - Assignees in task_assignments for tasks in this project
+    - Task owners for tasks in this project
+    """
+    stakeholders: set[str] = set()
+
+    # 1. Project Owner
+    try:
+        p_row = await db.fetchone(
+            "SELECT owner_id FROM projects WHERE project_id=$1 AND guild_id=$2",
+            (project_id, guild_id),
+        )
+        if p_row and p_row.get("owner_id"):
+            stakeholders.add(str(p_row["owner_id"]))
+    except Exception as exc:
+        log.warning("Could not fetch owner for project %d: %s", project_id, exc)
+
+    # 2. Project Members
+    try:
+        pm_rows = await db.fetchall(
+            "SELECT user_id FROM project_members WHERE project_id=$1",
+            (project_id,),
+        )
+        for r in (pm_rows or []):
+            if r.get("user_id"):
+                stakeholders.add(str(r["user_id"]))
+    except Exception as exc:
+        log.warning("Could not fetch project_members for project %d: %s", project_id, exc)
+
+    # 3. Task Assignees
+    try:
+        ta_rows = await db.fetchall(
+            """SELECT DISTINCT ta.user_id
+               FROM task_assignments ta
+               JOIN tasks t ON t.task_id = ta.task_id
+               WHERE t.project_id=$1 AND t.guild_id=$2""",
+            (project_id, guild_id),
+        )
+        for r in (ta_rows or []):
+            if r.get("user_id"):
+                stakeholders.add(str(r["user_id"]))
+    except Exception as exc:
+        log.warning("Could not fetch task_assignments for project %d: %s", project_id, exc)
+
+    # 4. Task Owners
+    try:
+        to_rows = await db.fetchall(
+            """SELECT DISTINCT owner_id
+               FROM tasks
+               WHERE project_id=$1 AND guild_id=$2 AND owner_id IS NOT NULL""",
+            (project_id, guild_id),
+        )
+        for r in (to_rows or []):
+            if r.get("owner_id"):
+                stakeholders.add(str(r["owner_id"]))
+    except Exception as exc:
+        log.warning("Could not fetch task owners for project %d: %s", project_id, exc)
+
+    return stakeholders
+
+
+async def notify_project_completed(
+    bot: discord.Client,
+    project: Project,
+    actor: discord.User | discord.Member,
+    guild: Optional[discord.Guild] = None,
+    trigger_channel: Optional[discord.abc.Messageable] = None,
+    complete_all_tasks: bool = True,
+) -> None:
+    """
+    Broadcast project completion to the real Discord channel(s)
+    and send completion DMs to all project stakeholders.
+    """
+    from utils.helpers import get_user_lang
+    from locales.i18n import t
+
+    # ── 1. Determine Broadcast Channel(s) ──────────────────────────────────
+    channels_to_send: list[discord.abc.Messageable] = []
+    sent_channel_ids: set[int] = set()
+
+    # Priority A: trigger_channel (the actual channel where the action was taken)
+    if trigger_channel and hasattr(trigger_channel, "id") and trigger_channel.id:
+        channels_to_send.append(trigger_channel)
+        sent_channel_ids.add(trigger_channel.id)
+
+    # Priority B: notification_channel_id or channel_id configured on project
+    notif_channel_id = getattr(project, "notification_channel_id", None) or project.channel_id
+    if not notif_channel_id:
+        try:
+            row = await db.fetchone(
+                "SELECT notification_channel_id, channel_id FROM projects WHERE project_id=$1 AND guild_id=$2",
+                (project.project_id, project.guild_id),
+            )
+            if row:
+                notif_channel_id = row.get("notification_channel_id") or row.get("channel_id")
+        except Exception:
+            pass
+
+    if notif_channel_id and int(notif_channel_id) not in sent_channel_ids:
+        try:
+            chan = bot.get_channel(int(notif_channel_id))
+            if chan is None:
+                chan = await bot.fetch_channel(int(notif_channel_id))
+            if chan:
+                channels_to_send.append(chan)
+                sent_channel_ids.add(chan.id)
+        except Exception as exc:
+            log.warning("Could not fetch notification channel %s: %s", notif_channel_id, exc)
+
+    # Determine language for public channel announcement
+    try:
+        ch_lang = await get_user_lang(str(actor.id))
+    except Exception:
+        ch_lang = "th"
+
+    color = int(project.color.lstrip("#"), 16) if (project.color and project.color.startswith("#")) else 0x57F287
+
+    # ── 2. Send Public Channel Broadcast ("ส่งลงดิสจริง") ────────────────────
+    if channels_to_send:
+        ch_embed = discord.Embed(
+            title=t("proj_broadcast_completed_title", ch_lang),
+            description=t(
+                "proj_broadcast_completed_desc", ch_lang,
+                actor=actor.mention,
+                project=f"{project.emoji} **{project.name}**",
+            ),
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        note_text = t("proj_complete_all_note", ch_lang) if complete_all_tasks else t("proj_complete_status_only_note", ch_lang)
+        ch_embed.add_field(name="📋 " + t("status", ch_lang), value=f"> {note_text}", inline=False)
+        ch_embed.set_footer(text=t("proj_footer_id", ch_lang, project_id=project.project_id))
+
+        for ch in channels_to_send:
+            try:
+                await ch.send(embed=ch_embed)
+            except Exception as exc:
+                log.warning("Failed to broadcast project completion to channel %s: %s", getattr(ch, "id", ch), exc)
+
+    # ── 3. Send DMs to Everyone Listed in the Project ("ส่งไปที่ DMs") ───────
+    stakeholder_ids = await get_project_stakeholder_ids(project.project_id, project.guild_id)
+    guild_name = guild.name if guild else "Discord"
+    bot_user_id = str(bot.user.id) if getattr(bot, "user", None) else None
+
+    for uid in stakeholder_ids:
+        if not uid or uid == bot_user_id:
+            continue
+
+        target_user = None
+        if guild:
+            target_user = guild.get_member(int(uid))
+        if target_user is None:
+            target_user = bot.get_user(int(uid))
+        if target_user is None:
+            try:
+                target_user = await bot.fetch_user(int(uid))
+            except Exception:
+                target_user = None
+
+        if not target_user or getattr(target_user, "bot", False):
+            continue
+
+        try:
+            u_lang = await get_user_lang(uid)
+        except Exception:
+            u_lang = "th"
+
+        dm_embed = discord.Embed(
+            title=t("proj_dm_completed_title", u_lang, name=project.name),
+            description=t(
+                "proj_dm_completed_desc", u_lang,
+                project=f"{project.emoji} **{project.name}**",
+                guild=guild_name,
+                actor=actor.mention,
+            ),
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        dm_note = t("proj_complete_all_note", u_lang) if complete_all_tasks else t("proj_complete_status_only_note", u_lang)
+        dm_embed.add_field(name="📋 " + t("status", u_lang), value=f"> {dm_note}", inline=False)
+        dm_embed.set_footer(text=f"{project.emoji} {project.name} · To-Do List Bot Gen 2")
+
+        try:
+            await target_user.send(embed=dm_embed)
+        except discord.Forbidden:
+            log.debug("Could not send completion DM to %s (DMs closed)", uid)
+        except Exception as exc:
+            log.warning("Could not send completion DM to %s: %s", uid, exc)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

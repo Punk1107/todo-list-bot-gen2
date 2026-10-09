@@ -758,5 +758,11 @@ STRINGS = {
     "proj_task_completed_title": "Задача выполнена!",
     "proj_task_completed_desc": "{user} отметил(а) задачу **#{task_id} — {name}** как **Завершённую**! Отличная работа! 🎉",
     "proj_task_completed_footer": "Статус задачи обновлен на Завершена.",
+    "proj_broadcast_completed_title": "🏆 Проект завершён!",
+    "proj_broadcast_completed_desc":  "{actor} отметил(а) проект {project} как **Завершённый**! Отличная работа всем! 🎉",
+    "proj_dm_completed_title":        "🏆 Проект завершён: {name}",
+    "proj_dm_completed_desc":         "Проект {project} на сервере **{guild}** был отмечен как завершённый пользователем {actor}!",
+    "proj_complete_all_note":         "Все оставшиеся задачи проекта отмечены как выполненные.",
+    "proj_complete_status_only_note": "Закрыт только статус проекта (задачи сохранены в текущем состоянии).",
 }
 

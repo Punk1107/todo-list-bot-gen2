@@ -18,6 +18,7 @@ All commands enforce:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import discord
@@ -540,6 +541,18 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         )
         embed.set_footer(text=t("proj_footer_id", lang, project_id=project.project_id))
         await interaction.followup.send(embed=embed)
+
+        if action == "completed":
+            asyncio.create_task(
+                service.notify_project_completed(
+                    bot=interaction.client,
+                    project=project,
+                    actor=interaction.user,
+                    guild=interaction.guild,
+                    trigger_channel=interaction.channel,
+                    complete_all_tasks=False,
+                )
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project set-channel

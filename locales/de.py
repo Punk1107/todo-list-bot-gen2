@@ -802,5 +802,11 @@ STRINGS = {
     "proj_task_completed_title": "Aufgabe abgeschlossen!",
     "proj_task_completed_desc": "{user} hat die Aufgabe **#{task_id} — {name}** als **Abgeschlossen** markiert! Gute Arbeit! 🎉",
     "proj_task_completed_footer": "Aufgabenstatus auf Abgeschlossen aktualisiert.",
+    "proj_broadcast_completed_title": "🏆 Projekt abgeschlossen!",
+    "proj_broadcast_completed_desc":  "{actor} hat das Projekt {project} als abgeschlossen markiert! Tolle Arbeit allerseits! 🎉",
+    "proj_dm_completed_title":        "🏆 Projekt abgeschlossen: {name}",
+    "proj_dm_completed_desc":         "Das Projekt {project} auf dem Server **{guild}** wurde von {actor} als abgeschlossen markiert!",
+    "proj_complete_all_note":         "Alle verbleibenden Projektaufgaben wurden als abgeschlossen markiert.",
+    "proj_complete_status_only_note": "Nur Projektstatus geschlossen (Aufgaben bleiben im aktuellen Zustand).",
 }
 

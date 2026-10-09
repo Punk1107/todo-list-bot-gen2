@@ -752,5 +752,11 @@ STRINGS = {
     "proj_task_completed_title": "任务已完成！",
     "proj_task_completed_desc": "{user} 已将任务 **#{task_id} — {name}** 标记为 **已完成**！干得漂亮！🎉",
     "proj_task_completed_footer": "任务状态已更新为已完成。",
+    "proj_broadcast_completed_title": "🏆 项目已完成！",
+    "proj_broadcast_completed_desc":  "{actor} 已将项目 {project} 标记为 **已完成**！大家辛苦了！🎉",
+    "proj_dm_completed_title":        "🏆 项目已完成：{name}",
+    "proj_dm_completed_desc":         "**{guild}** 中的项目 {project} 已由 {actor} 标记为已完成！",
+    "proj_complete_all_note":         "项目中所有剩余任务均已标记为已完成。",
+    "proj_complete_status_only_note": "仅关闭项目状态（任务保留当前状态）。",
 }
 

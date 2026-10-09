@@ -751,5 +751,11 @@ STRINGS = {
     "proj_task_completed_title": "¡Tarea completada!",
     "proj_task_completed_desc": "{user} ha marcado la tarea **#{task_id} — {name}** como **Completada**. ¡Buen trabajo! 🎉",
     "proj_task_completed_footer": "El estado de la tarea se actualizó a Completada.",
+    "proj_broadcast_completed_title": "🏆 ¡Proyecto completado!",
+    "proj_broadcast_completed_desc":  "{actor} ha marcado el proyecto {project} como **Completado**. ¡Buen trabajo a todos! 🎉",
+    "proj_dm_completed_title":        "🏆 Proyecto completado: {name}",
+    "proj_dm_completed_desc":         "¡El proyecto {project} en **{guild}** ha sido marcado como completado por {actor}!",
+    "proj_complete_all_note":         "Todas las tareas restantes del proyecto se han marcado como completadas.",
+    "proj_complete_status_only_note": "Estado del proyecto cerrado (las tareas se mantienen en su estado actual).",
 }
 
