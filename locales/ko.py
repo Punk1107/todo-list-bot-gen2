@@ -751,5 +751,11 @@ STRINGS = {
     "proj_task_completed_title": "작업이 완료되었습니다!",
     "proj_task_completed_desc": "{user} 님이 작업 **#{task_id} — {name}** 을(를) **완료** 처리했습니다! 수고하셨습니다! 🎉",
     "proj_task_completed_footer": "작업 상태가 완료로 업데이트되었습니다.",
+    "proj_broadcast_completed_title": "🏆 프로젝트가 완료되었습니다!",
+    "proj_broadcast_completed_desc":  "{actor} 님이 프로젝트 {project} 을(를) **완료** 처리했습니다! 모두 수고하셨습니다! 🎉",
+    "proj_dm_completed_title":        "🏆 프로젝트 완료: {name}",
+    "proj_dm_completed_desc":         "**{guild}** 서버의 {project} 프로젝트가 {actor} 님에 의해 완료되었습니다!",
+    "proj_complete_all_note":         "남은 모든 프로젝트 작업이 완료로 표시되었습니다.",
+    "proj_complete_status_only_note": "프로젝트 상태만 완료 처리되었습니다 (작업은 현재 상태 유지).",
 }
 

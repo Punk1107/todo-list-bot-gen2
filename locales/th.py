@@ -828,5 +828,11 @@ STRINGS = {
     "proj_task_completed_title": "ปิดงานเรียบร้อยแล้ว!",
     "proj_task_completed_desc": "{user} ได้ปิดงาน **#{task_id} — {name}** เรียบร้อยแล้ว! สุดยอดมาก 🎉",
     "proj_task_completed_footer": "อัปเดตสถานะงานเป็นเสร็จสิ้นแล้ว",
+    "proj_broadcast_completed_title": "🏆 โปรเจกต์เสร็จสิ้นแล้ว!",
+    "proj_broadcast_completed_desc":  "{actor} ได้ปิดเสร็จสิ้นโปรเจกต์ {project} เรียบร้อยแล้ว! ยอดเยี่ยมมากทุกคน! 🎉",
+    "proj_dm_completed_title":        "🏆 โปรเจกต์เสร็จสิ้นแล้ว: {name}",
+    "proj_dm_completed_desc":         "โปรเจกต์ {project} ในเซิร์ฟเวอร์ **{guild}** ได้ถูกปิดเสร็จสิ้นเรียบร้อยแล้วโดย {actor}!",
+    "proj_complete_all_note":         "งานย่อยทั้งหมดถูกปิดเสร็จสิ้นแล้ว",
+    "proj_complete_status_only_note": "ปิดเฉพาะสถานะโปรเจกต์ (คงสถานะงานย่อยตามเดิม)",
 }
 

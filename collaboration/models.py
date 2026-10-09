@@ -55,11 +55,13 @@ class Project:
     updated_at:  datetime
     priority:    int = 0
     manual_progress: Optional[int] = None
+    notification_channel_id: Optional[int] = None
 
     @classmethod
     def from_record(cls, row) -> "Project":
         priority = 0
         manual_progress = None
+        notification_channel_id = None
         try:
             val = row["priority"]
             if val is not None:
@@ -70,6 +72,12 @@ class Project:
             val = row["manual_progress"]
             if val is not None:
                 manual_progress = int(val)
+        except (KeyError, TypeError, IndexError):
+            pass
+        try:
+            val = row["notification_channel_id"]
+            if val is not None:
+                notification_channel_id = int(val)
         except (KeyError, TypeError, IndexError):
             pass
 
@@ -88,6 +96,7 @@ class Project:
             updated_at      = row["updated_at"],
             priority        = priority,
             manual_progress = manual_progress,
+            notification_channel_id = notification_channel_id,
         )
 
     @property

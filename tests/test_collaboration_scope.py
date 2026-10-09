@@ -686,3 +686,200 @@ class TestProjectPriorityAndProgressControls:
         assert "view" in kwargs
         assert isinstance(kwargs["view"], ProjectListView)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. Project Completion Notifications (Channel Broadcast & Member DMs)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProjectCompletionNotification:
+    """Test public channel broadcast and stakeholder DMs upon project completion."""
+
+    @pytest.mark.asyncio
+    async def test_get_project_stakeholder_ids(self):
+        """Ensure all stakeholders (owner, members, assignees, task creators) are aggregated."""
+        with patch("collaboration.service.db") as mock_db:
+            mock_db.fetchone = AsyncMock(return_value={"owner_id": "owner_1"})
+            mock_db.fetchall = AsyncMock(side_effect=[
+                [{"user_id": "member_2"}],
+                [{"user_id": "assignee_3"}],
+                [{"owner_id": "creator_4"}, {"owner_id": "owner_1"}],
+            ])
+
+            stakeholders = await service.get_project_stakeholder_ids(project_id=1, guild_id="guild_A")
+            assert stakeholders == {"owner_1", "member_2", "assignee_3", "creator_4"}
+
+    @pytest.mark.asyncio
+    async def test_notify_project_completed_broadcasts_and_dms(self):
+        """Ensure notify_project_completed broadcasts to channel and DMs all members."""
+        bot = MagicMock()
+        bot.user.id = 9999
+        guild = MagicMock()
+        guild.name = "Test Guild"
+
+        actor = MagicMock(spec=discord.Member)
+        actor.id = 101
+        actor.mention = "<@101>"
+
+        member_user = AsyncMock(spec=discord.Member)
+        member_user.id = 102
+        member_user.bot = False
+        guild.get_member.side_effect = lambda uid: member_user if uid == 102 else actor
+
+        trigger_channel = AsyncMock(spec=discord.TextChannel)
+        trigger_channel.id = 8888
+
+        proj = _make_project(project_id=2, guild_id="guild_A", owner_id="101", name="NTU Activity")
+
+        with patch("collaboration.service.get_project_stakeholder_ids", AsyncMock(return_value={"101", "102"})), \
+             patch("collaboration.service.get_user_lang", AsyncMock(return_value="th")), \
+             patch("collaboration.service.db.fetchone", AsyncMock(return_value=None)):
+
+            await service.notify_project_completed(
+                bot=bot,
+                project=proj,
+                actor=actor,
+                guild=guild,
+                trigger_channel=trigger_channel,
+                complete_all_tasks=True,
+            )
+
+        # 1. Trigger channel received the celebratory broadcast
+        trigger_channel.send.assert_awaited_once()
+        sent_embed = trigger_channel.send.await_args.kwargs["embed"]
+        assert "โปรเจกต์เสร็จสิ้นแล้ว" in sent_embed.title or "Project Completed" in sent_embed.title
+
+        # 2. Member DMs attempted
+        assert member_user.send.await_count == 1
+        dm_embed = member_user.send.await_args.kwargs["embed"]
+        assert "NTU Activity" in dm_embed.title
+
+    @pytest.mark.asyncio
+    async def test_notify_project_completed_forbidden_dm_handled(self):
+        """Ensure discord.Forbidden on DMs does not stop notification to other members or raise."""
+        bot = MagicMock()
+        bot.user.id = 9999
+        guild = MagicMock()
+        guild.name = "Test Guild"
+
+        actor = MagicMock(spec=discord.Member)
+        actor.id = 101
+        actor.mention = "<@101>"
+
+        blocked_user = AsyncMock(spec=discord.Member)
+        blocked_user.id = 102
+        blocked_user.bot = False
+        blocked_user.send.side_effect = discord.Forbidden(MagicMock(), "Cannot send messages to this user")
+
+        ok_user = AsyncMock(spec=discord.Member)
+        ok_user.id = 103
+        ok_user.bot = False
+
+        def get_mem(uid):
+            if uid == 102:
+                return blocked_user
+            if uid == 103:
+                return ok_user
+            return actor
+
+        guild.get_member.side_effect = get_mem
+        trigger_channel = AsyncMock()
+        trigger_channel.id = 8888
+
+        proj = _make_project(project_id=2, guild_id="guild_A", owner_id="101", name="NTU Activity")
+
+        with patch("collaboration.service.get_project_stakeholder_ids", AsyncMock(return_value={"102", "103"})), \
+             patch("collaboration.service.get_user_lang", AsyncMock(return_value="en")), \
+             patch("collaboration.service.db.fetchone", AsyncMock(return_value=None)):
+
+            # Must not raise
+            await service.notify_project_completed(
+                bot=bot,
+                project=proj,
+                actor=actor,
+                guild=guild,
+                trigger_channel=trigger_channel,
+                complete_all_tasks=False,
+            )
+
+        assert blocked_user.send.await_count == 1
+        assert ok_user.send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_view_triggers_notify_project_completed(self):
+        """Ensure ProjectCompleteConfirmView spawns notify_project_completed."""
+        from collaboration.views import ProjectCompleteConfirmView
+
+        proj = _make_project(project_id=2, guild_id="guild_A", owner_id="101", name="NTU Activity")
+        view = ProjectCompleteConfirmView(project_id=2, guild_id="guild_A", lang="th", project=proj)
+
+        interaction = AsyncMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 101
+        interaction.guild = MagicMock()
+        interaction.channel = MagicMock()
+        interaction.channel.id = 8888
+
+        with patch("collaboration.service.complete_project_with_tasks", AsyncMock()), \
+             patch("collaboration.service.notify_project_completed", AsyncMock()) as mock_notify:
+
+            await view.btn_complete_all.callback(interaction)
+
+            mock_notify.assert_called_once()
+            _, kwargs = mock_notify.call_args
+            assert kwargs["complete_all_tasks"] is True
+            assert kwargs["project"] == proj
+
+    @pytest.mark.asyncio
+    async def test_view_complete_only_triggers_notify(self):
+        """Ensure ProjectCompleteConfirmView btn_complete_only triggers notify with complete_all_tasks=False."""
+        from collaboration.views import ProjectCompleteConfirmView
+
+        proj = _make_project(project_id=2, guild_id="guild_A", owner_id="101", name="NTU Activity")
+        view = ProjectCompleteConfirmView(project_id=2, guild_id="guild_A", lang="th", project=proj)
+
+        interaction = AsyncMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 101
+        interaction.guild = MagicMock()
+        interaction.channel = MagicMock()
+        interaction.channel.id = 8888
+
+        with patch("collaboration.service.complete_project_with_tasks", AsyncMock()), \
+             patch("collaboration.service.notify_project_completed", AsyncMock()) as mock_notify:
+
+            await view.btn_complete_only.callback(interaction)
+
+            mock_notify.assert_called_once()
+            _, kwargs = mock_notify.call_args
+            assert kwargs["complete_all_tasks"] is False
+            assert kwargs["project"] == proj
+
+    @pytest.mark.asyncio
+    async def test_project_archive_completed_triggers_notify(self):
+        """Ensure /project archive action:completed dispatches notify_project_completed."""
+        from collaboration.cog import CollaborationCog
+
+        cog = CollaborationCog(bot=MagicMock())
+        proj = _make_project(project_id=2, guild_id="guild_A", owner_id="101", name="NTU Activity")
+
+        interaction = AsyncMock()
+        interaction.user = MagicMock()
+        interaction.user.id = 101
+        interaction.guild = MagicMock()
+        interaction.guild.id = 9999
+        interaction.channel = MagicMock()
+
+        with patch("collaboration.cog._guild_only", AsyncMock(return_value=True)), \
+             patch("collaboration.cog.get_user_lang", AsyncMock(return_value="th")), \
+             patch("collaboration.service.update_project_status", AsyncMock(return_value=proj)), \
+             patch("collaboration.service.notify_project_completed", AsyncMock()) as mock_notify:
+
+            await cog.project_archive.callback(cog, interaction, project_id=2, action="completed")
+
+            mock_notify.assert_called_once()
+            _, kwargs = mock_notify.call_args
+            assert kwargs["complete_all_tasks"] is False
+            assert kwargs["project"] == proj
+
+
+

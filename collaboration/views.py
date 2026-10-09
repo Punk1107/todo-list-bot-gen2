@@ -13,6 +13,7 @@ Components:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -697,6 +698,18 @@ class ProjectCompleteConfirmView(ui.View):
         embed.set_footer(text=t("proj_footer_id", self.lang, project_id=self.project_id))
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+        # Broadcast celebratory message to Discord channel and DM all project stakeholders
+        asyncio.create_task(
+            service.notify_project_completed(
+                bot=interaction.client,
+                project=self.project,
+                actor=interaction.user,
+                guild=interaction.guild,
+                trigger_channel=interaction.channel,
+                complete_all_tasks=True,
+            )
+        )
+
         if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
             try:
                 stats = await service.get_project_stats(self.project_id, self.guild_id)
@@ -723,6 +736,18 @@ class ProjectCompleteConfirmView(ui.View):
         )
         embed.set_footer(text=t("proj_footer_id", self.lang, project_id=self.project_id))
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+        # Broadcast celebratory message to Discord channel and DM all project stakeholders
+        asyncio.create_task(
+            service.notify_project_completed(
+                bot=interaction.client,
+                project=self.project,
+                actor=interaction.user,
+                guild=interaction.guild,
+                trigger_channel=interaction.channel,
+                complete_all_tasks=False,
+            )
+        )
 
         if self.parent_dashboard_view and getattr(self.parent_dashboard_view, "_message", None):
             try:
