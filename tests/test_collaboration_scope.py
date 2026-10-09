@@ -641,3 +641,48 @@ class TestProjectPriorityAndProgressControls:
         assert "proj_dash_add_task" in custom_ids
         assert "proj_dash_dashboard" in custom_ids
         assert "proj_dash_board" in custom_ids
+
+    @pytest.mark.asyncio
+    async def test_project_list_empty_projects_does_not_pass_none_view(self):
+        """Ensure /project list does not pass view=None to followup.send when no projects exist."""
+        from collaboration.cog import CollaborationCog
+        cog = CollaborationCog(bot=MagicMock())
+        interaction = AsyncMock()
+        interaction.user.id = 12345
+        interaction.guild = MagicMock()
+        interaction.guild.id = 99999
+        interaction.guild.name = "Test Guild"
+
+        with patch("collaboration.cog.get_user_lang", AsyncMock(return_value="en")), \
+             patch("collaboration.service.get_guild_projects", AsyncMock(return_value=[])):
+            await cog.project_list.callback(cog, interaction, status="active")
+
+        interaction.followup.send.assert_awaited_once()
+        kwargs = interaction.followup.send.await_args.kwargs
+        assert "embed" in kwargs
+        assert "view" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_project_list_with_projects_attaches_view(self):
+        """Ensure /project list attaches ProjectListView when projects exist."""
+        from collaboration.cog import CollaborationCog
+        from collaboration.views import ProjectListView
+        cog = CollaborationCog(bot=MagicMock())
+        interaction = AsyncMock()
+        interaction.user.id = 12345
+        interaction.guild = MagicMock()
+        interaction.guild.id = 99999
+        interaction.guild.name = "Test Guild"
+
+        proj = _make_project(project_id=1, guild_id="99999", owner_id="12345")
+
+        with patch("collaboration.cog.get_user_lang", AsyncMock(return_value="en")), \
+             patch("collaboration.service.get_guild_projects", AsyncMock(return_value=[proj])):
+            await cog.project_list.callback(cog, interaction, status="active")
+
+        interaction.followup.send.assert_awaited_once()
+        kwargs = interaction.followup.send.await_args.kwargs
+        assert "embed" in kwargs
+        assert "view" in kwargs
+        assert isinstance(kwargs["view"], ProjectListView)
+

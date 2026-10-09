@@ -129,8 +129,11 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         projects    = await service.get_guild_projects(guild_id, status=status_arg)
         guild_name  = interaction.guild.name
         embed       = build_project_list_embed(projects, guild_name, lang)
-        view        = ProjectListView(projects, uid, lang) if projects else None
-        await interaction.followup.send(embed=embed, view=view)
+        if projects:
+            view = ProjectListView(projects, uid, lang)
+            await interaction.followup.send(embed=embed, view=view)
+        else:
+            await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project view
