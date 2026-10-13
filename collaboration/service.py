@@ -48,6 +48,23 @@ class TaskNotFound(Exception):
     """Raised when a task doesn't exist in the given project/guild."""
 
 
+class TaskBlocked(Exception):
+    """Raised when an incomplete dependency prevents a task from progressing."""
+
+    def __init__(self, blockers: list[tuple[int, str]]) -> None:
+        self.blockers = blockers
+        labels = ", ".join(f"#{task_id} {title}" for task_id, title in blockers)
+        super().__init__(f"Task is blocked by incomplete task(s): {labels}")
+
+
+class TaskDependencyExists(Exception):
+    """Raised when the dependency already exists."""
+
+
+class TaskDependencyNotFound(Exception):
+    """Raised when the requested dependency does not exist."""
+
+
 class TaskThreadExists(Exception):
     """Raised when a task already has a discussion thread."""
 
@@ -679,6 +696,151 @@ async def _get_task_assignees(task_id: int) -> list[str]:
     return [r["user_id"] for r in rows] if rows else []
 
 
+async def _get_incomplete_task_blockers(
+    task_id: int, project_id: int, guild_id: str,
+) -> list[tuple[int, str]]:
+    rows = await db.fetchall(
+        """SELECT blocker.task_id, blocker.task
+           FROM project_task_dependencies dependency
+           JOIN tasks blocker ON blocker.task_id = dependency.blocked_by_task_id
+           WHERE dependency.task_id=$1
+             AND dependency.project_id=$2
+             AND dependency.guild_id=$3
+             AND blocker.project_id=$2
+             AND blocker.guild_id=$3
+             AND blocker.status <> 'Completed'
+           ORDER BY blocker.task_id""",
+        (task_id, project_id, guild_id),
+    )
+    return [(int(row["task_id"]), row["task"]) for row in (rows or [])]
+
+
+async def add_task_dependency(
+    task_id: int,
+    blocked_by_task_id: int,
+    project_id: int,
+    guild_id: str,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> None:
+    """Make a project task depend on another task, rejecting cycles."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "member", is_guild_admin)
+    await get_project_task(task_id, project_id, guild_id)
+    await get_project_task(blocked_by_task_id, project_id, guild_id)
+    if task_id == blocked_by_task_id:
+        raise ValueError("A task cannot depend on itself.")
+
+    cycle = await db.fetchone(
+        """WITH RECURSIVE dependency_chain(task_id) AS (
+               SELECT $2::INTEGER
+               UNION
+               SELECT dependency.blocked_by_task_id
+               FROM project_task_dependencies dependency
+               JOIN dependency_chain chain ON dependency.task_id=chain.task_id
+               WHERE dependency.project_id=$3 AND dependency.guild_id=$4
+           )
+           SELECT EXISTS(
+               SELECT 1 FROM dependency_chain WHERE task_id=$1
+           ) AS cycle""",
+        (task_id, blocked_by_task_id, project_id, guild_id),
+    )
+    if cycle and cycle["cycle"]:
+        raise ValueError("This dependency would create a task dependency cycle.")
+
+    inserted = await db.fetchone(
+        """INSERT INTO project_task_dependencies
+               (task_id, blocked_by_task_id, project_id, guild_id, created_by)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (task_id, blocked_by_task_id) DO NOTHING
+           RETURNING task_id""",
+        (task_id, blocked_by_task_id, project_id, guild_id, actor_id),
+    )
+    if not inserted:
+        raise TaskDependencyExists(
+            f"Task #{task_id} already depends on task #{blocked_by_task_id}."
+        )
+    db.query_cache.invalidate_tables(["project_task_dependencies"])
+    await log_activity(
+        project_id, guild_id, actor_id, "task_dependency_added",
+        f"#{task_id} waits for #{blocked_by_task_id}",
+    )
+
+
+async def remove_task_dependency(
+    task_id: int,
+    blocked_by_task_id: int,
+    project_id: int,
+    guild_id: str,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> None:
+    """Remove a dependency after validating both tasks and project membership."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "member", is_guild_admin)
+    await get_project_task(task_id, project_id, guild_id)
+    await get_project_task(blocked_by_task_id, project_id, guild_id)
+    row = await db.fetchone(
+        """DELETE FROM project_task_dependencies
+           WHERE task_id=$1 AND blocked_by_task_id=$2
+             AND project_id=$3 AND guild_id=$4
+           RETURNING task_id""",
+        (task_id, blocked_by_task_id, project_id, guild_id),
+    )
+    if not row:
+        raise TaskDependencyNotFound(
+            f"Task #{task_id} does not depend on task #{blocked_by_task_id}."
+        )
+    db.query_cache.invalidate_tables(["project_task_dependencies"])
+    await log_activity(
+        project_id, guild_id, actor_id, "task_dependency_removed",
+        f"#{task_id} no longer waits for #{blocked_by_task_id}",
+    )
+
+
+async def assign_task_role(
+    task_id: int,
+    project_id: int,
+    guild_id: str,
+    role_id: int,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> bool:
+    """Assign a Discord role to a task; any project member may do this."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "member", is_guild_admin)
+    task = await get_project_task(task_id, project_id, guild_id)
+    if task.status in ("Completed", "Cancelled"):
+        raise ValueError("Cannot assign a completed or cancelled task.")
+    if task.status == "Pending":
+        blockers = await _get_incomplete_task_blockers(task_id, project_id, guild_id)
+        if blockers:
+            raise TaskBlocked(blockers)
+
+    inserted = await db.fetchone(
+        """INSERT INTO project_task_role_assignments
+               (task_id, project_id, guild_id, role_id, assigned_by)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (task_id, role_id) DO NOTHING
+           RETURNING role_id""",
+        (task_id, project_id, guild_id, role_id, actor_id),
+    )
+    if not inserted:
+        return False
+    if task.status == "Pending":
+        await db.execute(
+            """UPDATE tasks SET status='In_Progress', updated_at=NOW()
+               WHERE task_id=$1 AND project_id=$2 AND guild_id=$3""",
+            (task_id, project_id, guild_id),
+        )
+    db.query_cache.invalidate_tables(["tasks", "project_task_role_assignments"])
+    await log_activity(
+        project_id, guild_id, actor_id, "task_role_assigned",
+        f"#{task_id} → role {role_id}",
+    )
+    return True
+
+
 async def delete_project_task(
     task_id: int, project_id: int, guild_id: str,
     actor_id: str, is_guild_admin: bool = False,
@@ -693,6 +855,9 @@ async def delete_project_task(
         "DELETE FROM tasks WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
         (task_id, project_id, guild_id),
     )
+    db.query_cache.invalidate_tables([
+        "tasks", "project_task_dependencies", "project_task_role_assignments",
+    ])
     await log_activity(project_id, guild_id, actor_id, "task_deleted", task.task)
 
 
@@ -713,6 +878,10 @@ async def claim_task(
 
     if task.status in ("Completed", "Cancelled"):
         raise ValueError("Cannot claim a completed or cancelled task.")
+    if task.status == "Pending":
+        blockers = await _get_incomplete_task_blockers(task_id, project_id, guild_id)
+        if blockers:
+            raise TaskBlocked(blockers)
 
     # Auto-add claimant as member if not already in project
     existing_role = await get_member_role(project_id, claimer_id)
@@ -759,6 +928,10 @@ async def assign_task(
 
     if task.status in ("Completed", "Cancelled"):
         raise ValueError("Cannot assign a completed or cancelled task.")
+    if task.status == "Pending":
+        blockers = await _get_incomplete_task_blockers(task_id, project_id, guild_id)
+        if blockers:
+            raise TaskBlocked(blockers)
 
     # Ensure assignee is a user in our DB
     from utils.helpers import ensure_user
@@ -790,6 +963,7 @@ async def assign_task(
 async def update_task_status(
     task_id: int, project_id: int, guild_id: str,
     new_status: str, actor_id: str, is_guild_admin: bool = False,
+    actor_role_ids: list[int] | None = None,
 ) -> ProjectTask:
     """
     Change a task's status. Valid transitions:
@@ -803,6 +977,16 @@ async def update_task_status(
 
     # Permission: assignee OR task creator OR lead/admin
     is_assignee = actor_id in task.assignees
+    if actor_role_ids:
+        role_assignment = await db.fetchone(
+            """SELECT EXISTS(
+                   SELECT 1 FROM project_task_role_assignments
+                   WHERE task_id=$1 AND project_id=$2 AND guild_id=$3
+                     AND role_id=ANY($4::BIGINT[])
+               ) AS assigned""",
+            (task_id, project_id, guild_id, actor_role_ids),
+        )
+        is_assignee = is_assignee or bool(role_assignment and role_assignment["assigned"])
     is_creator  = task.owner_id == actor_id
     actor_role  = await get_member_role(project_id, actor_id)
     is_lead     = actor_role == "lead" or project.owner_id == actor_id
@@ -816,6 +1000,11 @@ async def update_task_status(
 
     if not allowed:
         raise ProjectPermissionError("member")
+
+    if new_status in ("In_Progress", "Completed") and task.status != new_status:
+        blockers = await _get_incomplete_task_blockers(task_id, project_id, guild_id)
+        if blockers:
+            raise TaskBlocked(blockers)
 
     if new_status == "Completed":
         if task.status != "Completed":
@@ -869,24 +1058,65 @@ async def get_project_board(project_id: int, guild_id: str) -> BoardData:
         (project_id, guild_id),
     )
 
-    # Fetch all assignees in one query to avoid N+1
+    # Load task assignment metadata in batches to avoid N+1 queries.
     if rows:
         task_ids = [r["task_id"] for r in rows]
         if task_ids:
             placeholders = ",".join(f"${i+1}" for i in range(len(task_ids)))
             assign_rows = await db.fetchall(
-                f"SELECT task_id, user_id FROM task_assignments WHERE task_id IN ({placeholders})",
-                task_ids,
+                f"""SELECT assignment.task_id, assignment.user_id
+                    FROM task_assignments assignment
+                    JOIN tasks task ON task.task_id=assignment.task_id
+                    WHERE assignment.task_id IN ({placeholders})
+                      AND task.project_id=${len(task_ids) + 1}
+                      AND task.guild_id=${len(task_ids) + 2}""",
+                [*task_ids, project_id, guild_id],
+            )
+            role_rows = await db.fetchall(
+                f"""SELECT assignment.task_id, assignment.role_id
+                    FROM project_task_role_assignments assignment
+                    WHERE assignment.task_id IN ({placeholders})
+                      AND assignment.project_id=${len(task_ids) + 1}
+                      AND assignment.guild_id=${len(task_ids) + 2}""",
+                [*task_ids, project_id, guild_id],
+            )
+            blocker_rows = await db.fetchall(
+                f"""SELECT dependency.task_id, blocker.task_id AS blocked_id,
+                           blocker.task, blocker.status
+                    FROM project_task_dependencies dependency
+                    JOIN tasks blocker ON blocker.task_id=dependency.blocked_by_task_id
+                    WHERE dependency.task_id IN ({placeholders})
+                      AND dependency.project_id=${len(task_ids) + 1}
+                      AND dependency.guild_id=${len(task_ids) + 2}
+                      AND blocker.project_id=${len(task_ids) + 1}
+                      AND blocker.guild_id=${len(task_ids) + 2}
+                    ORDER BY dependency.task_id, blocker.task_id""",
+                [*task_ids, project_id, guild_id],
             )
         else:
-            assign_rows = []
+            assign_rows, role_rows, blocker_rows = [], [], []
         assignees_map: dict[int, list[str]] = {}
         for ar in (assign_rows or []):
             assignees_map.setdefault(ar["task_id"], []).append(ar["user_id"])
+        roles_map: dict[int, list[int]] = {}
+        for role_row in (role_rows or []):
+            roles_map.setdefault(role_row["task_id"], []).append(int(role_row["role_id"]))
+        blockers_map: dict[int, list[tuple[int, str, str]]] = {}
+        for blocker_row in (blocker_rows or []):
+            blockers_map.setdefault(blocker_row["task_id"], []).append(
+                (int(blocker_row["blocked_id"]), blocker_row["task"], blocker_row["status"])
+            )
     else:
         assignees_map = {}
+        roles_map = {}
+        blockers_map = {}
 
-    tasks = [ProjectTask.from_record(r, assignees=assignees_map.get(r["task_id"], []))
+    tasks = [ProjectTask.from_record(
+                 r,
+                 assignees=assignees_map.get(r["task_id"], []),
+                 assigned_roles=roles_map.get(r["task_id"], []),
+                 blocked_by=blockers_map.get(r["task_id"], []),
+             )
              for r in (rows or [])]
 
     return BoardData(
@@ -971,23 +1201,33 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
 # Cross-Scope "My Tasks" — tasks assigned to a user across all guild projects
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def get_user_assigned_tasks(guild_id: str, user_id: str) -> list[ProjectTask]:
+async def get_user_assigned_tasks(
+    guild_id: str, user_id: str, role_ids: list[int] | None = None,
+) -> list[ProjectTask]:
     """
     Return all tasks assigned to user_id across ALL projects in guild_id.
     Combines task_assignments JOIN tasks JOIN projects — always guild-scoped.
     """
     rows = await db.fetchall(
-        """SELECT t.*, p.project_id AS _proj_id
-           FROM task_assignments ta
-           JOIN tasks t ON t.task_id = ta.task_id
+        """SELECT DISTINCT t.*
+           FROM tasks t
            JOIN projects p ON p.project_id = t.project_id
-           WHERE ta.user_id=$1
+           WHERE (EXISTS (
+                    SELECT 1 FROM task_assignments assignment
+                    WHERE assignment.task_id=t.task_id AND assignment.user_id=$1
+                 ) OR EXISTS (
+                    SELECT 1 FROM project_task_role_assignments role_assignment
+                    WHERE role_assignment.task_id=t.task_id
+                      AND role_assignment.project_id=t.project_id
+                      AND role_assignment.guild_id=t.guild_id
+                      AND role_assignment.role_id=ANY($3::BIGINT[])
+                 ))
              AND t.guild_id=$2
              AND p.guild_id=$2
              AND t.status NOT IN ('Completed','Cancelled')
            ORDER BY t.priority DESC, t.deadline ASC
            LIMIT 30""",
-        (user_id, guild_id),
+        (user_id, guild_id, role_ids or []),
     )
     if not rows:
         return []
@@ -995,13 +1235,33 @@ async def get_user_assigned_tasks(guild_id: str, user_id: str) -> list[ProjectTa
     task_ids = [r["task_id"] for r in rows]
     placeholders = ",".join(f"${i+1}" for i in range(len(task_ids)))
     assign_rows = await db.fetchall(
-        f"SELECT task_id, user_id FROM task_assignments WHERE task_id IN ({placeholders})",
-        task_ids,
+        f"""SELECT assignment.task_id, assignment.user_id
+            FROM task_assignments assignment
+            JOIN tasks task ON task.task_id=assignment.task_id
+            WHERE assignment.task_id IN ({placeholders})
+              AND task.guild_id=${len(task_ids) + 1}""",
+        [*task_ids, guild_id],
+    )
+    role_rows = await db.fetchall(
+        f"""SELECT assignment.task_id, assignment.role_id
+            FROM project_task_role_assignments assignment
+            JOIN tasks task ON task.task_id=assignment.task_id
+            WHERE assignment.task_id IN ({placeholders})
+              AND task.guild_id=${len(task_ids) + 1}
+              AND assignment.guild_id=${len(task_ids) + 1}""",
+        [*task_ids, guild_id],
     )
     assignees_map: dict[int, list[str]] = {}
     for ar in (assign_rows or []):
         assignees_map.setdefault(ar["task_id"], []).append(ar["user_id"])
-    return [ProjectTask.from_record(r, assignees=assignees_map.get(r["task_id"], []))
+    roles_map: dict[int, list[int]] = {}
+    for role_row in (role_rows or []):
+        roles_map.setdefault(role_row["task_id"], []).append(int(role_row["role_id"]))
+    return [ProjectTask.from_record(
+                r,
+                assignees=assignees_map.get(r["task_id"], []),
+                assigned_roles=roles_map.get(r["task_id"], []),
+            )
             for r in rows]
 
 

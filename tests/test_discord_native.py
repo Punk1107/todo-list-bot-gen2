@@ -123,13 +123,38 @@ def test_discord_native_translations_have_safe_fallback_for_all_languages() -> N
         )
 
 
+def test_collaboration_feature_translations_render_in_every_language() -> None:
+    for lang in SUPPORTED_LANGS:
+        blocked = t("proj_task_blocked", lang, blockers="#12 API task")
+        workload = t("proj_workload_title", lang, project="Project X")
+        assignment = t(
+            "proj_role_assigned", lang,
+            task_id=7, role="Designers", sent=3, failed=1,
+        )
+        assert "#12 API task" in blocked
+        assert "Project X" in workload
+        assert "Designers" in assignment
+        assert "{blockers}" not in blocked
+        assert "{project}" not in workload
+        assert "{sent}" not in assignment and "{failed}" not in assignment
+
+
 def test_schema_v20_contains_context_menu_and_thread_mapping() -> None:
     migration = dict(MIGRATIONS)[20]
     statements = _split_sql_statements(migration)
-    assert SCHEMA_VERSION == 20
+    assert SCHEMA_VERSION == 21
     assert any("source_message_url" in statement for statement in statements)
     assert any("CREATE TABLE IF NOT EXISTS project_task_threads" in statement for statement in statements)
     assert any("thread_type IN ('public', 'private')" in statement for statement in statements)
+
+
+def test_schema_v21_contains_scoped_dependencies_and_role_assignments() -> None:
+    migration = dict(MIGRATIONS)[21]
+    statements = _split_sql_statements(migration)
+    assert SCHEMA_VERSION == 21
+    assert any("CREATE TABLE IF NOT EXISTS project_task_dependencies" in statement for statement in statements)
+    assert any("CREATE TABLE IF NOT EXISTS project_task_role_assignments" in statement for statement in statements)
+    assert any("CHECK (task_id <> blocked_by_task_id)" in statement for statement in statements)
 
 
 @pytest.mark.asyncio

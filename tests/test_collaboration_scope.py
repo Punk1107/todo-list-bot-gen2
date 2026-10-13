@@ -212,10 +212,113 @@ class TestClaimTask:
              patch("collaboration.service.db") as mock_db, \
              patch("collaboration.service.log_activity", AsyncMock()):
             mock_db.execute     = AsyncMock()
+            mock_db.fetchall    = AsyncMock(return_value=[])
             mock_db.query_cache = MagicMock()
             result = await service.claim_task(10, 1, "guild_A", "claimer_id")
         assert result.status == "In_Progress"
         assert "claimer_id" in result.assignees
+
+    @pytest.mark.asyncio
+    async def test_claim_pending_task_is_rejected_while_blocker_is_incomplete(self):
+        pending_task = _make_task(status="Pending")
+        project = _make_project()
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=pending_task)), \
+             patch("collaboration.service.db.fetchall", AsyncMock(return_value=[
+                 {"task_id": 9, "task": "Finish API"}
+             ])):
+            with pytest.raises(service.TaskBlocked, match="#9 Finish API"):
+                await service.claim_task(10, 1, "guild_A", "claimer_id")
+
+
+class TestDependenciesAndRoleAssignments:
+    @pytest.mark.asyncio
+    async def test_incomplete_blocker_prevents_task_completion(self):
+        project = _make_project()
+        task = _make_task(status="In_Progress")
+        mock_db = AsyncMock()
+        mock_db.fetchall = AsyncMock(return_value=[
+            {"task_id": 9, "task": "Finish API"}
+        ])
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=task)), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value="member")), \
+             patch("collaboration.service.db", mock_db), \
+             patch("collaboration.service.gamification_service.complete_shared_task", AsyncMock()) as complete:
+            with pytest.raises(service.TaskBlocked, match="#9 Finish API"):
+                await service.update_task_status(
+                    10, 1, "guild_A", "Completed", "member_1"
+                )
+        complete.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dependency_creation_rejects_cycle(self):
+        project = _make_project()
+        task = _make_task()
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.require_role", AsyncMock()), \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=task)), \
+             patch("collaboration.service.db.fetchone", AsyncMock(return_value={"cycle": True})):
+            with pytest.raises(ValueError, match="cycle"):
+                await service.add_task_dependency(10, 11, 1, "guild_A", "member_1")
+
+    @pytest.mark.asyncio
+    async def test_dependency_creation_rejects_cross_project_task(self):
+        project = _make_project()
+        task = _make_task()
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.require_role", AsyncMock()), \
+             patch(
+                 "collaboration.service.get_project_task",
+                 AsyncMock(side_effect=[task, service.TaskNotFound("not in project")]),
+             ), \
+             patch("collaboration.service.db.fetchone", AsyncMock()) as fetchone:
+            with pytest.raises(service.TaskNotFound):
+                await service.add_task_dependency(10, 11, 1, "guild_A", "member_1")
+        fetchone.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_project_member_can_assign_task_to_discord_role(self):
+        project = _make_project()
+        pending_task = _make_task(status="Pending")
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.require_role", AsyncMock()) as require_role, \
+             patch("collaboration.service.get_project_task", AsyncMock(return_value=pending_task)), \
+             patch("collaboration.service.db.fetchall", AsyncMock(return_value=[])), \
+             patch("collaboration.service.db.fetchone", AsyncMock(return_value={"role_id": 555})), \
+             patch("collaboration.service.db.execute", AsyncMock()) as execute, \
+             patch("collaboration.service.db.query_cache.invalidate_tables") as invalidate, \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            assigned = await service.assign_task_role(10, 1, "guild_A", 555, "member_1")
+        require_role.assert_awaited_once_with(project, "member_1", "member", False)
+        assert assigned is True
+        assert execute.await_count == 1
+        assert execute.await_args.args[1] == (10, 1, "guild_A")
+        invalidate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_role_holder_can_complete_assigned_task(self):
+        project = _make_project()
+        pending_task = _make_task(status="Pending")
+        completed_task = _make_task(status="Completed")
+        mock_db = AsyncMock()
+        mock_db.fetchone = AsyncMock(return_value={"assigned": True})
+        mock_db.fetchall = AsyncMock(return_value=[])
+        mock_db.invalidate_stats = MagicMock()
+        mock_db.query_cache = MagicMock()
+        with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+             patch("collaboration.service.get_project_task", AsyncMock(
+                 side_effect=[pending_task, completed_task]
+             )), \
+             patch("collaboration.service.get_member_role", AsyncMock(return_value=None)), \
+             patch("collaboration.service.gamification_service.complete_shared_task", AsyncMock(return_value=[])), \
+             patch("collaboration.service.db", mock_db), \
+             patch("collaboration.service.log_activity", AsyncMock()):
+            result = await service.update_task_status(
+                10, 1, "guild_A", "Completed", "role_holder",
+                actor_role_ids=[555],
+            )
+        assert result.status == "Completed"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -312,13 +415,11 @@ class TestGetUserAssignedTasksSQL:
 
     @pytest.mark.asyncio
     async def test_sql_contains_correct_alias(self):
-        """The SQL in get_user_assigned_tasks must use 'p.project_id', not 'pm.project_id'."""
-        import inspect, re
+        """My Tasks includes role assignments while retaining guild scope."""
+        import inspect
         source = inspect.getsource(service.get_user_assigned_tasks)
-        # Must contain the corrected alias 'p.project_id AS _proj_id'
-        assert "p.project_id AS _proj_id" in source, (
-            "SQL alias regression: expected 'p.project_id AS _proj_id' but got something else"
-        )
+        assert "role_assignment.role_id=ANY($3::BIGINT[])" in source
+        assert "p.guild_id=$2" in source
         # Must NOT contain the buggy 'pm.project_id'
         assert "pm.project_id" not in source, (
             "SQL alias regression: 'pm.project_id' still present — alias not fixed"
@@ -515,6 +616,12 @@ class TestLocaleCollaborationKeys:
         "proj_priority_select_placeholder", "proj_priority_updated", "proj_manual_progress_desc",
         "proj_manual_progress_modal_title", "proj_manual_progress_input_label",
         "proj_manual_progress_updated",
+        "proj_dependency_added", "proj_dependency_removed", "proj_dependency_duplicate",
+        "proj_dependency_missing", "proj_dependency_cycle", "proj_task_blocked",
+        "proj_role_assigned", "proj_role_already_assigned", "proj_workload_title",
+        "proj_workload_empty", "proj_workload_members", "proj_workload_roles",
+        "proj_workload_unassigned", "proj_workload_member_line",
+        "proj_workload_role_line", "proj_workload_unassigned_line", "proj_role_missing",
     ]
 
     def test_all_collab_keys_present_in_all_locales(self):
@@ -883,5 +990,3 @@ class TestProjectCompletionNotification:
             _, kwargs = mock_notify.call_args
             assert kwargs["complete_all_tasks"] is False
             assert kwargs["project"] == proj
-
-

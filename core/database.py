@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 20   # bump when adding migrations below
+SCHEMA_VERSION = 21   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +171,8 @@ _KNOWN_TABLES = {
     "tasks", "users", "categories", "projects", "project_members",
     "project_activity_log", "task_attachments", "task_assignments",
     "guild_settings", "audit_log", "schema_version", "task_completion_events",
-    "user_achievements", "project_task_threads",
+    "user_achievements", "project_task_threads", "project_task_dependencies",
+    "project_task_role_assignments",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -882,6 +883,36 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_project_task_threads_scope
         ON project_task_threads(project_id, guild_id);
     INSERT INTO schema_version VALUES (20) ON CONFLICT (version) DO UPDATE SET version=20;
+    """),
+
+    # ── v21: project task dependencies and Discord role assignments ──────────
+    (21, """
+    CREATE TABLE IF NOT EXISTS project_task_dependencies (
+        task_id             INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        blocked_by_task_id  INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        project_id          INTEGER NOT NULL,
+        guild_id            TEXT NOT NULL,
+        created_by          TEXT NOT NULL,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (task_id, blocked_by_task_id),
+        CHECK (task_id <> blocked_by_task_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_task_dependencies_scope
+        ON project_task_dependencies(project_id, guild_id, task_id);
+
+    CREATE TABLE IF NOT EXISTS project_task_role_assignments (
+        task_id      INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        project_id   INTEGER NOT NULL,
+        guild_id     TEXT NOT NULL,
+        role_id      BIGINT NOT NULL,
+        assigned_by  TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (task_id, role_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_task_role_assignments_scope
+        ON project_task_role_assignments(project_id, guild_id, role_id);
+
+    INSERT INTO schema_version VALUES (21) ON CONFLICT (version) DO UPDATE SET version=21;
     """),
 ]
 
