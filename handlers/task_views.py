@@ -40,6 +40,7 @@ from utils.conflict_resolver import (
 )
 from task_features import service as task_features_service
 from task_features.views import TaskCommentsView, TaskProgressModal
+from gamification import service as gamification_service
 
 log = logging.getLogger(__name__)
 
@@ -1117,12 +1118,11 @@ class TaskActionView(ui.View):
         if row["status"] == "Cancelled":
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
-        await db.aexecute(
-            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
-            (self.task_id,),
-        )
+        completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
+        if completed is None:
+            await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
+            return
         await db.alog_action(self.uid, "task_completed", str(self.task_id))
-        db.invalidate_stats(self.uid)
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         self.stop()
@@ -1856,15 +1856,22 @@ class _QuickActionButtons(ui.View):
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
         r = await db.afetchone("SELECT task, status FROM tasks WHERE task_id=$1", (self.task_id,))
-        if not r or r["status"] == "Completed":
+        if not r:
+            await interaction.followup.send(
+                t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True
+            )
+            return
+        if r["status"] == "Completed":
             await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
             return
-        await db.aexecute(
-            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
-            (self.task_id,),
-        )
+        if r["status"] == "Cancelled":
+            await interaction.followup.send(t("task_already_cancelled", self.lang), ephemeral=True)
+            return
+        completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
+        if completed is None:
+            await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
+            return
         await db.alog_action(self.uid, "task_completed", str(self.task_id))
-        db.invalidate_stats(self.uid)
         self.stop()
         await interaction.followup.send(
             t("task_done_with_name", self.lang, task_id=self.task_id, task_name=r["task"]),

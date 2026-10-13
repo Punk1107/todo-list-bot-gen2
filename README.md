@@ -11,7 +11,7 @@
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
 ![Deno](https://img.shields.io/badge/Deno-TypeScript-black?logo=deno&logoColor=white)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
-![Tests](https://img.shields.io/badge/Tests-235%20Passed%20(100%25)-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-271%20Passed%20(100%25)-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
@@ -39,8 +39,8 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v17 (Priority 0–7, Manual Progress %, RLS Policies) |
-| **Architecture** | Monolithic | Modular Cogs | **Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v19 (Priority 0–7, completion events, streak tracking, RLS Policies) |
+| **Architecture** | Monolithic | Modular Cogs | **10 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
 | **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
@@ -50,8 +50,9 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 | **Task Collaboration** | None | None | **Per-task comments** for personal/shared tasks and a **0–100% progress bar** on task embeds |
 | **Realtime Sync** | None | None | **Supabase Realtime CDC** (Phoenix WebSocket), live Discord embed updates with 1.5s debounce |
 | **Analytics** | None | None | **`/task-stats`** Productivity Dashboard + **Deno Edge Function** weekly visual reports via QuickChart API |
+| **Gamification** | None | None | **`/streak`, `/habits`, `/leaderboard`** — timezone-aware streaks, four task achievements, evening DM reminders, and guild-scoped shared-task rankings |
 | **Monitoring** | None | None | **Health Monitor**, Error Tracker, Commands Audit, Discord Alert Dispatcher |
-| **Automated Testing** | None | Not documented | **235 Unit & Integration Tests, 100% passing** |
+| **Automated Testing** | None | Not documented | **271 Unit & Integration Tests, 100% passing** |
 | **Event Loop** | Default | Default | **uvloop** (Linux/macOS) for 2–4× faster I/O throughput |
 
 ---
@@ -68,7 +69,7 @@ graph TD
     end
 
     subgraph Bot["🐍 Bot Application Core — Python 3.10+"]
-        subgraph Cogs["8 Modular Cogs"]
+        subgraph Cogs["10 Modular Cogs"]
             C1[tasks_cog]
             C2[settings_cog]
             C3[reminders_cog]
@@ -77,6 +78,8 @@ graph TD
             C6[storage.cog]
             C7[search_recommendation.cog]
             C8[analytics.cog]
+            C9[focus.cog]
+            C10[gamification.cog]
         end
         subgraph Perf["⚡ High-Performance Layer"]
             AP[asyncpg Pool max_size=10]
@@ -94,7 +97,7 @@ graph TD
     end
 
     subgraph Supabase["☁️ Supabase Cloud Infrastructure"]
-        PG[(PostgreSQL 15+ Schema v17 GIN Search Vectors RLS)]
+        PG[(PostgreSQL 15+ Schema v19 GIN Search Vectors RLS)]
         ST[Storage task-attachments bucket]
         RTDB[Realtime Publication]
         EF[Edge Functions Deno TypeScript weekly-analytics]
@@ -117,7 +120,7 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v18), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v19), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
 | `focus/` | `cog.py` | `/focus start`, `/focus stop`, `/focus status`; persistent 25/5 Pomodoro timer |
@@ -131,6 +134,7 @@ graph TD
 | `storage/` | `cog.py`, `client.py`, `models.py`, `service.py`, `views.py` | Supabase Storage integration, `/attach`, `/attachments`, MIME type guards, presigned public URLs |
 | `search_recommendation/` | `cog.py`, `fts_engine.py`, `models.py`, `protocols.py`, `query_builder.py`, `recommendation.py`, `service.py`, `views.py` | PostgreSQL FTS `/search` (tsvector GIN), Composite AI Scoring `/recommend` (Urgency + Priority + Staleness) |
 | `analytics/` | `cog.py`, `client.py`, `models.py` | `/task-stats` productivity dashboard, `/analytics` weekly & on-demand Edge Function reports |
+| `gamification/` | `cog.py`, `service.py` | Local-date streaks, task achievement awards, evening reminders, and guild-scoped leaderboards |
 | `realtime/` | `client.py`, `dashboard_tracker.py`, `dispatcher.py`, `notifications.py`, `service.py` | Phoenix WebSocket CDC client, CDC event dispatcher, debounced embed updater, live dashboard rehydrator |
 | `monitoring/` | `alert_dispatcher.py`, `commands_log.py`, `error_tracker.py`, `health_monitor.py`, `logger_setup.py` | Health monitor, error tracker, structured JSON logging, Discord alert dispatcher |
 | `security_rls/` | `sql/*.sql`, `client.py`, `context.py`, `migration_runner.py` | PostgreSQL Row Level Security policies, scoped context managers, migration runner CLI (`--dry-run`/`--apply`/`--rollback`) |
@@ -268,6 +272,16 @@ tomorrow 09:30
 | `/task-stats` | — | Deep Productivity Dashboard: on-time rate, average turnaround days, lead/lag margin, completion velocity (tasks/week), productivity score 0–100. |
 | `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
 | `/export` | — | Export all tasks to a UTF-8 BOM CSV file (Excel-compatible). Rate-limited: 5/day. |
+
+### 🔥 Gamification & Habits
+
+| Command | Parameters | Description |
+|---|---|---|
+| `/streak` | — | View your active consecutive task-completion days. |
+| `/habits` | — | Summarize today's completions and earned Early Bird, Speed Demon, P7 Slayer, and Inbox Zero badges. |
+| `/leaderboard` | `period: week \| month` | Guild-only ranking from that server's shared-project task completions; no personal tasks are included. |
+
+Streaks use each member's configured timezone. A reminder is sent by DM at 20:00 local time if they have not completed a task that day. Leaderboard productivity score is scoped to shared-task events in that guild: 40% on-time rate, 30% completion volume (capped at six tasks), 20% active days (capped at five), and 10% P7 completions.
 
 > **Priority Scale (0–7):**
 > `0` ⬜ Normal / ปกติ · `1` 🟦 Low / ต่ำ · `2` 🟩 Medium / ปานกลาง · `3` 🟨 High / สูง · `4` 🟧 Urgent / ด่วน · `5` 🟥 Immediate / ด่วนมาก · `6` 🔴 Critical / วิกฤต · `7` 🆘 Emergency / ฉุกเฉิน
@@ -777,7 +791,7 @@ Log files are created automatically in `logs/`:
 
 ## 🧪 Test Suite & Quality Assurance
 
-The project has **235 automated tests** covering all major subsystems, all passing at 100%.
+The project has **271 automated tests** covering all major subsystems, all passing at 100%.
 
 ```bash
 # Run the full test suite
@@ -799,16 +813,17 @@ pytest tests/test_collaboration_scope.py -v
 | `test_conflict_resolution.py` | 25 | Defensive deadline validation, duplicate task suggestions, defensive snoozing |
 | `test_date_parser_i18n.py` | 12 | 9-language date parsing, English/Thai relative phrases, 12-hour times, and invalid-time rejection |
 | `test_focus_mode.py` | 2 | Pomodoro interval defaults and bounded elapsed-work calculations |
+| `test_gamification.py` | 7 | Local-date streak rules, achievement criteria, leaderboard scoring/scope, reminder deduplication, schema v19 |
 | `test_locales.py` | 9 | Complete 1:1 translation key parity across all 9 supported languages |
 | `test_realtime.py` | 15 | Phoenix WebSocket CDC client, heartbeat, debounced embed updater, reconnection |
 | `test_reminders.py` | 1 | Background reminder loop query parameter types and timezone compatibility |
 | `test_rls_policies.py` | 11 | PostgreSQL RLS policy parsing, session user context isolation, migration runner |
 | `test_search_recommendation.py` | 51 | PostgreSQL Full-Text Search (`tsvector`, `ts_rank_cd`) & AI recommendation scoring presets |
 | `test_recurrence_rules.py` | 5 | Advanced recurrence validation, intervals, weekdays, month dates, and legacy compatibility |
-| `test_sql_split.py` | 6 | SQL parser tokenizer and schema v18 migration shape |
+| `test_sql_split.py` | 6 | SQL parser tokenizer and schema v19 migration shape |
 | `test_storage.py` | 22 | Supabase Storage client, file size & MIME validation, object storage paths |
 | `test_ux_improvements.py` | 26 | Persistent view rehydration, modal components, task autocomplete, subtask rendering |
-| **Total** | **235** | **100% Passing Test Suite** |
+| **Total** | **271** | **100% Passing Test Suite** |
 
 > **Note on `test_locales.py`:** This test is the primary guard against cross-language regressions. When a new string key is added to the English/Thai locale, the test immediately fails for any of the other locale files missing that key — preventing the "feature works in Thai but crashes in German" class of bug.
 
@@ -824,7 +839,7 @@ pytest tests/test_collaboration_scope.py -v
 │
 ├── core/
 │   ├── config.py                   # Centralised env validation (frozen dataclasses)
-│   ├── database.py                 # asyncpg pool, migrations (v1-v17), QueryCache, BulkWriter
+│   ├── database.py                 # asyncpg pool, migrations (v1-v19), QueryCache, BulkWriter
 │   └── security.py                 # InputValidator, token-bucket rate limiter
 │
 ├── handlers/
@@ -873,6 +888,9 @@ pytest tests/test_collaboration_scope.py -v
 │   ├── cog.py                      # /task-stats /analytics (Edge Function caller)
 │   ├── client.py                   # Supabase Edge Function HTTP caller
 │   └── models.py                   # Productivity analytics data models
+├── gamification/
+│   ├── cog.py                      # /streak /habits /leaderboard and evening reminders
+│   └── service.py                  # Completion events, streaks, badges, and scoped scoring
 ├── focus/
 │   └── cog.py                      # Persistent Pomodoro timer and /focus commands
 ├── recurrence/

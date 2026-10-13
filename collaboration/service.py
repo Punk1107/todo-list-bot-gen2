@@ -24,6 +24,7 @@ from collaboration.models import (
 )
 from core.database import db
 from utils.helpers import get_user_lang
+from gamification import service as gamification_service
 
 log = logging.getLogger(__name__)
 
@@ -219,13 +220,9 @@ async def complete_project_with_tasks(
     await require_role(project, actor_id, "lead", is_guild_admin)
 
     if complete_all_tasks:
-        await db.execute(
-            """UPDATE tasks
-               SET status='Completed', completed_at=NOW(), updated_at=NOW()
-               WHERE project_id=$1 AND guild_id=$2 AND status IN ('Pending', 'In_Progress')""",
-            (project_id, guild_id),
+        await gamification_service.complete_shared_project_tasks(
+            project_id, guild_id, actor_id
         )
-        db.query_cache.invalidate_tables(["tasks", "task_assignments"])
 
     await db.execute(
         "UPDATE projects SET status='completed', updated_at=NOW() WHERE project_id=$1 AND guild_id=$2",
@@ -742,19 +739,27 @@ async def update_task_status(
     if not allowed:
         raise ProjectPermissionError("member")
 
-    extra_sql = ""
-    params: tuple = (new_status, task_id, project_id, guild_id)
     if new_status == "Completed":
-        extra_sql = ", completed_at=NOW()"
+        if task.status != "Completed":
+            completed = await gamification_service.complete_shared_task(
+                task_id, project_id, guild_id, actor_id
+            )
+            if completed is None:
+                latest = await get_project_task(task_id, project_id, guild_id)
+                if latest.status == "Completed":
+                    return latest
+                raise TaskNotFound(f"Task {task_id} could not be completed")
         for uid in task.assignees:
             db.invalidate_stats(uid)
         db.invalidate_stats(task.owner_id)
-
-    await db.execute(
-        f"UPDATE tasks SET status=$1, updated_at=NOW(){extra_sql}"
-        " WHERE task_id=$2 AND project_id=$3 AND guild_id=$4",
-        params,
-    )
+        if task.status == "Completed":
+            return task
+    else:
+        await db.execute(
+            "UPDATE tasks SET status=$1, updated_at=NOW()"
+            " WHERE task_id=$2 AND project_id=$3 AND guild_id=$4",
+            (new_status, task_id, project_id, guild_id),
+        )
     db.query_cache.invalidate_tables(["tasks", "task_assignments"])
 
     action_map = {

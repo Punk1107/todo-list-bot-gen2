@@ -35,6 +35,7 @@ from handlers.task_views import (
     _build_today_embed_and_view, _build_overdue_embed_and_view,
 )
 from recurrence.rules import validate_rule
+from gamification import service as gamification_service
 
 log = logging.getLogger(__name__)
 
@@ -352,12 +353,11 @@ class TasksCog(commands.Cog, name="Tasks"):
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
 
-        await db.aexecute(
-            "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1 AND owner_id=$2",
-            (task_id, uid),
-        )
+        awarded = await gamification_service.complete_personal_task(task_id, uid)
+        if awarded is None:
+            await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
+            return
         await db.alog_action(uid, "task_completed", str(task_id))
-        db.invalidate_stats(uid)
 
         done_msg = t("task_done_with_name", lang, task_id=task_id, task_name=row["task"])
         embed = discord.Embed(
