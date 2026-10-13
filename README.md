@@ -117,9 +117,11 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v17), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v18), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
+| `focus/` | `cog.py` | `/focus start`, `/focus stop`, `/focus status`; persistent 25/5 Pomodoro timer |
+| `recurrence/` | `rules.py` | Validation and next-deadline calculation for advanced recurring rules |
 | `handlers/task_views.py` | `task_views.py` | TaskActionView, TaskListView, AddTaskModal, DeleteConfirmView, SnoozePresetView, persistent view registration |
 | `task_features/` | `service.py`, `views.py` | Task discussion threads, permission-checked comments, and task progress controls |
 | `handlers/settings_cog.py` | `settings_cog.py` | `/setup`, `/lang`, `/category`, `/help` |
@@ -192,6 +194,18 @@ monday / Montag / lundi / lunes / понедельник / 月曜日 / 월요일
 → resolves to the next upcoming occurrence of that weekday
 ```
 
+**Common English & Thai phrases**
+
+```
+tomorrow 5pm  →  tomorrow at 17:00 in the user's timezone
+next monday   →  the next Monday, even when today is Monday
+friday noon   →  the next Friday at 12:00
+in 3 days     →  three calendar days from today (end of day)
+อีก 3 วัน      →  Thai equivalent of "in 3 days"
+```
+
+12-hour times support `am`/`pm`, `noon`, and `midnight`. Invalid natural-language times are rejected rather than silently converted to end-of-day.
+
 **4. Asian Date Formats**
 
 ```
@@ -246,7 +260,10 @@ tomorrow 09:30
 | `/delete` | `task_id` | Delete task (with **DeleteConfirmView** confirmation dialog). |
 | `/pin` | `task_id` | Pin task to top of list. |
 | `/unpin` | `task_id` | Remove pin from task. |
-| `/recurring` | `task_id` `interval` | Set recurring interval: `daily`, `weekly`, `monthly`, or `none` to remove. |
+| `/focus start` | `task_id` | Start a persistent 25-minute work interval followed by a 5-minute break; completed work time is added to `actual_hours`. |
+| `/focus stop` | — | Stop the active timer and record any elapsed work in the current interval. |
+| `/focus status` | — | Show the current task, timer phase, and end time in your timezone. |
+| `/recurring` | `task_id` `interval` `[every]` `[days_of_month]` | Set `daily`, `weekly`, `monthly`, `weekdays`, every N days/weeks, or a comma-separated monthly date list (e.g. `1,16`); `none` removes the rule. |
 | `/stats` | — | Task summary with colour-coded progress bars (Pending / In\_Progress / Completed / Cancelled / Overdue). |
 | `/task-stats` | — | Deep Productivity Dashboard: on-time rate, average turnaround days, lead/lag margin, completion velocity (tasks/week), productivity score 0–100. |
 | `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
@@ -468,12 +485,13 @@ On Linux/macOS, this provides **2–4× faster** async I/O throughput.
 
 ## 🔄 Background Automation & Schedulers
 
-All loops run in `handlers/reminders_cog.py` and start automatically after `setup_hook()` completes.
+Reminder and recurring loops run in `handlers/reminders_cog.py`; the persistent focus timer runs in `focus/cog.py`. They start automatically after `setup_hook()` completes.
 
 | Loop | Interval | Function |
 |---|---|---|
 | `reminder_loop` | `REMINDER_INTERVAL_MIN` (default 30 min) | Scans for tasks due within 1 hour or already overdue. Sends channel reminders with a 0.3s throttle between messages to avoid Discord rate-limiting. Re-alerts overdue tasks every `OVERDUE_REMIND_HOURS` hours. |
-| `recurring_loop` | `RECURRING_INTERVAL_MIN` (default 60 min) | Finds completed recurring tasks and automatically creates the next instance (daily / weekly / monthly) with the same name, priority, and tags. |
+| `recurring_loop` | `RECURRING_INTERVAL_MIN` (default 60 min) | Renews due tasks using legacy daily/weekly/monthly rules or advanced weekdays, interval, and monthly-date rules. Row locks prevent duplicate instances. |
+| `focus.session_loop` | Every 15 seconds | Advances persisted work/break phases, sends Discord DM notifications, and records completed focus time in `actual_hours`. |
 | `daily_digest_loop` | Every 1 minute (checks per user timezone) | Sends each user their personalised daily digest at their configured local time (default 08:00). Includes today's tasks, tomorrow's preview, and overdue count. |
 | `deadline_dm_loop` | `DM_REMINDER_INTERVAL_MIN` (default 15 min) | Sends a private DM at **24h**, **3h**, and **1h** before deadline. Uses a `dm_reminded` integer bitmask (bit 0=24h, 1=3h, 2=1h) to deduplicate — each DM fires exactly once per deadline. |
 | `cleanup_loop` | Every 10 minutes | Purges expired `UserCache`, `StatsCache`, `QueryCache` entries, and expired token-bucket rate-limit windows. |
@@ -779,13 +797,15 @@ pytest tests/test_collaboration_scope.py -v
 | `test_analytics.py` | 23 | Productivity metrics calculation, turnaround formulas, scoring models, Edge Function client |
 | `test_collaboration_scope.py` | 37 | Project CRUD, member roles, activity log, priority (0–7), advance progress, complete project |
 | `test_conflict_resolution.py` | 25 | Defensive deadline validation, duplicate task suggestions, defensive snoozing |
-| `test_date_parser_i18n.py` | 10 | 9-language natural date parsing (Buddhist Era, Asian Kanji/Hangul, European dots) |
+| `test_date_parser_i18n.py` | 12 | 9-language date parsing, English/Thai relative phrases, 12-hour times, and invalid-time rejection |
+| `test_focus_mode.py` | 2 | Pomodoro interval defaults and bounded elapsed-work calculations |
 | `test_locales.py` | 9 | Complete 1:1 translation key parity across all 9 supported languages |
 | `test_realtime.py` | 15 | Phoenix WebSocket CDC client, heartbeat, debounced embed updater, reconnection |
 | `test_reminders.py` | 1 | Background reminder loop query parameter types and timezone compatibility |
 | `test_rls_policies.py` | 11 | PostgreSQL RLS policy parsing, session user context isolation, migration runner |
 | `test_search_recommendation.py` | 51 | PostgreSQL Full-Text Search (`tsvector`, `ts_rank_cd`) & AI recommendation scoring presets |
-| `test_sql_split.py` | 5 | SQL parser tokenizer (dollar-quotes `$$`, block comments, semicolons) |
+| `test_recurrence_rules.py` | 5 | Advanced recurrence validation, intervals, weekdays, month dates, and legacy compatibility |
+| `test_sql_split.py` | 6 | SQL parser tokenizer and schema v18 migration shape |
 | `test_storage.py` | 22 | Supabase Storage client, file size & MIME validation, object storage paths |
 | `test_ux_improvements.py` | 26 | Persistent view rehydration, modal components, task autocomplete, subtask rendering |
 | **Total** | **235** | **100% Passing Test Suite** |
@@ -853,6 +873,10 @@ pytest tests/test_collaboration_scope.py -v
 │   ├── cog.py                      # /task-stats /analytics (Edge Function caller)
 │   ├── client.py                   # Supabase Edge Function HTTP caller
 │   └── models.py                   # Productivity analytics data models
+├── focus/
+│   └── cog.py                      # Persistent Pomodoro timer and /focus commands
+├── recurrence/
+│   └── rules.py                    # Advanced recurrence rule validation/calculation
 │
 ├── realtime/
 │   ├── client.py                   # Phoenix WebSocket client
@@ -888,7 +912,7 @@ pytest tests/test_collaboration_scope.py -v
 │           ├── types.ts            # TypeScript interfaces
 │           └── deno.json           # Deno configuration & import map
 │
-├── tests/                          # 235 automated tests (pytest, 100% passing)
+├── tests/                          # 264 automated tests (pytest)
 ├── logs/                           # Auto-created: bot.log, errors.log, commands.log
 └── data/                           # Reserved directory (schema auto-migrates on startup)
 ```

@@ -8,6 +8,7 @@ Changes over v3:
 from __future__ import annotations
 
 import logging
+import json
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,6 +34,7 @@ from handlers.task_views import (
     TodayView, OverdueView, SnoozePresetView,
     _build_today_embed_and_view, _build_overdue_embed_and_view,
 )
+from recurrence.rules import validate_rule
 
 log = logging.getLogger(__name__)
 
@@ -129,7 +131,7 @@ class TasksCog(commands.Cog, name="Tasks"):
     @app_commands.command(name="add", description="➕ เพิ่ม Task ใหม่ / Add a new task")
     @app_commands.describe(
         task="Task name (skip to open full modal)",
-        deadline="Deadline: 25/12 18:00 · today 18:00 · tomorrow · +2h · +3d",
+        deadline="Deadline: tomorrow 5pm · next monday · friday noon · in 3 days",
         priority="Priority 0–7 (0=Normal, 3=Medium, 5=Important, 7=Critical)",
     )
     @rate_limit_check("command")
@@ -451,17 +453,31 @@ class TasksCog(commands.Cog, name="Tasks"):
     # ─────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="recurring", description="🔄 ตั้งการทำซ้ำ / Set task recurring")
-    @app_commands.describe(task_id="Task ID", interval="daily / weekly / monthly / none")
+    @app_commands.describe(
+        task_id="Task ID",
+        interval="Repeat rule",
+        every="Interval for every_n_days or every_n_weeks",
+        days_of_month="Comma-separated days for monthly_dates (e.g. 1,16)",
+    )
     @app_commands.autocomplete(task_id=task_autocomplete)
     @app_commands.choices(interval=[
         app_commands.Choice(name="🔄 Daily / ทุกวัน",       value="daily"),
         app_commands.Choice(name="🔄 Weekly / ทุกสัปดาห์",  value="weekly"),
         app_commands.Choice(name="🔄 Monthly / ทุกเดือน",   value="monthly"),
+        app_commands.Choice(name="📅 Weekdays / จันทร์–ศุกร์", value="weekdays"),
+        app_commands.Choice(name="📆 Every N days", value="every_n_days"),
+        app_commands.Choice(name="📆 Every N weeks", value="every_n_weeks"),
+        app_commands.Choice(name="🗓️ Monthly dates (1,16)", value="monthly_dates"),
         app_commands.Choice(name="❌ None / ไม่ทำซ้ำ",       value="none"),
     ])
     @rate_limit_check("command")
     async def recurring(
-        self, interaction: discord.Interaction, task_id: int, interval: str
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+        interval: str,
+        every: Optional[int] = None,
+        days_of_month: Optional[str] = None,
     ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
@@ -472,13 +488,48 @@ class TasksCog(commands.Cog, name="Tasks"):
             )
             return
 
-        new_val: Optional[str] = None if interval == "none" else interval
+        rule = None
+        try:
+            if interval == "weekdays":
+                if every is not None or days_of_month:
+                    raise ValueError("Advanced recurrence options do not apply to weekdays.")
+                rule = validate_rule({"type": "weekdays"})
+            elif interval in {"every_n_days", "every_n_weeks"}:
+                if days_of_month:
+                    raise ValueError("Month days do not apply to this interval.")
+                if every is None:
+                    raise ValueError("An interval is required.")
+                rule = validate_rule({"type": interval, "interval": every})
+            elif interval == "monthly_dates":
+                if every is not None:
+                    raise ValueError("An interval does not apply to monthly dates.")
+                if not days_of_month:
+                    raise ValueError("At least one month day is required.")
+                days = [int(value.strip()) for value in days_of_month.split(",")]
+                rule = validate_rule({"type": "monthly_dates", "days": days})
+            elif every is not None or days_of_month:
+                raise ValueError("Advanced recurrence options do not apply to this interval.")
+        except ValueError:
+            await interaction.response.send_message(
+                t("recurrence_invalid", lang), ephemeral=True
+            )
+            return
+
+        new_val: Optional[str] = interval if interval in {"daily", "weekly", "monthly"} else None
+        encoded_rule = json.dumps(rule) if rule is not None else None
         await db.aexecute(
-            "UPDATE tasks SET recurring=$1, updated_at=NOW() WHERE task_id=$2",
-            (new_val, task_id),
+            """UPDATE tasks SET recurring=$1, recurrence_rule=$2::jsonb, updated_at=NOW()
+               WHERE task_id=$3""",
+            (new_val, encoded_rule, task_id),
         )
         await db.alog_action(uid, "task_recurring_set", str(task_id), interval)
-        label = t(f"recurring_{interval}", lang) if interval != "none" else t("recurring_none", lang)
+        if interval in {"every_n_days", "every_n_weeks"}:
+            key = "recurring_every_days" if interval == "every_n_days" else "recurring_every_weeks"
+            label = t(key, lang, count=every)
+        elif interval == "monthly_dates" and rule is not None:
+            label = t("recurring_monthly_dates", lang, dates=", ".join(map(str, rule["days"])))
+        else:
+            label = t(f"recurring_{interval}", lang) if interval != "none" else t("recurring_none", lang)
         await interaction.response.send_message(
             f"🔄 Task **#{task_id}** → {label}", ephemeral=True
         )

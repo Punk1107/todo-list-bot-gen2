@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 17   # bump when adding migrations below
+SCHEMA_VERSION = 18   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -813,6 +813,31 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_projects_guild_priority
         ON projects(guild_id, priority DESC, updated_at DESC);
     INSERT INTO schema_version VALUES (17) ON CONFLICT (version) DO UPDATE SET version=17;
+    """),
+
+    # ── v18: durable focus sessions & advanced task recurrence ────────────────
+    (18, """
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_rule JSONB;
+
+    CREATE TABLE IF NOT EXISTS focus_sessions (
+        session_id       BIGSERIAL PRIMARY KEY,
+        user_id          TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        task_id          INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        phase            TEXT NOT NULL CHECK(phase IN ('work', 'break')),
+        status           TEXT NOT NULL DEFAULT 'active'
+                                 CHECK(status IN ('active', 'stopped')),
+        notification_pending BOOLEAN NOT NULL DEFAULT FALSE,
+        phase_started_at TIMESTAMPTZ NOT NULL,
+        phase_ends_at    TIMESTAMPTZ NOT NULL,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_sessions_one_active_per_user
+        ON focus_sessions(user_id) WHERE status='active';
+    CREATE INDEX IF NOT EXISTS idx_focus_sessions_due
+        ON focus_sessions(phase_ends_at) WHERE status='active';
+
+    INSERT INTO schema_version VALUES (18) ON CONFLICT (version) DO UPDATE SET version=18;
     """),
 ]
 
