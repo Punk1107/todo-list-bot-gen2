@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 18   # bump when adding migrations below
+SCHEMA_VERSION = 19   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,7 +170,8 @@ class StatsCache:
 _KNOWN_TABLES = {
     "tasks", "users", "categories", "projects", "project_members",
     "project_activity_log", "task_attachments", "task_assignments",
-    "guild_settings", "audit_log", "schema_version",
+    "guild_settings", "audit_log", "schema_version", "task_completion_events",
+    "user_achievements",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -720,7 +721,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     (14, """
     CREATE TABLE IF NOT EXISTS task_attachments (
         attachment_id SERIAL PRIMARY KEY,
-        task_id       INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        task_id       INTEGER NOT NULL,
         project_id    INTEGER REFERENCES projects(project_id) ON DELETE SET NULL,
         file_name     TEXT    NOT NULL,
         file_size     BIGINT  NOT NULL,
@@ -838,6 +839,30 @@ MIGRATIONS: list[tuple[int, str]] = [
         ON focus_sessions(phase_ends_at) WHERE status='active';
 
     INSERT INTO schema_version VALUES (18) ON CONFLICT (version) DO UPDATE SET version=18;
+    """),
+
+    # ── v19: completion history, streak dates & reminder deduplication ───────
+    (19, """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_last_completion DATE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_reminder_date DATE;
+
+    CREATE TABLE IF NOT EXISTS task_completion_events (
+        completion_id BIGSERIAL PRIMARY KEY,
+        task_id       INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        user_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        guild_id      TEXT,
+        project_id    INTEGER,
+        task_title    TEXT NOT NULL,
+        priority      INTEGER NOT NULL DEFAULT 0,
+        deadline      TIMESTAMPTZ,
+        completed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_completion_user_time
+        ON task_completion_events(user_id, completed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_completion_guild_time
+        ON task_completion_events(guild_id, completed_at DESC)
+        WHERE guild_id IS NOT NULL;
+    INSERT INTO schema_version VALUES (19) ON CONFLICT (version) DO UPDATE SET version=19;
     """),
 ]
 

@@ -427,6 +427,7 @@ class TestAddMemberAndCompleteTask:
         with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
              patch("collaboration.service.get_project_task", AsyncMock(side_effect=[pending_task, completed_task])), \
              patch("collaboration.service.get_member_role", AsyncMock(return_value="member")), \
+             patch("collaboration.service.gamification_service.complete_shared_task", AsyncMock(return_value=[])) as complete_task, \
              patch("collaboration.service.db", mock_db), \
              patch("collaboration.service.log_activity", AsyncMock()):
             # member_user is not creator, not assignee, not lead, but is a member
@@ -435,8 +436,8 @@ class TestAddMemberAndCompleteTask:
                 new_status="Completed", actor_id="member_user", is_guild_admin=False,
             )
         assert res.status == "Completed"
-        mock_db.execute.assert_called_once()
-        assert "completed_at=NOW()" in mock_db.execute.call_args[0][0]
+        complete_task.assert_awaited_once_with(10, 1, "guild_A", "member_user")
+        mock_db.execute.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_update_task_status_completed_by_non_member_fails(self):
@@ -625,11 +626,13 @@ class TestProjectPriorityAndProgressControls:
 
         with patch("collaboration.service.get_project", AsyncMock(side_effect=[proj, proj_done])), \
              patch("collaboration.service.require_role", AsyncMock()), \
+             patch("collaboration.service.gamification_service.complete_shared_project_tasks", AsyncMock(return_value=4)) as complete_tasks, \
              patch("core.database.db.execute", AsyncMock()) as mock_exec, \
              patch("collaboration.service.log_activity", AsyncMock()):
             res = await service.complete_project_with_tasks(10, "g1", "lead_user", complete_all_tasks=True)
             assert res.status == "completed"
-            assert mock_exec.await_count >= 2
+            complete_tasks.assert_awaited_once_with(10, "g1", "lead_user")
+            assert mock_exec.await_count == 1
 
     def test_dashboard_view_components(self):
         from collaboration.views import ProjectDashboardView
@@ -880,6 +883,5 @@ class TestProjectCompletionNotification:
             _, kwargs = mock_notify.call_args
             assert kwargs["complete_all_tasks"] is False
             assert kwargs["project"] == proj
-
 
 
