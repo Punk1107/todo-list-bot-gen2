@@ -64,6 +64,7 @@ COGS = [
     "search_recommendation.cog",            # /search (FTS) + /recommend (task prioritization)
     "analytics.cog",                        # /analytics snapshot + /analytics weekly
     "gamification.cog",                     # /streak /habits /leaderboard
+    "discord_native.bulk_cog",              # /bulk actions
 ]
 
 

@@ -869,6 +869,13 @@ def build_task_embed(row, lang: str, tz_name: str,
             value=desc_lines,
             inline=False,
         )
+    source_message_url = row.get("source_message_url") if hasattr(row, "get") else None
+    if source_message_url:
+        embed.add_field(
+            name=t("context_source_message", lang),
+            value=f"[{t('context_jump_link', lang)}]({source_message_url})",
+            inline=False,
+        )
 
     # ── Tags ─────────────────────────────────────────────────────────────────
     if row["tags"]:

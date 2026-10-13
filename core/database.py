@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 19   # bump when adding migrations below
+SCHEMA_VERSION = 20   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ _KNOWN_TABLES = {
     "tasks", "users", "categories", "projects", "project_members",
     "project_activity_log", "task_attachments", "task_assignments",
     "guild_settings", "audit_log", "schema_version", "task_completion_events",
-    "user_achievements",
+    "user_achievements", "project_task_threads",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -863,6 +863,25 @@ MIGRATIONS: list[tuple[int, str]] = [
         ON task_completion_events(guild_id, completed_at DESC)
         WHERE guild_id IS NOT NULL;
     INSERT INTO schema_version VALUES (19) ON CONFLICT (version) DO UPDATE SET version=19;
+    """),
+
+    # ── v20: Discord-native message links and project task threads ────────────
+    (20, """
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_message_url TEXT;
+
+    CREATE TABLE IF NOT EXISTS project_task_threads (
+        task_id      INTEGER PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+        project_id   INTEGER NOT NULL,
+        guild_id     TEXT NOT NULL,
+        thread_type  TEXT NOT NULL CHECK (thread_type IN ('public', 'private')),
+        thread_id    BIGINT UNIQUE,
+        channel_id   BIGINT NOT NULL,
+        created_by   TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_task_threads_scope
+        ON project_task_threads(project_id, guild_id);
+    INSERT INTO schema_version VALUES (20) ON CONFLICT (version) DO UPDATE SET version=20;
     """),
 ]
 

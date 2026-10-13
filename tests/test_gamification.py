@@ -141,7 +141,7 @@ def test_schema_migration_adds_completion_and_reminder_state():
     from core.database import MIGRATIONS, SCHEMA_VERSION
 
     migration = dict(MIGRATIONS)[19]
-    assert SCHEMA_VERSION == 19
+    assert SCHEMA_VERSION == 20
     assert "streak_last_completion DATE" in migration
     assert "streak_reminder_date DATE" in migration
     assert "CREATE TABLE IF NOT EXISTS task_completion_events" in migration
