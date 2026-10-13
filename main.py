@@ -55,6 +55,7 @@ intents.members = True
 # Define BEFORE TodoBot so setup_hook() can reference it without NameError.
 COGS = [
     "handlers.tasks_cog",
+    "focus.cog",                            # /focus — persistent Pomodoro timer
     "handlers.settings_cog",
     "handlers.reminders_cog",
     "handlers.monitoring_cog",              # admin /health /errors /cmdstats

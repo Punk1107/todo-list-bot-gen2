@@ -1,5 +1,5 @@
 import unittest
-from core.database import _split_sql_statements, MIGRATIONS
+from core.database import SCHEMA_VERSION, _split_sql_statements, MIGRATIONS
 
 
 class TestSqlSplit(unittest.TestCase):
@@ -51,6 +51,14 @@ class TestSqlSplit(unittest.TestCase):
         for idx, stmt in enumerate(stmts):
             if "DO $" in stmt:
                 self.assertIn("END $", stmt, f"Statement {idx} has unclosed DO block: {stmt}")
+
+    def test_migration_v18_focus_and_recurrence_schema(self):
+        v18 = next(sql for version, sql in MIGRATIONS if version == 18)
+        statements = _split_sql_statements(v18)
+        self.assertEqual(SCHEMA_VERSION, 18)
+        self.assertTrue(any("recurrence_rule JSONB" in stmt for stmt in statements))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS focus_sessions" in stmt for stmt in statements))
+        self.assertTrue(any("idx_focus_sessions_one_active_per_user" in stmt for stmt in statements))
 
 
 if __name__ == "__main__":

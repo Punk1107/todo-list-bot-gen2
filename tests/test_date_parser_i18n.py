@@ -59,6 +59,38 @@ class TestDateParserI18n(unittest.TestCase):
                 self.assertIsNotNone(res, f"parse_deadline failed for '{text}'")
                 self.assertIsInstance(res, datetime)
 
+    def test_natural_english_and_thai_phrases(self):
+        import pytz
+
+        fixed_now = pytz.utc.localize(datetime(2026, 5, 4, 12, 0))
+        cases = [
+            ("tomorrow 5pm", (2026, 5, 5, 17, 0)),
+            ("tomorrow at 5pm", (2026, 5, 5, 17, 0)),
+            ("next monday", (2026, 5, 11, 23, 59)),
+            ("friday noon", (2026, 5, 8, 12, 0)),
+            ("in 3 days", (2026, 5, 7, 23, 59)),
+            ("อีก 3 วัน", (2026, 5, 7, 23, 59)),
+            ("tomorrow midnight", (2026, 5, 5, 0, 0)),
+        ]
+        tz = pytz.timezone(self.tz)
+        for text, expected in cases:
+            with self.subTest(text=text):
+                parsed = parse_deadline(text, self.tz, now=fixed_now)
+                self.assertIsNotNone(parsed)
+                local = parsed.astimezone(tz)
+                self.assertEqual(
+                    (local.year, local.month, local.day, local.hour, local.minute),
+                    expected,
+                )
+
+    def test_invalid_natural_time_is_rejected(self):
+        import pytz
+
+        fixed_now = pytz.utc.localize(datetime(2026, 5, 4, 12, 0))
+        for text in ("tomorrow 25pm", "tomorrow 25:00", "friday later"):
+            with self.subTest(text=text):
+                self.assertIsNone(parse_deadline(text, self.tz, now=fixed_now))
+
     def test_weekdays_all_languages(self):
         weekday_cases = [
             "monday 15:00", "tuesday 15:00", "wednesday 15:00",

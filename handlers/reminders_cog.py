@@ -10,6 +10,7 @@ Changes over v6:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 
@@ -21,8 +22,9 @@ from core.database import db
 from core.config import config
 from locales.i18n import t
 from utils.helpers import (
-    format_deadline, time_left_str, calculate_next_deadline, urgency_color,
+    format_deadline, time_left_str, urgency_color,
 )
+from recurrence.rules import decode_rule, next_deadline
 
 log = logging.getLogger(__name__)
 
@@ -394,37 +396,55 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     @tasks.loop(minutes=60)
     async def recurring_loop(self) -> None:
-        """Renew recurring tasks whose deadline has passed (idempotent check)."""
+        """Renew due recurring tasks under row locks to prevent duplicate copies."""
         now     = datetime.now(UTC).isoformat()
-        expired = await db.afetchall(
-            """SELECT * FROM tasks
-               WHERE status='Pending' AND recurring IS NOT NULL AND deadline < $1""",
-            (now,),
-        )
-        for row in expired:
-            nxt = calculate_next_deadline(row["deadline"], row["recurring"])
-            if not nxt:
-                continue
-            try:
-                # Batch both the complete + new insert in one transaction
-                await db.aexecute_batch([
-                    (
-                        "UPDATE tasks SET status='Completed', completed_at=NOW(), updated_at=NOW() WHERE task_id=$1",
-                        (row["task_id"],),
-                    ),
-                    (
-                        """INSERT INTO tasks (task, deadline, priority, status, recurring,
-                           category_id, tags, description, owner_id)
-                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)""",
-                        (row["task"], nxt, row["priority"], "Pending", row["recurring"],
-                         row["category_id"], row["tags"], row["description"], row["owner_id"]),
-                    ),
-                ])
-                db.invalidate_stats(row["owner_id"])
-                log.info("Recurring task renewed: id=%d owner=%s next=%s",
-                         row["task_id"], row["owner_id"], nxt[:16])
-            except Exception as exc:
-                log.error("Recurring renewal failed id=%d: %s", row["task_id"], exc)
+        changed_owners: set[str] = set()
+        try:
+            async with db.acquire() as conn:
+                async with conn.transaction():
+                    expired = await conn.fetch(
+                        """SELECT * FROM tasks
+                           WHERE status='Pending'
+                             AND (recurring IS NOT NULL OR recurrence_rule IS NOT NULL)
+                             AND deadline < $1
+                           ORDER BY deadline ASC
+                           LIMIT 100
+                           FOR UPDATE SKIP LOCKED""",
+                        now,
+                    )
+                    for row in expired:
+                        try:
+                            rule = decode_rule(row["recurrence_rule"])
+                            nxt = next_deadline(row["deadline"], row["recurring"], rule)
+                        except (TypeError, ValueError) as exc:
+                            log.error("Invalid recurring rule task_id=%d: %s", row["task_id"], exc)
+                            continue
+                        if not nxt:
+                            log.error("Could not calculate next deadline for recurring task_id=%d", row["task_id"])
+                            continue
+
+                        await conn.execute(
+                            """UPDATE tasks
+                               SET status='Completed', completed_at=NOW(), updated_at=NOW()
+                               WHERE task_id=$1 AND status='Pending'""",
+                            row["task_id"],
+                        )
+                        encoded_rule = json.dumps(rule) if rule is not None else None
+                        await conn.execute(
+                            """INSERT INTO tasks
+                               (task, deadline, priority, status, recurring, recurrence_rule,
+                                category_id, tags, description, owner_id)
+                               VALUES ($1,$2,$3,'Pending',$4,$5::jsonb,$6,$7,$8,$9)""",
+                            row["task"], nxt, row["priority"], row["recurring"], encoded_rule,
+                            row["category_id"], row["tags"], row["description"], row["owner_id"],
+                        )
+                        changed_owners.add(row["owner_id"])
+                        log.info("Recurring task renewed: id=%d owner=%s next=%s",
+                                 row["task_id"], row["owner_id"], nxt[:16])
+            for owner_id in changed_owners:
+                db.invalidate_stats(owner_id)
+        except Exception as exc:
+            log.exception("Recurring renewal batch failed: %s", exc)
 
     @recurring_loop.before_loop
     async def before_recurring(self) -> None:

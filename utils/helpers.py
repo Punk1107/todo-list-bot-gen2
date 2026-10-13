@@ -428,7 +428,16 @@ _DELTA_RE = _re.compile(
 )
 # Extended time regex: supports HH:MM, HH.MM, and optional Thai น. / น suffix
 _TIME_RE = _re.compile(
-    r"^(?P<h>\d{1,2})[:.](?P<m>\d{2})(?:น\.?)?$"
+    r"^(?P<h>\d{1,2})(?:[:.](?P<m>\d{2}))?"
+    r"\s*(?P<ampm>a\.?m\.?|p\.?m\.?)?(?:น\.?)?$",
+    _re.IGNORECASE,
+)
+_RELATIVE_DAYS_RE = _re.compile(
+    r"^(?:in\s+)?(?P<days>\d+)\s+days?(?:\s+(?P<time>.+))?$",
+    _re.IGNORECASE,
+)
+_RELATIVE_THAI_DAYS_RE = _re.compile(
+    r"^อีก\s*(?P<days>\d+)\s*วัน(?:\s*(?P<time>.+))?$"
 )
 # Asian date pattern: supports Kanji/Hanzi (年/月/日) and Hangul (년/월/일)
 # Year is optional — when omitted, current/next year is inferred.
@@ -441,7 +450,11 @@ _ASIAN_DATE_RE = _re.compile(
 )
 
 
-def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
+def parse_deadline(
+    text: str,
+    tz_name: str,
+    now: Optional[datetime] = None,
+) -> Optional[datetime]:
     """Parse user text → UTC-aware datetime.
 
     Supported formats:
@@ -449,7 +462,8 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
                    (date-only variants default to 23:59 local time)
       Shorthand:   DD/MM HH:MM       |  DD/MM
       Relative:    +2h  +30m  +3d  +1w  +45s
-      Natural:     today [HH:MM]  |  tomorrow [HH:MM]  |  day after tomorrow [HH:MM]
+      Natural:     today [HH:MM]  |  tomorrow [HH:MM|5pm]  |  next monday  |  in 3 days
+                   Supports noon/midnight and Thai relative days
                    Supports all 9 languages (TH, EN, DE, ES, FR, JA, KO, ZH, RU)
                    Weekdays across all 9 languages
       i18n extras:
@@ -467,7 +481,11 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         tz = pytz.utc
 
     raw = text.strip()
-    now_utc = datetime.now(pytz.utc)
+    now_utc = now or datetime.now(pytz.utc)
+    if now_utc.tzinfo is None:
+        now_utc = tz.localize(now_utc)
+    else:
+        now_utc = now_utc.astimezone(pytz.utc)
     now_local = now_utc.astimezone(tz)
 
     # ── 1. Relative delta  (+2h, +3d, +1w, +30m) ───────────────────────────
@@ -511,7 +529,7 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
         except ValueError:
             pass
 
-    # ── 3. Natural language  (today / tomorrow / weekday in all 9 languages) ──
+    # ── 3. Natural language  (relative days, weekdays and common time phrases) ──
     lower_raw = raw.lower()
     base_date = None
     time_str = None
@@ -532,16 +550,28 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
                 time_str = remainder
             break
 
+    if base_date is None:
+        relative_match = _RELATIVE_DAYS_RE.match(lower_raw)
+        if relative_match is None:
+            relative_match = _RELATIVE_THAI_DAYS_RE.match(raw)
+        if relative_match is not None:
+            offset = int(relative_match.group("days"))
+            if offset > 3650:
+                return None
+            base_date = (now_local + timedelta(days=offset)).date()
+            time_str = relative_match.group("time")
+
     # If not a relative day, check weekday keywords (pre-sorted longest first)
     if base_date is None:
+        weekday_text = lower_raw[5:] if lower_raw.startswith("next ") else lower_raw
         for kw, target_wd in _NATURAL_WEEKDAY_SORTED:
             remainder = None
-            if lower_raw == kw:
+            if weekday_text == kw:
                 remainder = ""
-            elif lower_raw.startswith(kw + " "):
-                remainder = lower_raw[len(kw):].strip()
-            elif lower_raw.startswith(kw) and len(lower_raw) > len(kw) and lower_raw[len(kw)].isdigit():
-                remainder = lower_raw[len(kw):]
+            elif weekday_text.startswith(kw + " "):
+                remainder = weekday_text[len(kw):].strip()
+            elif weekday_text.startswith(kw) and len(weekday_text) > len(kw) and weekday_text[len(kw)].isdigit():
+                remainder = weekday_text[len(kw):]
             if remainder is not None:
                 current_wd = now_local.weekday()
                 days_ahead = (target_wd - current_wd) % 7
@@ -554,9 +584,10 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
 
     if base_date is not None:
         if time_str:
-            tm = _TIME_RE.match(time_str.strip())
-            hour = int(tm.group("h")) if tm else 23
-            minute = int(tm.group("m")) if tm else 59
+            parsed_time = _parse_natural_time(time_str)
+            if parsed_time is None:
+                return None
+            hour, minute = parsed_time
         else:
             hour, minute = 23, 59
 
@@ -593,6 +624,35 @@ def parse_deadline(text: str, tz_name: str) -> Optional[datetime]:
             continue
 
     return None
+
+
+def _parse_natural_time(value: str) -> Optional[tuple[int, int]]:
+    """Parse a 12/24-hour clock or common noon/midnight phrase."""
+    raw_time = value.strip().lower()
+    if raw_time.startswith("at "):
+        raw_time = raw_time[3:].strip()
+    if raw_time == "noon":
+        return 12, 0
+    if raw_time == "midnight":
+        return 0, 0
+    match = _TIME_RE.match(raw_time)
+    if match is None:
+        return None
+    hour = int(match.group("h"))
+    minute = int(match.group("m") or 0)
+    meridiem = (match.group("ampm") or "").replace(".", "")
+    if minute > 59:
+        return None
+    if meridiem:
+        if not 1 <= hour <= 12:
+            return None
+        if meridiem == "am":
+            hour = hour % 12
+        else:
+            hour = hour % 12 + 12
+    elif hour > 23:
+        return None
+    return hour, minute
 
 
 def format_deadline(dt_val: Any, tz_name: str) -> str:
