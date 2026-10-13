@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 描述",
     "task_detail_recurring": "🔄 重复",
     "task_detail_subtasks": "📊 子任务",
+    "task_detail_progress": "📈 进度",
     "task_not_found": "❌ 任务 #**{task_id}** 未找到。",
     "task_not_owned": "❌ 此任务不属于您。",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ 删除",
     "btn_edit": "✏️ 编辑",
     "btn_subtask": "➕ 子任务",
+    "btn_progress": "📈 进度",
+    "btn_comments": "💬 评论",
     "btn_snooze": "⏰ 延迟 (+1天)",
     "btn_prev": "◀ 上一页",
     "btn_next": "下一页 ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 返回",
     "btn_confirm_delete": "🗑️ 确认删除",
     "page_indicator": "📄 第 {page} / {total} 页",
+    "comments_title": "💬 任务 #{task_id} 的评论",
+    "comments_empty_title": "讨论",
+    "comments_empty": "还没有评论。添加第一条任务备注吧。",
+    "comments_page": "第 {page} / {total} 页",
+    "comment_input_label": "评论",
+    "comment_added": "✅ 已向任务添加评论。",
+    "progress_modal_title": "更新任务进度",
+    "progress_input_label": "进度百分比 (0–100)",
+    "progress_updated": "📈 任务进度已更新为 **{progress}%**。",
+    "progress_refresh_failed": "数值已保存，但无法刷新任务消息。",
     "delete_confirm_title": "⚠️ 确认删除",
     "delete_confirm_desc": "确定要删除此任务吗？\n> **{task_name}**\n\n⚠️ 此操作**无法撤销**。",
 
@@ -759,4 +772,3 @@ STRINGS = {
     "proj_complete_all_note":         "项目中所有剩余任务均已标记为已完成。",
     "proj_complete_status_only_note": "仅关闭项目状态（任务保留当前状态）。",
 }
-

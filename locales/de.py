@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 Beschreibung",
     "task_detail_recurring": "🔄 Wiederholung",
     "task_detail_subtasks": "📊 Teilaufgaben",
+    "task_detail_progress": "📈 Fortschritt",
     "task_not_found": "❌ Aufgabe #**{task_id}** nicht gefunden.",
     "task_not_owned": "❌ Diese Aufgabe gehört dir nicht.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ Löschen",
     "btn_edit": "✏️ Bearbeiten",
     "btn_subtask": "➕ Teilaufgabe",
+    "btn_progress": "📈 Fortschritt",
+    "btn_comments": "💬 Kommentare",
     "btn_snooze": "⏰ Schlummern (+1 Tag)",
     "btn_prev": "◀ Zurück",
     "btn_next": "Weiter ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 Zurück",
     "btn_confirm_delete": "🗑️ Löschen bestätigen",
     "page_indicator": "📄 Seite {page} / {total}",
+    "comments_title": "💬 Kommentare zu Aufgabe #{task_id}",
+    "comments_empty_title": "Diskussion",
+    "comments_empty": "Noch keine Kommentare. Füge die erste Notiz hinzu.",
+    "comments_page": "Seite {page} / {total}",
+    "comment_input_label": "Kommentar",
+    "comment_added": "✅ Kommentar zur Aufgabe hinzugefügt.",
+    "progress_modal_title": "Aufgabenfortschritt aktualisieren",
+    "progress_input_label": "Fortschritt in Prozent (0–100)",
+    "progress_updated": "📈 Aufgabenfortschritt auf **{progress}%** aktualisiert.",
+    "progress_refresh_failed": "Der Wert wurde gespeichert, aber die Aufgabenmeldung konnte nicht aktualisiert werden.",
     # Delete confirm embed
     "delete_confirm_title": "⚠️ Löschung bestätigen",
     "delete_confirm_desc": "Möchtest du diese Aufgabe wirklich dauerhaft löschen?\n> **{task_name}**\n\n⚠️ Diese Aktion kann **nicht rückgängig** gemacht werden.",
@@ -809,4 +822,3 @@ STRINGS = {
     "proj_complete_all_note":         "Alle verbleibenden Projektaufgaben wurden als abgeschlossen markiert.",
     "proj_complete_status_only_note": "Nur Projektstatus geschlossen (Aufgaben bleiben im aktuellen Zustand).",
 }
-

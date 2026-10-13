@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 설명",
     "task_detail_recurring": "🔄 반복",
     "task_detail_subtasks": "📊 하위 작업",
+    "task_detail_progress": "📈 진행률",
     "task_not_found": "❌ 작업 #**{task_id}** 을(를) 찾을 수 없습니다.",
     "task_not_owned": "❌ 이 작업은 귀하의 것이 아닙니다.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ 삭제",
     "btn_edit": "✏️ 편집",
     "btn_subtask": "➕ 하위 작업",
+    "btn_progress": "📈 진행률",
+    "btn_comments": "💬 댓글",
     "btn_snooze": "⏰ 스르즈 (+1일)",
     "btn_prev": "◀ 이전",
     "btn_next": "다음 ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 뒤로",
     "btn_confirm_delete": "🗑️ 삭제 확인",
     "page_indicator": "📄 {page} / {total} 페이지",
+    "comments_title": "💬 작업 #{task_id} 댓글",
+    "comments_empty_title": "토론",
+    "comments_empty": "아직 댓글이 없습니다. 첫 메모를 추가해 보세요.",
+    "comments_page": "{page} / {total} 페이지",
+    "comment_input_label": "댓글",
+    "comment_added": "✅ 작업에 댓글을 추가했습니다.",
+    "progress_modal_title": "작업 진행률 업데이트",
+    "progress_input_label": "진행률 (0–100)",
+    "progress_updated": "📈 작업 진행률을 **{progress}%**로 업데이트했습니다.",
+    "progress_refresh_failed": "값은 저장했지만 작업 메시지를 새로 고치지 못했습니다.",
     "delete_confirm_title": "⚠️ 삭제 확인",
     "delete_confirm_desc": "이 작업을 삭제하시겠습니까?\n> **{task_name}**\n\n⚠️ 이 작업은 **되돌릴 수 없습니다**.",
 
@@ -758,4 +771,3 @@ STRINGS = {
     "proj_complete_all_note":         "남은 모든 프로젝트 작업이 완료로 표시되었습니다.",
     "proj_complete_status_only_note": "프로젝트 상태만 완료 처리되었습니다 (작업은 현재 상태 유지).",
 }
-

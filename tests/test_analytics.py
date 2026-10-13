@@ -10,6 +10,9 @@ Tests:
 """
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from analytics.models import WeeklyMetrics, SnapshotConfig
@@ -224,6 +227,20 @@ class TestAnalyticsClientRequests:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestAnalyticsCogRegistration:
+    def test_main_registers_analytics_cog(self):
+        main_path = Path(__file__).resolve().parents[1] / "main.py"
+        tree = ast.parse(main_path.read_text(encoding="utf-8"))
+        cogs = next(
+            node.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "COGS" for target in node.targets)
+        )
+        assert any(
+            isinstance(item, ast.Constant) and item.value == "analytics.cog"
+            for item in cogs.elts
+        )
+
     def test_cog_imports_cleanly(self):
         import analytics.cog as cog_module
         assert hasattr(cog_module, "AnalyticsCog")

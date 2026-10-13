@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 説明",
     "task_detail_recurring": "🔄 繰り返し",
     "task_detail_subtasks": "📊 サブタスク",
+    "task_detail_progress": "📈 進捗",
     "task_not_found": "❌ タスク #**{task_id}** が見つかりません。",
     "task_not_owned": "❌ このタスクはあなたのものではありません。",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ 削除",
     "btn_edit": "✏️ 編集",
     "btn_subtask": "➕ サブタスク",
+    "btn_progress": "📈 進捗",
+    "btn_comments": "💬 コメント",
     "btn_snooze": "⏰ スヌーズ (+1日)",
     "btn_prev": "◀ 前へ",
     "btn_next": "次へ ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 戻る",
     "btn_confirm_delete": "🗑️ 削除を確認",
     "page_indicator": "📄 {page} / {total} ページ",
+    "comments_title": "💬 タスク #{task_id} のコメント",
+    "comments_empty_title": "ディスカッション",
+    "comments_empty": "コメントはまだありません。最初のメモを追加してください。",
+    "comments_page": "{page} / {total} ページ",
+    "comment_input_label": "コメント",
+    "comment_added": "✅ タスクにコメントを追加しました。",
+    "progress_modal_title": "タスクの進捗を更新",
+    "progress_input_label": "進捗率 (0–100)",
+    "progress_updated": "📈 タスクの進捗を **{progress}%** に更新しました。",
+    "progress_refresh_failed": "値は保存されましたが、タスクメッセージを更新できませんでした。",
     "delete_confirm_title": "⚠️ 削除の確認",
     "delete_confirm_desc": "このタスクを削除しますか？\n> **{task_name}**\n\n⚠️ この操作は**元に戻せません**。",
 
@@ -759,4 +772,3 @@ STRINGS = {
     "proj_complete_all_note":         "残りのすべてのプロジェクトタスクが完了としてマークされました。",
     "proj_complete_status_only_note": "プロジェクトステータスのみ完了（タスクは現在の状態を維持）。",
 }
-

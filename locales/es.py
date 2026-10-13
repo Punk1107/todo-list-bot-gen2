@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 Descripción",
     "task_detail_recurring": "🔄 Recurrente",
     "task_detail_subtasks": "📊 Subtareas",
+    "task_detail_progress": "📈 Progreso",
     "task_not_found": "❌ Tarea #**{task_id}** no encontrada.",
     "task_not_owned": "❌ Esta tarea no te pertenece.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ Eliminar",
     "btn_edit": "✏️ Editar",
     "btn_subtask": "➕ Subtarea",
+    "btn_progress": "📈 Progreso",
+    "btn_comments": "💬 Comentarios",
     "btn_snooze": "⏰ Posponer (+1 día)",
     "btn_prev": "◀ Anterior",
     "btn_next": "Siguiente ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 Volver",
     "btn_confirm_delete": "🗑️ Confirmar eliminación",
     "page_indicator": "📄 Página {page} / {total}",
+    "comments_title": "💬 Comentarios de la tarea #{task_id}",
+    "comments_empty_title": "Conversación",
+    "comments_empty": "Todavía no hay comentarios. Añade la primera nota.",
+    "comments_page": "Página {page} / {total}",
+    "comment_input_label": "Comentario",
+    "comment_added": "✅ Comentario añadido a la tarea.",
+    "progress_modal_title": "Actualizar el progreso de la tarea",
+    "progress_input_label": "Porcentaje de progreso (0–100)",
+    "progress_updated": "📈 Progreso de la tarea actualizado a **{progress}%**.",
+    "progress_refresh_failed": "El valor se guardó, pero no se pudo actualizar el mensaje de la tarea.",
     "delete_confirm_title": "⚠️ Confirmar eliminación",
     "delete_confirm_desc": "¿Estás seguro de que deseas eliminar permanentemente esta tarea?\n> **{task_name}**\n\n⚠️ Esta acción **no se puede deshacer**.",
 
@@ -758,4 +771,3 @@ STRINGS = {
     "proj_complete_all_note":         "Todas las tareas restantes del proyecto se han marcado como completadas.",
     "proj_complete_status_only_note": "Estado del proyecto cerrado (las tareas se mantienen en su estado actual).",
 }
-
