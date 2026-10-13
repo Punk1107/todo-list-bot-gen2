@@ -39,6 +39,23 @@ DISCORD_NATIVE_FALLBACKS = {
     "proj_thread_exists": "This task already has a discussion thread: {url}",
     "proj_thread_pending": "A discussion thread is already being created for this task. Please try again shortly.",
     "proj_thread_permission_error": "The bot is missing permission to create or manage this thread in the configured channel.",
+    "proj_dependency_added": "✅ Task **#{task_id}** now waits for task **#{blocked_by_task_id}**.",
+    "proj_dependency_removed": "✅ Removed the dependency from task **#{task_id}** to task **#{blocked_by_task_id}**.",
+    "proj_dependency_duplicate": "That dependency already exists.",
+    "proj_dependency_missing": "That dependency does not exist.",
+    "proj_dependency_cycle": "That dependency would create a cycle.",
+    "proj_task_blocked": "⛔ This task cannot progress until these tasks are completed: {blockers}",
+    "proj_role_assigned": "✅ Assigned task **#{task_id}** to {role}. Direct messages sent: **{sent}**; failed: **{failed}**.",
+    "proj_role_already_assigned": "That role is already assigned to this task.",
+    "proj_workload_title": "📊 Workload — {project}",
+    "proj_workload_empty": "There are no active tasks in this project.",
+    "proj_workload_members": "Member workload",
+    "proj_workload_roles": "Role assignments",
+    "proj_workload_unassigned": "Unassigned tasks",
+    "proj_workload_member_line": "<@{user_id}> — **{count}** active task(s)",
+    "proj_workload_role_line": "<@&{role_id}> — **{count}** active task(s)",
+    "proj_workload_unassigned_line": "**{count}** task(s)",
+    "proj_role_missing": "That Discord role is no longer available in this server.",
 }
 
 # -- Discord locale -> our lang code -------------------------------------------

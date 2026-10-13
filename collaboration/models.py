@@ -151,9 +151,17 @@ class ProjectTask:
     updated_at:  datetime
     # Populated after JOIN with task_assignments:
     assignees:   list[str] = field(default_factory=list)
+    assigned_roles: list[int] = field(default_factory=list)
+    blocked_by: list[tuple[int, str, str]] = field(default_factory=list)
 
     @classmethod
-    def from_record(cls, row, assignees: list[str] | None = None) -> "ProjectTask":
+    def from_record(
+        cls,
+        row,
+        assignees: list[str] | None = None,
+        assigned_roles: list[int] | None = None,
+        blocked_by: list[tuple[int, str, str]] | None = None,
+    ) -> "ProjectTask":
         return cls(
             task_id     = row["task_id"],
             project_id  = row["project_id"],
@@ -168,6 +176,8 @@ class ProjectTask:
             created_at  = row["created_at"],
             updated_at  = row["updated_at"],
             assignees   = assignees or [],
+            assigned_roles = assigned_roles or [],
+            blocked_by  = blocked_by or [],
         )
 
     @property
@@ -218,6 +228,9 @@ class ProjectActivity:
             "task_completed":   "✅",
             "task_cancelled":   "❌",
             "task_deleted":     "🗑️",
+            "task_dependency_added":   "🔗",
+            "task_dependency_removed": "🔓",
+            "task_role_assigned":      "🏷️",
             "member_added":     "👋",
             "member_removed":   "🚪",
             "project_archived": "📦",

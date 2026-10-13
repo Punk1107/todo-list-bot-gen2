@@ -176,11 +176,20 @@ def build_board_embed(board: BoardData, lang: str, column: str = "pending") -> d
             assignee_str = ""
             if task.assignees:
                 assignee_str = "  👤 " + ", ".join(f"<@{u}>" for u in task.assignees[:3])
+            if task.assigned_roles:
+                role_mentions = ", ".join(f"<@&{role_id}>" for role_id in task.assigned_roles[:3])
+                assignee_str += f"  🏷️ {role_mentions}"
+            active_blockers = [
+                f"#{blocker_id} {title[:35]}"
+                for blocker_id, title, status in task.blocked_by
+                if status != "Completed"
+            ]
+            blocker_str = f"\n⛔ Blocked by: {', '.join(active_blockers[:3])}" if active_blockers else ""
             deadline_str = format_deadline(task.deadline, "UTC") if task.deadline else "—"
             embed.add_field(
                 name=f"{task.priority_emoji} `#{task.task_id}` {task.task[:55]}",
                 value=(
-                    f"📅 `{deadline_str}` · ⏱️ `{time_left_str(task.deadline)}`{assignee_str}"
+                    f"📅 `{deadline_str}` · ⏱️ `{time_left_str(task.deadline)}`{assignee_str}{blocker_str}"
                 ),
                 inline=False,
             )
@@ -495,6 +504,9 @@ class AdvanceProgressSelect(ui.Select):
             task = await service.update_task_status(
                 task_id, self.project_id, self.guild_id,
                 "Completed", uid, is_guild_admin=is_admin,
+                actor_role_ids=[
+                    role.id for role in interaction.user.roles
+                ] if isinstance(interaction.user, discord.Member) else [],
             )
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
@@ -504,6 +516,12 @@ class AdvanceProgressSelect(ui.Select):
             return
         except service.ProjectPermissionError:
             await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskBlocked as exc:
+            blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
+            await interaction.followup.send(
+                t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
             return
         except Exception as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
@@ -1448,6 +1466,12 @@ class ClaimTaskSelect(ui.Select):
         except service.TaskNotFound:
             await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)
             return
+        except service.TaskBlocked as exc:
+            blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
+            await interaction.followup.send(
+                t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
+            return
         except Exception as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
@@ -1496,7 +1520,10 @@ class CompleteTaskSelect(ui.Select):
         try:
             task = await service.update_task_status(
                 task_id, self.project_id, self.guild_id,
-                "Completed", uid, is_guild_admin=is_admin
+                "Completed", uid, is_guild_admin=is_admin,
+                actor_role_ids=[
+                    role.id for role in interaction.user.roles
+                ] if isinstance(interaction.user, discord.Member) else [],
             )
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
@@ -1506,6 +1533,12 @@ class CompleteTaskSelect(ui.Select):
             return
         except service.ProjectPermissionError:
             await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskBlocked as exc:
+            blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
+            await interaction.followup.send(
+                t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
             return
         except Exception as exc:
             await interaction.followup.send(str(exc), ephemeral=True)

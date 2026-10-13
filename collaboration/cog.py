@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -62,6 +63,12 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     if isinstance(interaction.user, discord.Member):
         return interaction.user.guild_permissions.administrator
     return False
+
+
+def _member_role_ids(interaction: discord.Interaction) -> list[int]:
+    if isinstance(interaction.user, discord.Member):
+        return [role.id for role in interaction.user.roles]
+    return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -320,7 +327,8 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         try:
             task = await service.update_task_status(
                 task_id, project_id, guild_id,
-                "Completed", uid, is_guild_admin=is_admin
+                "Completed", uid, is_guild_admin=is_admin,
+                actor_role_ids=_member_role_ids(interaction),
             )
             project = await service.get_project(project_id, guild_id)
         except service.ProjectNotFound:
@@ -335,6 +343,12 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             return
         except service.ProjectPermissionError:
             await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskBlocked as exc:
+            blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
+            await interaction.followup.send(
+                t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
             return
 
         embed = discord.Embed(
@@ -362,8 +376,262 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         await interaction.response.defer()
 
         guild_id = str(interaction.guild.id)
-        tasks    = await service.get_user_assigned_tasks(guild_id, uid)
+        tasks    = await service.get_user_assigned_tasks(
+            guild_id, uid, _member_role_ids(interaction)
+        )
         embed    = build_my_tasks_embed(tasks, lang, interaction.user.display_name)
+        await interaction.followup.send(embed=embed)
+
+    @project.command(
+        name="dependency-add",
+        description="🔗 Make a project task wait for another task / Add a task blocker",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        task_id="Task that will be blocked",
+        blocked_by_task_id="Task that must be completed first",
+    )
+    @rate_limit_check("command")
+    async def project_dependency_add(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        task_id: int,
+        blocked_by_task_id: int,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await service.add_task_dependency(
+                task_id, blocked_by_task_id, project_id, str(interaction.guild.id),
+                uid, is_guild_admin=_is_admin(interaction),
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.TaskNotFound as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskDependencyExists:
+            await interaction.followup.send(t("proj_dependency_duplicate", lang), ephemeral=True)
+            return
+        except ValueError as exc:
+            await interaction.followup.send(f"{t('proj_dependency_cycle', lang)} ({exc})", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            t("proj_dependency_added", lang, task_id=task_id, blocked_by_task_id=blocked_by_task_id),
+            ephemeral=True,
+        )
+
+    @project.command(
+        name="dependency-remove",
+        description="🔗 Remove a project task dependency / Remove a blocker",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        task_id="Task whose dependency should be removed",
+        blocked_by_task_id="Task that no longer needs to be completed first",
+    )
+    @rate_limit_check("command")
+    async def project_dependency_remove(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        task_id: int,
+        blocked_by_task_id: int,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await service.remove_task_dependency(
+                task_id, blocked_by_task_id, project_id, str(interaction.guild.id),
+                uid, is_guild_admin=_is_admin(interaction),
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.TaskNotFound as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskDependencyNotFound:
+            await interaction.followup.send(t("proj_dependency_missing", lang), ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            t("proj_dependency_removed", lang, task_id=task_id, blocked_by_task_id=blocked_by_task_id),
+            ephemeral=True,
+        )
+
+    @project.command(
+        name="assign-role",
+        description="🏷️ Assign a task to a Discord role / Any project member may use this",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        task_id="Task to assign",
+        role="Discord role responsible for the task",
+    )
+    @rate_limit_check("command")
+    async def project_assign_role(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        task_id: int,
+        role: discord.Role,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        if role.is_default() or role.guild.id != interaction.guild.id:
+            await interaction.response.send_message(t("proj_role_missing", lang), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        guild_id = str(interaction.guild.id)
+        try:
+            created = await service.assign_task_role(
+                task_id, project_id, guild_id, role.id, uid,
+                is_guild_admin=_is_admin(interaction),
+            )
+            if not created:
+                await interaction.followup.send(
+                    t("proj_role_already_assigned", lang), ephemeral=True
+                )
+                return
+            task = await service.get_project_task(task_id, project_id, guild_id)
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.TaskNotFound:
+            await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except service.TaskBlocked as exc:
+            blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
+            await interaction.followup.send(t("proj_task_blocked", lang, blockers=blockers), ephemeral=True)
+            return
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        sent = 0
+        failed = 0
+        for member in role.members:
+            if member.bot:
+                continue
+            try:
+                await member.send(
+                    f"Task #{task.task_id} **{task.task}** in project "
+                    f"**{project.name}** has been assigned to your Discord role."
+                )
+                sent += 1
+            except discord.HTTPException as exc:
+                failed += 1
+                log.info("Role assignment DM failed for user %s: %s", member.id, exc)
+        await interaction.followup.send(
+            t(
+                "proj_role_assigned", lang, task_id=task_id, role=role.name,
+                sent=sent, failed=failed,
+            ),
+            ephemeral=True,
+        )
+
+    @project.command(
+        name="workload",
+        description="📊 Show active project tasks by member and Discord role",
+    )
+    @app_commands.describe(project_id="Project ID number")
+    @rate_limit_check("command")
+    async def project_workload(
+        self, interaction: discord.Interaction, project_id: int,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer()
+        guild_id = str(interaction.guild.id)
+        try:
+            board = await service.get_project_board(project_id, guild_id)
+            members = await service.get_project_members(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=project_id), ephemeral=True
+            )
+            return
+
+        active_tasks = board.pending + board.in_progress
+        embed = discord.Embed(
+            title=t("proj_workload_title", lang, project=board.project.name),
+            color=int(board.project.color.lstrip("#"), 16)
+            if board.project.color.startswith("#") else 0x5865F2,
+        )
+        if not active_tasks:
+            embed.description = t("proj_workload_empty", lang)
+            await interaction.followup.send(embed=embed)
+            return
+
+        user_tasks: dict[str, set[int]] = {member.user_id: set() for member in members}
+        role_task_counts: dict[int, int] = {}
+        unassigned: set[int] = set()
+        for task in active_tasks:
+            assigned = bool(task.assignees or task.assigned_roles)
+            for assignee_id in task.assignees:
+                user_tasks.setdefault(assignee_id, set()).add(task.task_id)
+            for role_id in task.assigned_roles:
+                role_task_counts[role_id] = role_task_counts.get(role_id, 0) + 1
+                role = interaction.guild.get_role(role_id)
+                if role is not None:
+                    for role_member in role.members:
+                        if not role_member.bot:
+                            user_tasks.setdefault(str(role_member.id), set()).add(task.task_id)
+            if not assigned:
+                unassigned.add(task.task_id)
+
+        sorted_users = sorted(user_tasks.items(), key=lambda entry: (-len(entry[1]), entry[0]))
+        member_lines = [
+            t("proj_workload_member_line", lang, user_id=user_id, count=len(task_ids))
+            for user_id, task_ids in sorted_users[:20]
+        ]
+        if len(sorted_users) > 20:
+            member_lines.append(f"… {len(sorted_users) - 20} more member(s)")
+        embed.add_field(
+            name=t("proj_workload_members", lang),
+            value="\n".join(member_lines)[:1024] or "—",
+            inline=False,
+        )
+        if role_task_counts:
+            role_lines = [
+                t("proj_workload_role_line", lang, role_id=role_id, count=count)
+                for role_id, count in sorted(role_task_counts.items(), key=lambda entry: -entry[1])[:20]
+            ]
+            embed.add_field(
+                name=t("proj_workload_roles", lang),
+                value="\n".join(role_lines)[:1024],
+                inline=False,
+            )
+        if unassigned:
+            embed.add_field(
+                name=t("proj_workload_unassigned", lang),
+                value=t("proj_workload_unassigned_line", lang, count=len(unassigned)),
+                inline=False,
+            )
         await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────

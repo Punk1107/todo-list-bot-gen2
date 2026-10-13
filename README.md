@@ -39,7 +39,7 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v20 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, RLS Policies) |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v21 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, task dependencies and role assignments, RLS Policies) |
 | **Architecture** | Monolithic | Modular Cogs | **11 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
@@ -121,7 +121,7 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v20), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v21), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
 | `discord_native/` | `bulk_cog.py` | `/bulk done`, `/bulk snooze`, `/bulk delete`; paginated multi-select UI and delete confirmation |
@@ -309,6 +309,10 @@ All project commands are under the `/project` group and operate within the **cur
 | `/project set-priority` | `project_id` `priority` | Update project priority (0–7: ⬜ Normal to 🆘 Emergency) on the fly (Lead or server Admin). |
 | `/project complete-task` | `project_id` `task_id` | Mark a specific project task as Completed with a celebratory announcement embed. |
 | `/project my-tasks` | — | All tasks across server projects assigned to the caller. |
+| `/project dependency-add` | `project_id` `task_id` `blocked_by_task_id` | Add a blocker; rejects cross-project links, self-links, and dependency cycles. |
+| `/project dependency-remove` | `project_id` `task_id` `blocked_by_task_id` | Remove a task blocker. Incomplete blockers prevent tasks being claimed, started, or completed. |
+| `/project assign-role` | `project_id` `task_id` `role` | Assign a task to a Discord role. Any project member may use this; role holders receive individual DMs without a role mention. |
+| `/project workload` | `project_id` | Summarize active task counts for project members and assigned Discord roles, including unassigned tasks. |
 | `/project members` | `project_id` | View and manage project members. Leads can assign roles: `lead`, `member`, `viewer`. |
 | `/project add-member` | `project_id` `user` `[role]` | Add member (`member` or `lead`) to the project and automatically send a private Discord DM invite card. |
 | `/project activity` | `project_id` | Paginated activity log for the project (task changes, member joins, status updates). |
@@ -316,6 +320,8 @@ All project commands are under the `/project` group and operate within the **cur
 | `/project set-channel` | `project_id` `channel` | Set dedicated Discord channel for Realtime announcements and completion broadcasts (Lead or Admin). |
 
 The Project Board's **Task Thread** button creates one discussion thread per active task. Members can choose a public thread visible to channel members or a private thread that the bot invites project members to. The thread uses the project's configured channel first, then its notification channel, and finally the channel where the board was opened.
+
+Project boards show role assignees and active blockers. `/project my-tasks` includes tasks assigned to any Discord role held by the caller. Workload deduplicates a task when the same person is assigned both directly and through a role; role-member counts use the bot's cached guild membership.
 
 **Member Roles:**
 
@@ -818,7 +824,7 @@ pytest tests/test_collaboration_scope.py -v
 | Test File | Tests | Coverage Area |
 |---|---|---|
 | `test_analytics.py` | 23 | Productivity metrics calculation, turnaround formulas, scoring models, Edge Function client |
-| `test_collaboration_scope.py` | 37 | Project CRUD, member roles, activity log, priority (0–7), advance progress, complete project |
+| `test_collaboration_scope.py` | 51 | Project CRUD, member roles, task blockers/cycle prevention, Discord role assignment, workload, activity, priority, and completion |
 | `test_conflict_resolution.py` | 25 | Defensive deadline validation, duplicate task suggestions, defensive snoozing |
 | `test_date_parser_i18n.py` | 12 | 9-language date parsing, English/Thai relative phrases, 12-hour times, and invalid-time rejection |
 | `test_focus_mode.py` | 2 | Pomodoro interval defaults and bounded elapsed-work calculations |
