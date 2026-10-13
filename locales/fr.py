@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 Description",
     "task_detail_recurring": "🔄 Répétition",
     "task_detail_subtasks": "📊 Sous-tâches",
+    "task_detail_progress": "📈 Progression",
     "task_not_found": "❌ Tâche #**{task_id}** introuvable.",
     "task_not_owned": "❌ Cette tâche ne vous appartient pas.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ Supprimer",
     "btn_edit": "✏️ Modifier",
     "btn_subtask": "➕ Sous-tâche",
+    "btn_progress": "📈 Progression",
+    "btn_comments": "💬 Commentaires",
     "btn_snooze": "⏰ Reporter (+1 jour)",
     "btn_prev": "◀ Précédent",
     "btn_next": "Suivant ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 Retour",
     "btn_confirm_delete": "🗑️ Confirmer la suppression",
     "page_indicator": "📄 Page {page} / {total}",
+    "comments_title": "💬 Commentaires de la tâche #{task_id}",
+    "comments_empty_title": "Discussion",
+    "comments_empty": "Aucun commentaire pour le moment. Ajoutez la première note.",
+    "comments_page": "Page {page} / {total}",
+    "comment_input_label": "Commentaire",
+    "comment_added": "✅ Commentaire ajouté à la tâche.",
+    "progress_modal_title": "Mettre à jour la progression de la tâche",
+    "progress_input_label": "Pourcentage de progression (0–100)",
+    "progress_updated": "📈 Progression de la tâche mise à jour à **{progress}%**.",
+    "progress_refresh_failed": "La valeur a été enregistrée, mais le message de la tâche n'a pas pu être actualisé.",
     # Delete confirm embed
     "delete_confirm_title": "⚠️ Confirmer la suppression",
     "delete_confirm_desc": "Êtes-vous sûr de vouloir supprimer définitivement cette tâche ?\n> **{task_name}**\n\n⚠️ Cette action **ne peut pas être annulée**.",
@@ -765,4 +778,3 @@ STRINGS = {
     "proj_complete_all_note":         "Toutes les tâches restantes du projet ont été marquées comme terminées.",
     "proj_complete_status_only_note": "Statut du projet fermé uniquement (les tâches restent dans leur état actuel).",
 }
-

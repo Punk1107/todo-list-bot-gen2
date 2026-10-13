@@ -258,6 +258,36 @@ class TestSubtaskChecklistRendering:
         subtask_field = next(f for f in embed.fields if "Subtask" in f.name)
         assert "✅ 1/2" in subtask_field.value
 
+    def test_task_progress_bar_is_rendered_in_embed(self):
+        row = {
+            "task_id": 1,
+            "task": "Long-running task",
+            "status": "In_Progress",
+            "deadline": (datetime.now(pytz.utc) + timedelta(days=1)).isoformat(),
+            "priority": 1,
+            "progress_pct": 75,
+            "description": None,
+            "tags": None,
+            "recurring": None,
+        }
+
+        embed = build_task_embed(row, "en", "UTC")
+
+        progress_field = next(f for f in embed.fields if f.name == "📈 Progress")
+        assert "75%" in progress_field.value
+        assert "🟩" in progress_field.value
+
+
+class TestTaskFeatureViews:
+    def test_task_action_view_has_persistent_feature_buttons(self):
+        from handlers.task_views import TaskActionView
+
+        view = TaskActionView(task_id=42, uid="user-1", lang="en")
+        custom_ids = {item.custom_id for item in view.children}
+
+        assert "task_42_comments" in custom_ids
+        assert "task_42_progress" in custom_ids
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Storage & Collaboration Component Tests

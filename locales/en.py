@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 Description",
     "task_detail_recurring": "🔄 Recurring",
     "task_detail_subtasks": "📊 Subtasks",
+    "task_detail_progress": "📈 Progress",
     "task_not_found": "❌ Task #**{task_id}** not found.",
     "task_not_owned": "❌ This task does not belong to you.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ Delete",
     "btn_edit": "✏️ Edit",
     "btn_subtask": "➕ Subtask",
+    "btn_progress": "📈 Progress",
+    "btn_comments": "💬 Comments",
     "btn_snooze": "⏰ Snooze (+1 Day)",
     "btn_prev": "◀ Prev",
     "btn_next": "Next ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 Back",
     "btn_confirm_delete": "🗑️ Confirm Delete",
     "page_indicator": "📄 Page {page} / {total}",
+    "comments_title": "💬 Task #{task_id} comments",
+    "comments_empty_title": "Discussion",
+    "comments_empty": "No comments yet. Add the first note to this task.",
+    "comments_page": "Page {page} / {total}",
+    "comment_input_label": "Comment",
+    "comment_added": "✅ Comment added to the task.",
+    "progress_modal_title": "Update task progress",
+    "progress_input_label": "Progress percentage (0–100)",
+    "progress_updated": "📈 Task progress updated to **{progress}%**.",
+    "progress_refresh_failed": "The value was saved, but the task message could not be refreshed.",
     # Delete confirm embed
     "delete_confirm_title": "⚠️ Confirm Deletion",
     "delete_confirm_desc": "Are you sure you want to permanently delete this task?\n> **{task_name}**\n\n⚠️ This action **cannot be undone**.",
@@ -825,4 +838,3 @@ STRINGS = {
     "proj_complete_all_note":         "All remaining project tasks have been marked as completed.",
     "proj_complete_status_only_note": "Project status closed (tasks kept in current state).",
 }
-

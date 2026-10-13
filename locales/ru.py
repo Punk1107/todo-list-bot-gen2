@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 Описание",
     "task_detail_recurring": "🔄 Повторение",
     "task_detail_subtasks": "📊 Подзадачи",
+    "task_detail_progress": "📈 Прогресс",
     "task_not_found": "❌ Задача #**{task_id}** не найдена.",
     "task_not_owned": "❌ Эта задача вам не принадлежит.",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ Удалить",
     "btn_edit": "✏️ Редактировать",
     "btn_subtask": "➕ Подзадача",
+    "btn_progress": "📈 Прогресс",
+    "btn_comments": "💬 Комментарии",
     "btn_snooze": "⏰ Отложить (+1 день)",
     "btn_prev": "◀ Назад",
     "btn_next": "Вперед ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 Назад",
     "btn_confirm_delete": "🗑️ Подтвердить удаление",
     "page_indicator": "📄 Страница {page} / {total}",
+    "comments_title": "💬 Комментарии к задаче #{task_id}",
+    "comments_empty_title": "Обсуждение",
+    "comments_empty": "Комментариев пока нет. Добавьте первую заметку.",
+    "comments_page": "Страница {page} / {total}",
+    "comment_input_label": "Комментарий",
+    "comment_added": "✅ Комментарий добавлен к задаче.",
+    "progress_modal_title": "Обновить прогресс задачи",
+    "progress_input_label": "Процент выполнения (0–100)",
+    "progress_updated": "📈 Прогресс задачи обновлён до **{progress}%**.",
+    "progress_refresh_failed": "Значение сохранено, но сообщение задачи не удалось обновить.",
     # Delete confirm embed
     "delete_confirm_title": "⚠️ Подтверждение удаления",
     "delete_confirm_desc": "Вы уверены, что хотите навсегда удалить эту задачу?\n> **{task_name}**\n\n⚠️ Это действие **нельзя отменить**.",
@@ -765,4 +778,3 @@ STRINGS = {
     "proj_complete_all_note":         "Все оставшиеся задачи проекта отмечены как выполненные.",
     "proj_complete_status_only_note": "Закрыт только статус проекта (задачи сохранены в текущем состоянии).",
 }
-

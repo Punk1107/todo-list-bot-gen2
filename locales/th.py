@@ -88,6 +88,7 @@ STRINGS = {
     "task_detail_desc": "📄 รายละเอียด",
     "task_detail_recurring": "🔄 การทำซ้ำ",
     "task_detail_subtasks": "📊 Subtask",
+    "task_detail_progress": "📈 ความคืบหน้า",
     "task_not_found": "❌ ไม่พบ Task ID #{task_id}",
     "task_not_owned": "❌ Task นี้ไม่ใช่ของคุณ",
 
@@ -97,6 +98,8 @@ STRINGS = {
     "btn_delete": "🗑️ ลบ",
     "btn_edit": "✏️ แก้ไข",
     "btn_subtask": "➕ Subtask",
+    "btn_progress": "📈 ความคืบหน้า",
+    "btn_comments": "💬 ความคิดเห็น",
     "btn_snooze": "⏰ เลื่อน (+1 วัน)",
     "btn_prev": "◀ ก่อนหน้า",
     "btn_next": "ถัดไป ▶",
@@ -104,6 +107,16 @@ STRINGS = {
     "btn_back": "🔙 กลับ",
     "btn_confirm_delete": "🗑️ ยืนยันลบ",
     "page_indicator": "📄 หน้า {page} / {total}",
+    "comments_title": "💬 ความคิดเห็น Task #{task_id}",
+    "comments_empty_title": "การพูดคุย",
+    "comments_empty": "ยังไม่มีความคิดเห็น เพิ่มบันทึกแรกให้ Task นี้ได้เลย",
+    "comments_page": "หน้า {page} / {total}",
+    "comment_input_label": "ความคิดเห็น",
+    "comment_added": "✅ เพิ่มความคิดเห็นใน Task แล้ว",
+    "progress_modal_title": "อัปเดตความคืบหน้าของ Task",
+    "progress_input_label": "เปอร์เซ็นต์ความคืบหน้า (0–100)",
+    "progress_updated": "📈 อัปเดตความคืบหน้าของ Task เป็น **{progress}%** แล้ว",
+    "progress_refresh_failed": "บันทึกค่าแล้ว แต่ไม่สามารถรีเฟรชข้อความ Task ได้",
     # Delete confirm embed
     "delete_confirm_title": "⚠️ ยืนยันการลบ Task",
     "delete_confirm_desc": "คุณแน่ใจหรือไม่ว่าต้องการลบ Task นี้?\n> **{task_name}**\n\n⚠️ การดำเนินการนี้ **ไม่สามารถย้อนกลับได้**",
@@ -835,4 +848,3 @@ STRINGS = {
     "proj_complete_all_note":         "งานย่อยทั้งหมดถูกปิดเสร็จสิ้นแล้ว",
     "proj_complete_status_only_note": "ปิดเฉพาะสถานะโปรเจกต์ (คงสถานะงานย่อยตามเดิม)",
 }
-

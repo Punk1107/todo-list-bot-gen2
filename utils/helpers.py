@@ -116,6 +116,13 @@ def progress_bar(value: int, total: int, width: int = 12) -> str:
     return f"`{bar}` **{pct * 100:.0f}%** ({value}/{total})"
 
 
+def percentage_progress_bar(value: int, width: int = 10) -> str:
+    """Build a colored progress bar for a 0–100 percentage."""
+    pct = min(max(int(value), 0), 100)
+    filled = int(round(pct / 100 * width))
+    return f"{'🟩' * filled}{'⬜' * (width - filled)} **{pct}%**"
+
+
 def urgency_bar(deadline_val: Any) -> str:
     """Return a short horizontal bar showing time urgency as colored square indicators.
     Returns an empty string if deadline cannot be parsed.
@@ -768,6 +775,18 @@ def build_task_embed(row, lang: str, tz_name: str,
         name=t("task_detail_priority", lang),
         value=_prio_label(priority, lang),
         inline=True,
+    )
+    if hasattr(row, "get"):
+        raw_progress = row.get("progress_pct", 0)
+    elif hasattr(row, "keys") and "progress_pct" in row.keys():
+        raw_progress = row["progress_pct"]
+    else:
+        raw_progress = 0
+    progress_pct = int(raw_progress or 0)
+    embed.add_field(
+        name=t("task_detail_progress", lang),
+        value=percentage_progress_bar(progress_pct),
+        inline=False,
     )
 
     # ── Row 2: Deadline with urgency bar ───────────────────────────────────────────

@@ -38,6 +38,8 @@ from utils.conflict_resolver import (
     calculate_defensive_snooze,
     DeadlineValidationError,
 )
+from task_features import service as task_features_service
+from task_features.views import TaskCommentsView, TaskProgressModal
 
 log = logging.getLogger(__name__)
 
@@ -1020,9 +1022,11 @@ class CategorySelect(ui.Select):
 class TaskActionView(ui.View):
     """
     Full-featured action view attached to a task embed.
-    Row 0: Done | Edit | Pin/Unpin
-    Row 1: Delete | Snooze +1d
-    Row 2: + Subtask | [Category Select]
+    Row 0: Done | Edit | Pin/Unpin | Subtask
+    Row 1: Delete | Snooze | Files
+    Row 2: Category Select
+    Row 3: Priority Select
+    Row 4: Progress | Comments
     """
 
     def __init__(
@@ -1060,6 +1064,12 @@ class TaskActionView(ui.View):
                     child.custom_id = f"{_prefix}{child.custom_id}"
 
         self._update_pin_label()
+        for item in self.children:
+            custom_id = getattr(item, "custom_id", None)
+            if custom_id == f"task_{task_id}_progress":
+                item.label = t("btn_progress", lang)  # type: ignore[attr-defined]
+            elif custom_id == f"task_{task_id}_comments":
+                item.label = t("btn_comments", lang)  # type: ignore[attr-defined]
 
 
     def _update_pin_label(self) -> None:
@@ -1294,6 +1304,61 @@ class TaskActionView(ui.View):
         embed = build_attachments_embed(self.task_id, task_name, files, lang)
         view  = TaskAttachmentsView(self.task_id, task_name, files, uid, lang)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @ui.button(label="📈 Progress", style=discord.ButtonStyle.primary, row=4, custom_id="progress")
+    async def update_progress(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        try:
+            task = await task_features_service.get_accessible_task(
+                self.task_id, uid, minimum_role="member"
+            )
+        except task_features_service.TaskNotFound:
+            await interaction.response.send_message(
+                t("task_not_found", lang, task_id=self.task_id), ephemeral=True
+            )
+            return
+        except task_features_service.TaskAccessDenied:
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
+
+        await interaction.response.send_modal(
+            TaskProgressModal(
+                self.task_id,
+                uid,
+                lang,
+                int(task["progress_pct"] or 0),
+                interaction.message,
+            )
+        )
+
+    @ui.button(label="💬 Comments", style=discord.ButtonStyle.secondary, row=4, custom_id="comments")
+    async def view_comments(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            task, comments, total = await task_features_service.get_comments(
+                self.task_id, uid, 0
+            )
+        except task_features_service.TaskNotFound:
+            await interaction.followup.send(
+                t("task_not_found", lang, task_id=self.task_id), ephemeral=True
+            )
+            return
+        except task_features_service.TaskAccessDenied:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
+
+        view = TaskCommentsView(
+            self.task_id, uid, lang, task["task"], 0, total
+        )
+        await interaction.followup.send(
+            embed=view.make_embed(comments),
+            view=view,
+            ephemeral=True,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

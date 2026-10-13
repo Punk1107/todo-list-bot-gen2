@@ -47,6 +47,7 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 | **Search** | Basic text match | Basic text match | **PostgreSQL Full-Text Search** (`search_vector` GIN index, `ts_rank_cd`, multi-column weighted ranking) |
 | **AI Prioritization** | None | None | **`/recommend`** — Composite Scoring (Urgency + Priority + Staleness), 3 Strategy Presets |
 | **File Attachments** | None | None | **Supabase Storage** (`/attach`, `/attachments`), image preview, per-task file management |
+| **Task Collaboration** | None | None | **Per-task comments** for personal/shared tasks and a **0–100% progress bar** on task embeds |
 | **Realtime Sync** | None | None | **Supabase Realtime CDC** (Phoenix WebSocket), live Discord embed updates with 1.5s debounce |
 | **Analytics** | None | None | **`/task-stats`** Productivity Dashboard + **Deno Edge Function** weekly visual reports via QuickChart API |
 | **Monitoring** | None | None | **Health Monitor**, Error Tracker, Commands Audit, Discord Alert Dispatcher |
@@ -120,6 +121,7 @@ graph TD
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
 | `handlers/task_views.py` | `task_views.py` | TaskActionView, TaskListView, AddTaskModal, DeleteConfirmView, SnoozePresetView, persistent view registration |
+| `task_features/` | `service.py`, `views.py` | Task discussion threads, permission-checked comments, and task progress controls |
 | `handlers/settings_cog.py` | `settings_cog.py` | `/setup`, `/lang`, `/category`, `/help` |
 | `handlers/reminders_cog.py` | `reminders_cog.py` | 5 background loops (reminder, recurring, daily digest, DM alarm, cleanup) |
 | `handlers/monitoring_cog.py` | `monitoring_cog.py` | Admin `/health`, `/errors`, `/cmdstats`, `/monitoring` |
