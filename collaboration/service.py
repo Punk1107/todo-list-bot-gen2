@@ -48,6 +48,14 @@ class TaskNotFound(Exception):
     """Raised when a task doesn't exist in the given project/guild."""
 
 
+class TaskThreadExists(Exception):
+    """Raised when a task already has a discussion thread."""
+
+
+class TaskThreadPending(Exception):
+    """Raised when another interaction is creating a task discussion thread."""
+
+
 class AlreadyClaimed(Exception):
     """Raised when a user tries to claim an already-assigned task."""
 
@@ -592,6 +600,76 @@ async def get_project_task(task_id: int, project_id: int, guild_id: str) -> Proj
         raise TaskNotFound(f"Task {task_id} not found in project {project_id} / guild {guild_id}")
     assignees = await _get_task_assignees(task_id)
     return ProjectTask.from_record(row, assignees=assignees)
+
+
+async def get_project_task_thread(task_id: int, project_id: int, guild_id: str):
+    """Get a task's thread mapping while enforcing project/guild scope."""
+    return await db.fetchone(
+        """SELECT thread_type, thread_id, channel_id FROM project_task_threads
+           WHERE task_id=$1 AND project_id=$2 AND guild_id=$3""",
+        (task_id, project_id, guild_id),
+    )
+
+
+async def reserve_project_task_thread(
+    task_id: int,
+    project_id: int,
+    guild_id: str,
+    thread_type: str,
+    channel_id: int,
+    created_by: str,
+) -> None:
+    """Reserve one thread per scoped project task before calling Discord."""
+    await get_project_task(task_id, project_id, guild_id)
+    row = await db.fetchone(
+        """INSERT INTO project_task_threads
+             (task_id, project_id, guild_id, thread_type, channel_id, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (task_id) DO UPDATE
+             SET thread_type=EXCLUDED.thread_type,
+                 channel_id=EXCLUDED.channel_id,
+                 created_by=EXCLUDED.created_by,
+                 created_at=NOW()
+             WHERE project_task_threads.thread_id IS NULL
+               AND project_task_threads.created_at < NOW() - INTERVAL '10 minutes'
+           RETURNING task_id""",
+        (task_id, project_id, guild_id, thread_type, channel_id, created_by),
+    )
+    if row is not None:
+        db.query_cache.invalidate_tables(["project_task_threads"])
+        return
+    db.query_cache.invalidate_tables(["project_task_threads"])
+    existing = await get_project_task_thread(task_id, project_id, guild_id)
+    if existing and existing["thread_id"] is not None:
+        raise TaskThreadExists(str(existing["thread_id"]))
+    raise TaskThreadPending(f"Thread creation is already in progress for task {task_id}")
+
+
+async def complete_project_task_thread(
+    task_id: int, project_id: int, guild_id: str, thread_id: int
+) -> None:
+    """Persist the Discord thread ID after successful creation."""
+    row = await db.fetchone(
+        """UPDATE project_task_threads SET thread_id=$1
+           WHERE task_id=$2 AND project_id=$3 AND guild_id=$4 AND thread_id IS NULL
+           RETURNING task_id""",
+        (thread_id, task_id, project_id, guild_id),
+    )
+    if row is None:
+        raise TaskThreadPending(f"Thread reservation for task {task_id} was lost")
+    db.query_cache.invalidate_tables(["project_task_threads"])
+
+
+async def release_project_task_thread_reservation(
+    task_id: int, project_id: int, guild_id: str
+) -> None:
+    """Remove only an incomplete reservation after Discord creation fails."""
+    await db.execute(
+        """DELETE FROM project_task_threads
+           WHERE task_id=$1 AND project_id=$2 AND guild_id=$3 AND thread_id IS NULL""",
+        (task_id, project_id, guild_id),
+    )
+    db.query_cache.invalidate_tables(["project_task_threads"])
 
 
 async def _get_task_assignees(task_id: int) -> list[str]:

@@ -12,6 +12,35 @@ log = logging.getLogger(__name__)
 SUPPORTED_LANGS = ("th", "en", "zh", "ja", "ko", "es", "ru", "fr", "de")
 DEFAULT_LANG = "en"   # fallback when Discord locale does not match any supported lang
 
+DISCORD_NATIVE_FALLBACKS = {
+    "context_task_empty": "❌ This message has no text to turn into a task.",
+    "context_task_created": "✅ Created task **#{task_id}** from the selected message.",
+    "context_source_message": "🔗 Source message",
+    "context_jump_link": "Jump to source message",
+    "bulk_no_tasks": "📭 You have no open tasks to update.",
+    "bulk_select_placeholder": "Select tasks (you can select multiple)",
+    "bulk_picker_description": "Select tasks to update · **{selected}** selected · page {page}/{pages}",
+    "bulk_select_at_least_one": "Select at least one task first.",
+    "bulk_delete_warning": "⚠️ Permanently delete **{count}** selected task(s)? Press Delete again to confirm.",
+    "bulk_delete_confirm": "🗑️ Confirm delete",
+    "bulk_apply": "Apply",
+    "bulk_result": "✅ Completed: **{succeeded}** · Failed or no longer available: **{failed}**",
+    "proj_btn_thread": "🧵 Task Thread",
+    "proj_thread_public_button": "🌐 Public Thread",
+    "proj_thread_private_button": "🔒 Private Thread",
+    "proj_thread_select_task": "Choose an active task",
+    "proj_thread_picker_description": "Select a task, then choose a public or private discussion thread.",
+    "proj_thread_selected": "Selected task **#{task_id}**. Choose the thread visibility below.",
+    "proj_thread_select_first": "Choose a task before creating its thread.",
+    "proj_thread_no_tasks": "There are no active project tasks to discuss.",
+    "proj_thread_channel_required": "Configure a text channel for this project, or open the board in a text channel.",
+    "proj_thread_starter": "Discussion for project task **#{task_id}: {task_name}**",
+    "proj_thread_created": "✅ Discussion thread created: {url}",
+    "proj_thread_exists": "This task already has a discussion thread: {url}",
+    "proj_thread_pending": "A discussion thread is already being created for this task. Please try again shortly.",
+    "proj_thread_permission_error": "The bot is missing permission to create or manage this thread in the configured channel.",
+}
+
 # -- Discord locale -> our lang code -------------------------------------------
 # Discord locale strings: https://discord.com/developers/docs/reference#locales
 DISCORD_LOCALE_MAP: dict[str, str] = {
@@ -106,7 +135,7 @@ def t(key: str, lang: str = DEFAULT_LANG, **kwargs: Any) -> str:
     strings  = _load(lang)
     fallback = _load(DEFAULT_LANG)
 
-    template = strings.get(key) or fallback.get(key) or key
+    template = strings.get(key) or fallback.get(key) or DISCORD_NATIVE_FALLBACKS.get(key) or key
     if not kwargs:
         return template
     try:

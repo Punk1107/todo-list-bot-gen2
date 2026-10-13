@@ -11,7 +11,7 @@
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
 ![Deno](https://img.shields.io/badge/Deno-TypeScript-black?logo=deno&logoColor=white)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
-![Tests](https://img.shields.io/badge/Tests-271%20Passed%20(100%25)-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-281%20Passed%20(100%25)-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
@@ -39,8 +39,8 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v19 (Priority 0–7, completion events, streak tracking, RLS Policies) |
-| **Architecture** | Monolithic | Modular Cogs | **10 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v20 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, RLS Policies) |
+| **Architecture** | Monolithic | Modular Cogs | **11 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
 | **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
@@ -69,7 +69,7 @@ graph TD
     end
 
     subgraph Bot["🐍 Bot Application Core — Python 3.10+"]
-        subgraph Cogs["10 Modular Cogs"]
+        subgraph Cogs["11 Modular Cogs"]
             C1[tasks_cog]
             C2[settings_cog]
             C3[reminders_cog]
@@ -80,6 +80,7 @@ graph TD
             C8[analytics.cog]
             C9[focus.cog]
             C10[gamification.cog]
+            C11[discord_native.bulk_cog]
         end
         subgraph Perf["⚡ High-Performance Layer"]
             AP[asyncpg Pool max_size=10]
@@ -120,12 +121,14 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v19), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v20), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
+| `discord_native/` | `bulk_cog.py` | `/bulk done`, `/bulk snooze`, `/bulk delete`; paginated multi-select UI and delete confirmation |
 | `focus/` | `cog.py` | `/focus start`, `/focus stop`, `/focus status`; persistent 25/5 Pomodoro timer |
 | `recurrence/` | `rules.py` | Validation and next-deadline calculation for advanced recurring rules |
 | `handlers/task_views.py` | `task_views.py` | TaskActionView, TaskListView, AddTaskModal, DeleteConfirmView, SnoozePresetView, persistent view registration |
+| `handlers/tasks_cog.py` | `tasks_cog.py` | Message context menu **Add to To-Do** stores the source Jump Link on created tasks |
 | `task_features/` | `service.py`, `views.py` | Task discussion threads, permission-checked comments, and task progress controls |
 | `handlers/settings_cog.py` | `settings_cog.py` | `/setup`, `/lang`, `/category`, `/help` |
 | `handlers/reminders_cog.py` | `reminders_cog.py` | 5 background loops (reminder, recurring, daily digest, DM alarm, cleanup) |
@@ -272,6 +275,10 @@ tomorrow 09:30
 | `/task-stats` | — | Deep Productivity Dashboard: on-time rate, average turnaround days, lead/lag margin, completion velocity (tasks/week), productivity score 0–100. |
 | `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
 | `/export` | — | Export all tasks to a UTF-8 BOM CSV file (Excel-compatible). Rate-limited: 5/day. |
+| Message context menu → **Add to To-Do** | Select a message | Create a personal task from its text, with the source message Jump Link stored on the task. |
+| `/bulk done` | — | Select multiple open tasks and complete them through the normal completion/gamification flow. |
+| `/bulk snooze` | — | Select multiple open tasks and move each deadline by one day. |
+| `/bulk delete` | — | Select multiple open tasks; requires a second confirmation before permanent deletion. |
 
 ### 🔥 Gamification & Habits
 
@@ -307,6 +314,8 @@ All project commands are under the `/project` group and operate within the **cur
 | `/project activity` | `project_id` | Paginated activity log for the project (task changes, member joins, status updates). |
 | `/project archive` | `project_id` `[action]` | Archive project (`archived`) or conclude project (`completed`) (Lead or server Admin only). |
 | `/project set-channel` | `project_id` `channel` | Set dedicated Discord channel for Realtime announcements and completion broadcasts (Lead or Admin). |
+
+The Project Board's **Task Thread** button creates one discussion thread per active task. Members can choose a public thread visible to channel members or a private thread that the bot invites project members to. The thread uses the project's configured channel first, then its notification channel, and finally the channel where the board was opened.
 
 **Member Roles:**
 
@@ -814,16 +823,17 @@ pytest tests/test_collaboration_scope.py -v
 | `test_date_parser_i18n.py` | 12 | 9-language date parsing, English/Thai relative phrases, 12-hour times, and invalid-time rejection |
 | `test_focus_mode.py` | 2 | Pomodoro interval defaults and bounded elapsed-work calculations |
 | `test_gamification.py` | 7 | Local-date streak rules, achievement criteria, leaderboard scoring/scope, reminder deduplication, schema v19 |
+| `test_discord_native.py` | 9 | Context-menu registration, task links, paginated bulk selection, public/private thread controls, migration and reservation behavior |
 | `test_locales.py` | 9 | Complete 1:1 translation key parity across all 9 supported languages |
 | `test_realtime.py` | 15 | Phoenix WebSocket CDC client, heartbeat, debounced embed updater, reconnection |
 | `test_reminders.py` | 1 | Background reminder loop query parameter types and timezone compatibility |
 | `test_rls_policies.py` | 11 | PostgreSQL RLS policy parsing, session user context isolation, migration runner |
 | `test_search_recommendation.py` | 51 | PostgreSQL Full-Text Search (`tsvector`, `ts_rank_cd`) & AI recommendation scoring presets |
 | `test_recurrence_rules.py` | 5 | Advanced recurrence validation, intervals, weekdays, month dates, and legacy compatibility |
-| `test_sql_split.py` | 6 | SQL parser tokenizer and schema v19 migration shape |
+| `test_sql_split.py` | 7 | SQL parser tokenizer and schema v19/v20 migration shape |
 | `test_storage.py` | 22 | Supabase Storage client, file size & MIME validation, object storage paths |
 | `test_ux_improvements.py` | 26 | Persistent view rehydration, modal components, task autocomplete, subtask rendering |
-| **Total** | **271** | **100% Passing Test Suite** |
+| **Total** | **281** | **100% Passing Test Suite** |
 
 > **Note on `test_locales.py`:** This test is the primary guard against cross-language regressions. When a new string key is added to the English/Thai locale, the test immediately fails for any of the other locale files missing that key — preventing the "feature works in Thai but crashes in German" class of bug.
 

@@ -1107,6 +1107,199 @@ class BoardColumnSelect(ui.Select):
         await interaction.message.edit(embed=embed, view=view)
 
 
+class TaskDiscussionView(ui.View):
+    """Choose an active project task and create its public/private thread."""
+
+    def __init__(
+        self,
+        project_id: int,
+        guild_id: str,
+        lang: str,
+        uid: str,
+        tasks: list[ProjectTask],
+    ) -> None:
+        super().__init__(timeout=120)
+        self.project_id = project_id
+        self.guild_id = guild_id
+        self.lang = lang
+        self.uid = uid
+        self.selected_task_id: Optional[int] = None
+        self.public_thread.label = t("proj_thread_public_button", lang)
+        self.private_thread.label = t("proj_thread_private_button", lang)
+        options = [
+            discord.SelectOption(
+                label=f"#{task.task_id} · {task.task[:75]}",
+                value=str(task.task_id),
+                description=task.status[:100],
+            )
+            for task in tasks[:25]
+        ]
+        self.add_item(ui.Select(
+            placeholder=t("proj_thread_select_task", lang),
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        ))
+        self.children[0].callback = self._select_task  # type: ignore[method-assign]
+
+    async def _select_task(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        select = self.children[0]
+        self.selected_task_id = int(select.values[0])  # type: ignore[attr-defined]
+        await interaction.response.edit_message(
+            content=t("proj_thread_selected", self.lang, task_id=self.selected_task_id),
+            view=self,
+        )
+
+    async def _create_thread(
+        self, interaction: discord.Interaction, thread_type: str
+    ) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        if self.selected_task_id is None:
+            await interaction.response.send_message(t("proj_thread_select_first", self.lang), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        actor_id = str(interaction.user.id)
+        is_admin = (
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
+        created_thread: Optional[discord.Thread] = None
+        starter: Optional[discord.Message] = None
+        reserved = False
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+            await service.require_role(project, actor_id, "member", is_admin)
+            task = await service.get_project_task(
+                self.selected_task_id, self.project_id, self.guild_id
+            )
+            channel_id = (
+                project.channel_id
+                or project.notification_channel_id
+                or interaction.channel_id
+            )
+            channel = interaction.guild.get_channel(channel_id) if interaction.guild and channel_id else None
+            if channel is None and channel_id:
+                channel = await interaction.client.fetch_channel(channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                await interaction.followup.send(t("proj_thread_channel_required", self.lang), ephemeral=True)
+                return
+            if not interaction.guild or channel.guild.id != interaction.guild.id:
+                await interaction.followup.send(t("proj_thread_channel_required", self.lang), ephemeral=True)
+                return
+
+            await service.reserve_project_task_thread(
+                task.task_id,
+                self.project_id,
+                self.guild_id,
+                thread_type,
+                channel.id,
+                actor_id,
+            )
+            reserved = True
+            thread_name = f"#{task.task_id} {task.task}".replace("\n", " ")[:100]
+            if thread_type == "public":
+                starter = await channel.send(
+                    t("proj_thread_starter", self.lang, task_id=task.task_id, task_name=task.task),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                created_thread = await channel.create_thread(
+                    name=thread_name,
+                    message=starter,
+                    auto_archive_duration=1440,
+                    reason=f"Project task discussion for #{task.task_id}",
+                )
+            else:
+                created_thread = await channel.create_thread(
+                    name=thread_name,
+                    type=discord.ChannelType.private_thread,
+                    invitable=False,
+                    auto_archive_duration=1440,
+                    reason=f"Project task discussion for #{task.task_id}",
+                )
+                member_ids = {member.user_id for member in await service.get_project_members(
+                    self.project_id, self.guild_id
+                )}
+                member_ids.add(project.owner_id)
+                for member_id in sorted(member_ids):
+                    member = interaction.guild.get_member(int(member_id))
+                    if member is None:
+                        try:
+                            member = await interaction.guild.fetch_member(int(member_id))
+                        except discord.NotFound:
+                            continue
+                    await created_thread.add_user(member)
+
+            await service.complete_project_task_thread(
+                task.task_id, self.project_id, self.guild_id, created_thread.id
+            )
+            reserved = False
+            await interaction.followup.send(
+                t("proj_thread_created", self.lang, url=created_thread.mention),
+                ephemeral=True,
+            )
+            self.stop()
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", self.lang), ephemeral=True)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", self.lang, project_id=self.project_id), ephemeral=True
+            )
+        except service.TaskNotFound:
+            await interaction.followup.send(
+                t("proj_task_not_found", self.lang, task_id=self.selected_task_id), ephemeral=True
+            )
+        except service.TaskThreadExists as exc:
+            await interaction.followup.send(
+                t(
+                    "proj_thread_exists", self.lang,
+                    url=f"https://discord.com/channels/{self.guild_id}/{exc}",
+                ),
+                ephemeral=True,
+            )
+        except service.TaskThreadPending:
+            await interaction.followup.send(t("proj_thread_pending", self.lang), ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(t("proj_thread_permission_error", self.lang), ephemeral=True)
+        except Exception as exc:
+            log.exception(
+                "Task discussion thread creation failed (project_id=%s task_id=%s)",
+                self.project_id, self.selected_task_id,
+            )
+            await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
+        finally:
+            if reserved:
+                if created_thread is not None:
+                    try:
+                        await created_thread.delete(reason="Thread mapping could not be saved")
+                    except discord.HTTPException:
+                        log.exception("Could not clean up unmapped project task thread")
+                elif starter is not None:
+                    try:
+                        await starter.delete()
+                    except discord.HTTPException:
+                        log.exception("Could not clean up project task thread starter")
+                try:
+                    await service.release_project_task_thread_reservation(
+                        self.selected_task_id, self.project_id, self.guild_id
+                    )
+                except Exception:
+                    log.exception("Could not release project task thread reservation")
+
+    @ui.button(label="🌐 Public Thread", style=discord.ButtonStyle.primary, row=1)
+    async def public_thread(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await self._create_thread(interaction, "public")
+
+    @ui.button(label="🔒 Private Thread", style=discord.ButtonStyle.secondary, row=1)
+    async def private_thread(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        await self._create_thread(interaction, "private")
+
+
 class ProjectBoardView(ui.View):
     """Kanban board view with column switcher and Claim buttons."""
 
@@ -1127,6 +1320,7 @@ class ProjectBoardView(ui.View):
         self.btn_claim.label    = t("proj_btn_claim", lang)
         self.btn_complete.label = t("proj_btn_complete_task", lang)
         self.btn_back.label     = t("proj_btn_back",  lang)
+        self.btn_thread.label   = t("proj_btn_thread", lang)
 
     @ui.button(label="🙋 Claim a Task", style=discord.ButtonStyle.success, custom_id="board_claim_btn", row=1)
     async def btn_claim(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -1194,6 +1388,34 @@ class ProjectBoardView(ui.View):
         embed = build_project_dashboard_embed(stats, self.lang)
         view  = ProjectDashboardView(self.project_id, self.guild_id, self.lang, self.user)
         await interaction.message.edit(embed=embed, view=view)
+
+    @ui.button(label="🧵 Task Thread", style=discord.ButtonStyle.secondary, custom_id="board_thread_btn", row=2)
+    async def btn_thread(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        try:
+            board = await service.get_project_board(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=self.project_id), ephemeral=True
+            )
+            return
+        active_tasks = board.pending + board.in_progress
+        if not active_tasks:
+            await interaction.followup.send(t("proj_thread_no_tasks", lang), ephemeral=True)
+            return
+        view = TaskDiscussionView(
+            self.project_id,
+            self.guild_id,
+            lang,
+            str(interaction.user.id),
+            active_tasks,
+        )
+        await interaction.followup.send(
+            t("proj_thread_picker_description", lang),
+            view=view,
+            ephemeral=True,
+        )
 
 
 class ClaimTaskSelect(ui.Select):

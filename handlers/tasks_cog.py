@@ -124,6 +124,77 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.message_to_task = app_commands.ContextMenu(
+            name="Add to To-Do",
+            callback=self.add_message_to_todo,
+        )
+
+    async def cog_load(self) -> None:
+        self.bot.tree.add_command(self.message_to_task)
+
+    async def cog_unload(self) -> None:
+        self.bot.tree.remove_command(
+            self.message_to_task.name,
+            type=self.message_to_task.type,
+        )
+
+    async def add_message_to_todo(
+        self,
+        interaction: discord.Interaction,
+        message: discord.Message,
+    ) -> None:
+        """Create a personal task from a selected Discord message."""
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        tz_name = await get_user_timezone(uid)
+        await ensure_user(uid, lang)
+
+        text = (message.content or "").strip()
+        if not text:
+            await interaction.followup.send(
+                t("context_task_empty", lang), ephemeral=True
+            )
+            return
+        ok, name_or_err = validator.validate_task_name(text)
+        if not ok:
+            await interaction.followup.send(t(name_or_err, lang), ephemeral=True)
+            return
+        if rate_limiter.check_task_creation(uid):
+            seconds = rate_limiter.remaining_block_seconds(uid)
+            await interaction.followup.send(
+                t("task_rate_limited", lang,
+                  limit=config.rate_limit.tasks_per_hour, seconds=seconds),
+                ephemeral=True,
+            )
+            return
+        try:
+            deadline = validate_deadline_defensive("+1d", tz_name)
+        except DeadlineValidationError as exc:
+            await interaction.followup.send(
+                t(exc.i18n_key, lang, **exc.kwargs), ephemeral=True
+            )
+            return
+        try:
+            row = await db.afetchone(
+                """INSERT INTO tasks (task, deadline, priority, owner_id, source_message_url)
+                   VALUES ($1,$2,0,$3,$4) RETURNING task_id""",
+                (name_or_err, deadline.isoformat(), uid, message.jump_url),
+            )
+            if row is None:
+                raise RuntimeError("Task insert returned no task_id")
+            task_id = row["task_id"]
+            db.query_cache.invalidate_tables(["tasks"])
+            await db.alog_action(uid, "task_created", str(task_id), name_or_err)
+            db.invalidate_stats(uid)
+        except Exception as exc:
+            log.error("Context-menu task creation failed: %s", exc, exc_info=True)
+            await interaction.followup.send(t("err_db", lang), ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            t("context_task_created", lang, task_id=task_id), ephemeral=True
+        )
 
     # ─────────────────────────────────────────────────────────────────────
     # /add  — 1-step quick add OR modal
