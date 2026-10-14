@@ -39,8 +39,8 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v21 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, task dependencies and role assignments, RLS Policies) |
-| **Architecture** | Monolithic | Modular Cogs | **11 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v22 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, task dependencies and role assignments, nullable deadlines, private calendar feed tokens, RLS Policies) |
+| **Architecture** | Monolithic | Modular Cogs | **13 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
 | **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
@@ -69,7 +69,7 @@ graph TD
     end
 
     subgraph Bot["🐍 Bot Application Core — Python 3.10+"]
-        subgraph Cogs["11 Modular Cogs"]
+        subgraph Cogs["13 Modular Cogs"]
             C1[tasks_cog]
             C2[settings_cog]
             C3[reminders_cog]
@@ -81,6 +81,8 @@ graph TD
             C9[focus.cog]
             C10[gamification.cog]
             C11[discord_native.bulk_cog]
+            C12[calendar_feed.cog]
+            C13[task_import.cog]
         end
         subgraph Perf["⚡ High-Performance Layer"]
             AP[asyncpg Pool max_size=10]
@@ -121,7 +123,7 @@ graph TD
 | Module | File(s) | Responsibility |
 |---|---|---|
 | `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v21), QueryCache, BulkWriter, UserCache, StatsCache |
+| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v22), QueryCache, BulkWriter, UserCache, StatsCache |
 | `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
 | `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
 | `discord_native/` | `bulk_cog.py` | `/bulk done`, `/bulk snooze`, `/bulk delete`; paginated multi-select UI and delete confirmation |
@@ -275,6 +277,10 @@ tomorrow 09:30
 | `/task-stats` | — | Deep Productivity Dashboard: on-time rate, average turnaround days, lead/lag margin, completion velocity (tasks/week), productivity score 0–100. |
 | `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
 | `/export` | — | Export all tasks to a UTF-8 BOM CSV file (Excel-compatible). Rate-limited: 5/day. |
+| `/import` | `file` `missing_deadline` | Import up to 500 tasks from UTF-8 CSV or JSON (1 MB max); choose +1 day or no deadline for missing dates. Supports task, status, priority, deadline, recurring, tags, description, and pinned fields. All rows are validated before an atomic insert; imported Completed tasks do not backfill achievements. |
+| `/calendar link` | — | Create a private iCalendar subscription feed for tasks with deadlines. Requires `CALENDAR_PUBLIC_URL` with HTTPS. |
+| `/calendar rotate` | — | Replace the subscription token; the previous URL stops working immediately. |
+| `/calendar revoke` | — | Disable the active subscription URL. |
 | Message context menu → **Add to To-Do** | Select a message | Create a personal task from its text, with the source message Jump Link stored on the task. |
 | `/bulk done` | — | Select multiple open tasks and complete them through the normal completion/gamification flow. |
 | `/bulk snooze` | — | Select multiple open tasks and move each deadline by one day. |
@@ -702,8 +708,10 @@ The bot includes a built-in **aiohttp async keep-alive web server** for uptime m
 | `GET /health` | Full health JSON (DB latency, memory, loop lag) |
 | `GET /ready` | `{"ready": true}` once bot is fully initialised |
 | `GET /metrics` | Runtime metrics for Prometheus/Grafana scraping |
+| `GET /calendar/{token}.ics` | Private RFC 5545 feed for active tasks with deadlines |
 
 Set the `PORT` environment variable (Render/Railway auto-inject this) — the server reads `PORT` first, then falls back to `WEBSERVER_PORT`.
+Set `CALENDAR_PUBLIC_URL` to the externally reachable HTTPS origin (for example `https://todo.example.com`) before creating a feed. Treat its URL as a password; rotate or revoke it if exposed. Imported dates are interpreted in the importing user's timezone.
 
 ---
 
@@ -771,6 +779,7 @@ Copy `.env.example` to `.env` and fill in the required values.
 | `WEBSERVER_ENABLED` | `true` | Enable the aiohttp keep-alive server |
 | `WEBSERVER_HOST` | `0.0.0.0` | Bind address |
 | `WEBSERVER_PORT` | `8080` | Port (overridden by `PORT` env var on cloud platforms) |
+| `CALENDAR_PUBLIC_URL` | _(empty)_ | Public HTTPS origin used in private calendar subscription URLs |
 
 ### Monitoring & Logging
 

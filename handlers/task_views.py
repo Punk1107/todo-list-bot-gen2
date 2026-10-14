@@ -365,6 +365,7 @@ class EditTaskModal(ui.Modal):
         self.task_id           = task_row["task_id"]
         self.uid               = task_row["owner_id"]
         self._current_priority = task_row["priority"]  # kept from DB; changed via PriorityEditSelect
+        self._has_recurrence   = bool(task_row["recurring"] or task_row["recurrence_rule"])
 
         # Pre-fill deadline in user-friendly format using the caller-supplied timezone
         current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
@@ -378,6 +379,7 @@ class EditTaskModal(ui.Modal):
             default=current_dl,
             placeholder=t("task_deadline_placeholder", lang),
             max_length=20,
+            required=False,
         )
         self.priority = ui.TextInput(
             label=t("task_priority_label", lang),
@@ -417,11 +419,17 @@ class EditTaskModal(ui.Modal):
 
         tz_name = await get_user_timezone(uid)
         # Defensive deadline validation (blocks past deadlines on edit too)
-        try:
-            dt = validate_deadline_defensive(self.deadline.value, tz_name)
-        except DeadlineValidationError as e:
-            err_msg = t(e.i18n_key, lang, **e.kwargs)
-            await _safe_respond(interaction, err_msg)
+        deadline_value = self.deadline.value.strip()
+        dt = None
+        if deadline_value:
+            try:
+                dt = validate_deadline_defensive(deadline_value, tz_name)
+            except DeadlineValidationError as e:
+                err_msg = t(e.i18n_key, lang, **e.kwargs)
+                await _safe_respond(interaction, err_msg)
+                return
+        elif self._has_recurrence:
+            await _safe_respond(interaction, t("task_deadline_required_for_recurring", lang))
             return
 
         description: Optional[str] = None
@@ -468,7 +476,7 @@ class EditTaskModal(ui.Modal):
                 """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
                    tags=$5, dm_reminded=0, updated_at=NOW()
                    WHERE task_id=$6 AND owner_id=$7""",
-                (name_or_err, dt.isoformat(), prio_val,
+                (name_or_err, dt.isoformat() if dt else None, prio_val,
                  description, tags, self.task_id, uid),
             )
             await db.alog_action(uid, "task_edited", str(self.task_id), name_or_err)

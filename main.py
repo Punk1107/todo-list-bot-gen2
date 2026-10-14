@@ -65,6 +65,8 @@ COGS = [
     "analytics.cog",                        # /analytics snapshot + /analytics weekly
     "gamification.cog",                     # /streak /habits /leaderboard
     "discord_native.bulk_cog",              # /bulk actions
+    "calendar_feed.cog",                    # /calendar feed management
+    "task_import.cog",                      # /import CSV/JSON task files
 ]
 
 
