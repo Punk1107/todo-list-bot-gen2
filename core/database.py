@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 21   # bump when adding migrations below
+SCHEMA_VERSION = 22   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -913,6 +913,20 @@ MIGRATIONS: list[tuple[int, str]] = [
         ON project_task_role_assignments(project_id, guild_id, role_id);
 
     INSERT INTO schema_version VALUES (21) ON CONFLICT (version) DO UPDATE SET version=21;
+    """),
+
+    # ── v22: optional task deadlines and private calendar feed tokens ─────────
+    (22, """
+    ALTER TABLE tasks ALTER COLUMN deadline DROP NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS calendar_feed_tokens (
+        user_id    TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE calendar_feed_tokens ENABLE ROW LEVEL SECURITY;
+
+    INSERT INTO schema_version VALUES (22) ON CONFLICT (version) DO UPDATE SET version=22;
     """),
 ]
 

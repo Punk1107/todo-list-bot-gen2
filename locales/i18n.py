@@ -56,6 +56,17 @@ DISCORD_NATIVE_FALLBACKS = {
     "proj_workload_role_line": "<@&{role_id}> — **{count}** active task(s)",
     "proj_workload_unassigned_line": "**{count}** task(s)",
     "proj_role_missing": "That Discord role is no longer available in this server.",
+    "task_no_deadline": "No deadline",
+    "task_deadline_required_for_recurring": "A recurring task must have a deadline. Set a deadline before enabling recurrence.",
+    "calendar_public_url_missing": "Calendar feeds require a public HTTPS URL. Set CALENDAR_PUBLIC_URL and try again.",
+    "calendar_link_created": "✅ Your private calendar subscription link (keep it secret):\n{url}\nUse `/calendar rotate` to replace it or `/calendar revoke` to disable it.",
+    "calendar_revoked": "✅ Calendar subscription disabled.",
+    "calendar_no_link": "There is no active calendar subscription to revoke.",
+    "import_file_too_large": "❌ The file exceeds the 1 MB import limit.",
+    "import_validation_error": "❌ Import cancelled; no tasks were added.\n{error}",
+    "import_read_error": "❌ Could not read the attached file: {error}",
+    "import_database_error": "❌ Import failed while saving. No tasks were added.",
+    "import_success": "✅ Imported **{count}** task(s).",
 }
 
 # -- Discord locale -> our lang code -------------------------------------------

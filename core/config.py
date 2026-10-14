@@ -173,6 +173,7 @@ class WebserverConfig:
     enabled: bool
     host: str
     port: int
+    public_url: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "WebserverConfig":
@@ -182,6 +183,7 @@ class WebserverConfig:
             enabled=_env_bool("WEBSERVER_ENABLED", True),
             host=_env("WEBSERVER_HOST", "0.0.0.0"),
             port=port,
+            public_url=(_env("CALENDAR_PUBLIC_URL", "") or "").rstrip("/") or None,
         )
 
 

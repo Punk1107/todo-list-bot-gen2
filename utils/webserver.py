@@ -65,6 +65,25 @@ async def _metrics(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 
+async def _calendar_feed(request: web.Request) -> web.Response:
+    from calendar_feed.service import build_calendar_feed
+
+    token = request.match_info["token"]
+    try:
+        ical = await build_calendar_feed(token)
+    except LookupError:
+        raise web.HTTPNotFound()
+    except Exception:
+        log.exception("Calendar feed generation failed")
+        raise web.HTTPInternalServerError()
+    return web.Response(
+        text=ical,
+        content_type="text/calendar",
+        charset="utf-8",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # App factory & start
 # ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +94,7 @@ def _build_app() -> web.Application:
     app.router.add_get("/health", _health)
     app.router.add_get("/ready",  _ready)
     app.router.add_get("/metrics", _metrics)
+    app.router.add_get("/calendar/{token}.ics", _calendar_feed)
     return app
 
 
@@ -100,7 +120,7 @@ async def start_async() -> Optional[web.AppRunner]:
     )
     await site.start()
     log.info(
-        "Async webserver started on %s:%d (endpoints: / /health /ready /metrics)",
+        "Async webserver started on %s:%d (endpoints: / /health /ready /metrics /calendar/{token}.ics)",
         config.webserver.host,
         config.webserver.port,
     )

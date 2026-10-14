@@ -850,7 +850,10 @@ def build_task_embed(row, lang: str, tz_name: str,
     )
 
     # ── Row 2: Deadline with urgency bar ───────────────────────────────────────────
-    dl_value = f"📅 `{dl_fmt}`\n⏱️ {tl}"
+    dl_value = (
+        f"📅 `{dl_fmt}`\n⏱️ {tl}"
+        if deadline else f"📅 {t('task_no_deadline', lang)}"
+    )
     if ubar:
         dl_value += f"\n{ubar}"
     embed.add_field(
@@ -1046,9 +1049,13 @@ def build_task_list_embed(
             dl_str   = format_deadline(row["deadline"], tz_name)
             tl       = time_left_str(row["deadline"])
 
+            deadline_line = (
+                f"📅 `{dl_str}`  ·  ⏱️ `{tl}`"
+                if row["deadline"] else f"📅 {t('task_no_deadline', lang)}"
+            )
             lines.append(
                 f"{status_icon}{prio_icon}{pin_icon} **#{tid}** {name_disp}\n"
-                f"   ╰ 📅 `{dl_str}`  ·  ⏱️ `{tl}`"
+                f"   ╰ {deadline_line}"
             )
 
         embed.description = "\n\n".join(lines)

@@ -113,7 +113,7 @@ async def task_autocomplete(
     for row in rows:
         tid   = row["task_id"]
         name  = row["task"][:50]
-        tl    = time_left_str(row["deadline"])
+        tl    = time_left_str(row["deadline"]) if row["deadline"] else "—"
         label = f"#{tid} — {name} ({tl})"
         choices.append(app_commands.Choice(name=label[:100], value=tid))
     return choices[:25]
@@ -507,7 +507,9 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def unpin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=$1", (task_id,))
+        row  = await db.afetchone(
+            "SELECT owner_id, deadline FROM tasks WHERE task_id=$1", (task_id,)
+        )
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -556,6 +558,11 @@ class TasksCog(commands.Cog, name="Tasks"):
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
+            )
+            return
+        if interval != "none" and row["deadline"] is None:
+            await interaction.response.send_message(
+                t("task_deadline_required_for_recurring", lang), ephemeral=True
             )
             return
 

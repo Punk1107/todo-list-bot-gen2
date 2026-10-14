@@ -55,7 +55,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v18_focus_and_recurrence_schema(self):
         v18 = next(sql for version, sql in MIGRATIONS if version == 18)
         statements = _split_sql_statements(v18)
-        self.assertEqual(SCHEMA_VERSION, 21)
+        self.assertEqual(SCHEMA_VERSION, 22)
         self.assertTrue(any("recurrence_rule JSONB" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS focus_sessions" in stmt for stmt in statements))
         self.assertTrue(any("idx_focus_sessions_one_active_per_user" in stmt for stmt in statements))
@@ -63,10 +63,17 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v20_adds_discord_native_references(self):
         v20 = next(sql for version, sql in MIGRATIONS if version == 20)
         statements = _split_sql_statements(v20)
-        self.assertEqual(SCHEMA_VERSION, 21)
+        self.assertEqual(SCHEMA_VERSION, 22)
         self.assertTrue(any("source_message_url" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_task_threads" in stmt for stmt in statements))
         self.assertTrue(any("thread_id" in stmt and "BIGINT UNIQUE" in stmt for stmt in statements))
+
+    def test_migration_v22_enables_nullable_deadlines_and_calendar_tokens(self):
+        v22 = next(sql for version, sql in MIGRATIONS if version == 22)
+        statements = _split_sql_statements(v22)
+        self.assertEqual(SCHEMA_VERSION, 22)
+        self.assertTrue(any("deadline DROP NOT NULL" in stmt for stmt in statements))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS calendar_feed_tokens" in stmt for stmt in statements))
 
 
 if __name__ == "__main__":
