@@ -1411,6 +1411,31 @@ class TaskActionView(ui.View):
             ephemeral=True,
         )
 
+    @ui.button(label="📜 History", style=discord.ButtonStyle.secondary, row=4, custom_id="history")
+    async def view_history(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from history_reporting import service as history_service
+        from history_reporting.views import TaskHistoryView
+
+        history = await history_service.get_task_audit_history(self.task_id, uid)
+        if not history:
+            await interaction.followup.send(t("history_not_found_or_denied", lang), ephemeral=True)
+            return
+
+        view = TaskHistoryView(
+            history=history,
+            user_id=uid,
+            lang=lang,
+            origin_message=interaction.message,
+        )
+        await interaction.followup.send(
+            embed=view.make_embed(),
+            view=view,
+            ephemeral=True,
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Task Filter Select

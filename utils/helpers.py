@@ -160,11 +160,17 @@ async def _load_user_from_db_async(uid: str):
     """Async: fetch user row from DB and populate cache."""
     from core.database import db
     row = await db.afetchone(
-        "SELECT lang, timezone, channel_id, role, theme FROM users WHERE user_id=$1", (uid,)
+        """SELECT lang, timezone, channel_id, role, theme,
+                  COALESCE(weekly_retrospective, 1) AS weekly_retrospective
+           FROM users WHERE user_id=$1""", (uid,)
     )
     if row:
         theme = row.get("theme") or "default"
-        db.user_cache.set(uid, row["lang"], row["timezone"], row["channel_id"], row["role"], theme=theme)
+        weekly_retro = int(row.get("weekly_retrospective") or 1)
+        db.user_cache.set(
+            uid, row["lang"], row["timezone"], row["channel_id"], row["role"],
+            theme=theme, weekly_retrospective=weekly_retro,
+        )
     return row
 
 
@@ -269,6 +275,7 @@ async def save_user_settings(
     notify_enabled: Optional[int] = None,
     daily_digest: Optional[int] = None,
     theme: Optional[str] = None,
+    weekly_retrospective: Optional[int] = None,
 ) -> None:
     """Async: persist one or more user settings and invalidate cache.
     Builds a single UPDATE query dynamically — avoids multiple round-trips.
@@ -294,6 +301,8 @@ async def save_user_settings(
         sets.append(f"daily_digest=${idx}"); values.append(daily_digest); idx += 1
     if theme is not None:
         sets.append(f"theme=${idx}"); values.append(theme); idx += 1
+    if weekly_retrospective is not None:
+        sets.append(f"weekly_retrospective=${idx}"); values.append(weekly_retrospective); idx += 1
 
     if sets:
         values.append(uid)
@@ -312,8 +321,23 @@ async def save_user_settings(
             cached.lang = lang
         if theme is not None:
             cached.theme = theme
+        if weekly_retrospective is not None:
+            cached.weekly_retrospective = weekly_retrospective
     else:
         db.user_cache.invalidate(uid)
+
+
+async def get_user_weekly_retrospective(user_id) -> int:
+    """Async: return user's weekly retrospective setting (1=enabled, 0=disabled, cache-first)."""
+    from core.database import db
+    uid = str(user_id)
+    cached = db.user_cache.get(uid)
+    if cached and hasattr(cached, "weekly_retrospective"):
+        return cached.weekly_retrospective
+    row = await _load_user_from_db_async(uid)
+    if row and "weekly_retrospective" in row.keys():
+        return int(row["weekly_retrospective"] or 1)
+    return 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
