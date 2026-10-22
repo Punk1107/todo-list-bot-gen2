@@ -22,9 +22,10 @@ from core.security import rate_limit_check, validator
 from core.config import config
 from locales.i18n import t, SUPPORTED_LANGS
 from utils.helpers import (
-    get_user_lang, get_user_timezone, get_user_role,
+    get_user_lang, get_user_timezone, get_user_role, get_user_theme,
     ensure_user, save_user_settings,
 )
+from core.theme import get_theme, list_themes, set_user_theme, THEMES
 from handlers.task_views import LanguageView
 
 log = logging.getLogger(__name__)
@@ -293,6 +294,96 @@ class HelpView(ui.View):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Theme Personalization UI Components
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_theme_preview_embed(theme_key: str, lang: str) -> discord.Embed:
+    theme = get_theme(theme_key)
+    embed = discord.Embed(
+        title=f"🎨 {theme.emoji} {theme.name}",
+        description=f"> *{theme.description}*\n\n{t('theme_preview_body', lang)}",
+        color=theme.color_int,
+    )
+    sample_field = t("theme_preview_field", lang) if t("theme_preview_field", lang) != "theme_preview_field" else "📋 Sample Task Preview"
+    embed.add_field(
+        name=sample_field,
+        value=f"• 🔴 **#101** Production Bug Hotfix\n• 📅 Tomorrow at 15:00\n• ⚡ Status: `In_Progress`",
+        inline=False,
+    )
+    embed.set_footer(text=f"Color: {theme.color_hex} • {t('footer_text', lang)}")
+    return embed
+
+
+class ThemeSelectView(discord.ui.View):
+    def __init__(self, user_id: str, current_theme: str, lang: str, timeout: float = 180.0) -> None:
+        super().__init__(timeout=timeout)
+        self.user_id = user_id
+        self.selected_theme = current_theme
+        self.lang = lang
+        self._message: Optional[discord.InteractionMessage] = None
+        self._build_components()
+
+    def _build_components(self) -> None:
+        self.clear_items()
+        options = []
+        for th in list_themes():
+            is_def = (th.key == self.selected_theme)
+            options.append(
+                discord.SelectOption(
+                    label=f"{th.emoji} {th.name}",
+                    value=th.key,
+                    description=th.description[:50],
+                    default=is_def,
+                )
+            )
+
+        placeholder = t("theme_select_placeholder", self.lang)
+        if placeholder == "theme_select_placeholder":
+            placeholder = "Select your preferred color theme..."
+
+        select = discord.ui.Select(
+            placeholder=placeholder,
+            options=options,
+            row=0,
+        )
+        select.callback = self._on_select_theme
+        self.add_item(select)
+
+        save_label = t("confirm", self.lang)
+        btn_save = discord.ui.Button(
+            label=save_label,
+            emoji="💾",
+            style=discord.ButtonStyle.success,
+            row=1,
+        )
+        btn_save.callback = self._on_save
+        self.add_item(btn_save)
+
+    async def _on_select_theme(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        self.selected_theme = interaction.data["values"][0]  # type: ignore
+        self._build_components()
+        embed = build_theme_preview_embed(self.selected_theme, self.lang)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _on_save(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        await set_user_theme(self.user_id, self.selected_theme)
+        embed = build_theme_preview_embed(self.selected_theme, self.lang)
+        th_name = THEMES[self.selected_theme].name if self.selected_theme in THEMES else self.selected_theme
+        success_msg = t("theme_updated_success", self.lang, theme=th_name)
+        await interaction.response.edit_message(
+            content=f"✅ {success_msg}",
+            embed=embed,
+            view=None,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Settings Cog
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -388,19 +479,70 @@ class SettingsCog(commands.Cog, name="Settings"):
         view._message = await interaction.original_response()
 
 
-    # ── /help ─────────────────────────────────────────────────────────────────
+    # ── /theme & /settings theme ──────────────────────────────────────────────
 
-    @app_commands.command(name="help", description="📖 ดูวิธีใช้ / View help")
+    settings_group = app_commands.Group(
+        name="settings",
+        description="⚙️ ตั้งค่าระบบ / Bot settings",
+    )
+
+    @settings_group.command(name="theme", description="🎨 ปรับแต่งสี Embed / Personalize embed theme")
+    @app_commands.describe(theme="เลือกธีมสีประจำตัว / Choose embed theme")
     @rate_limit_check("command")
-    async def help_cmd(self, interaction: discord.Interaction) -> None:
-        uid  = str(interaction.user.id)
-        lang = await get_user_lang(uid)
+    async def settings_theme(
+        self, interaction: discord.Interaction, theme: Optional[str] = None
+    ) -> None:
+        await self._handle_theme_cmd(interaction, theme)
 
-        view = HelpView(lang)
-        embed = build_help_embed("overview", lang)
-        await interaction.response.send_message(embed=embed, view=view)
-        # Store message so on_timeout can edit it with disabled select
+    @app_commands.command(name="theme", description="🎨 ปรับแต่งสี Embed / Personalize embed theme")
+    @app_commands.describe(theme="เลือกธีมสีประจำตัว / Choose embed theme")
+    @rate_limit_check("command")
+    async def theme_cmd(
+        self, interaction: discord.Interaction, theme: Optional[str] = None
+    ) -> None:
+        await self._handle_theme_cmd(interaction, theme)
+
+    async def _handle_theme_cmd(
+        self, interaction: discord.Interaction, theme: Optional[str] = None
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid)
+
+        if theme:
+            clean_key = theme.strip().lower()
+            if clean_key in THEMES:
+                await set_user_theme(uid, clean_key)
+                embed = build_theme_preview_embed(clean_key, lang)
+                th_name = THEMES[clean_key].name
+                success_msg = t("theme_updated_success", lang, theme=th_name)
+                await interaction.response.send_message(
+                    content=f"✅ {success_msg}", embed=embed, ephemeral=True
+                )
+                return
+            else:
+                await interaction.response.send_message(
+                    f"❌ Unknown theme '{theme}'. Use the dropdown below to browse.", ephemeral=True
+                )
+
+        current_theme = await get_user_theme(uid)
+        embed = build_theme_preview_embed(current_theme, lang)
+        view = ThemeSelectView(user_id=uid, current_theme=current_theme, lang=lang)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         view._message = await interaction.original_response()
+
+    @settings_theme.autocomplete("theme")
+    @theme_cmd.autocomplete("theme")
+    async def theme_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        choices = []
+        for th in list_themes():
+            if not current or current.lower() in th.name.lower() or current.lower() in th.key.lower():
+                choices.append(app_commands.Choice(name=f"{th.emoji} {th.name}", value=th.key))
+            if len(choices) >= 25:
+                break
+        return choices
 
     # ── /category group ───────────────────────────────────────────────────────
 

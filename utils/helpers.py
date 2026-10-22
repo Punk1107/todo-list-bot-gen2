@@ -160,10 +160,11 @@ async def _load_user_from_db_async(uid: str):
     """Async: fetch user row from DB and populate cache."""
     from core.database import db
     row = await db.afetchone(
-        "SELECT lang, timezone, channel_id, role FROM users WHERE user_id=$1", (uid,)
+        "SELECT lang, timezone, channel_id, role, theme FROM users WHERE user_id=$1", (uid,)
     )
     if row:
-        db.user_cache.set(uid, row["lang"], row["timezone"], row["channel_id"], row["role"])
+        theme = row.get("theme") or "default"
+        db.user_cache.set(uid, row["lang"], row["timezone"], row["channel_id"], row["role"], theme=theme)
     return row
 
 
@@ -211,6 +212,26 @@ async def get_user_role(user_id) -> str:
     return row["role"] if row else "user"
 
 
+async def get_user_theme(user_id) -> str:
+    """Async: return user's theme preference (cache-first)."""
+    from core.database import db
+    uid = str(user_id)
+    cached = db.user_cache.get(uid)
+    if cached and hasattr(cached, "theme") and cached.theme:
+        return cached.theme
+    row = await _load_user_from_db_async(uid)
+    if row and row.get("theme"):
+        return row["theme"]
+    return "default"
+
+
+async def get_user_theme_color(user_id) -> int:
+    """Async: return user's theme color int for Discord Embeds."""
+    from core.theme import get_theme_color
+    theme = await get_user_theme(user_id)
+    return get_theme_color(theme)
+
+
 async def ensure_user(user_id, lang: Optional[str] = None,
                       discord_locale: Optional[str] = None) -> None:
     """Async: insert user row if not present (PostgreSQL ON CONFLICT DO NOTHING).
@@ -247,6 +268,7 @@ async def save_user_settings(
     lang: Optional[str] = None,
     notify_enabled: Optional[int] = None,
     daily_digest: Optional[int] = None,
+    theme: Optional[str] = None,
 ) -> None:
     """Async: persist one or more user settings and invalidate cache.
     Builds a single UPDATE query dynamically — avoids multiple round-trips.
@@ -270,6 +292,8 @@ async def save_user_settings(
         sets.append(f"notify_enabled=${idx}"); values.append(notify_enabled); idx += 1
     if daily_digest is not None:
         sets.append(f"daily_digest=${idx}"); values.append(daily_digest); idx += 1
+    if theme is not None:
+        sets.append(f"theme=${idx}"); values.append(theme); idx += 1
 
     if sets:
         values.append(uid)
@@ -278,7 +302,18 @@ async def save_user_settings(
             tuple(values),
         )
 
-    db.user_cache.invalidate(uid)
+    cached = db.user_cache.get(uid)
+    if cached:
+        if timezone is not None:
+            cached.timezone = timezone
+        if channel_id is not None:
+            cached.channel_id = channel_id
+        if lang is not None:
+            cached.lang = lang
+        if theme is not None:
+            cached.theme = theme
+    else:
+        db.user_cache.invalidate(uid)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

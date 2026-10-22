@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 24   # bump when adding migrations below
+SCHEMA_VERSION = 25   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ class _CachedUser:
     timezone: str
     channel_id: Optional[int]
     role: str
+    theme: str = "default"
     _expires: float = field(default_factory=lambda: time.monotonic() + _CACHE_TTL)
 
     @property
@@ -75,7 +76,7 @@ class UserCache:
             return None
 
     def set(self, uid: str, lang: str, timezone: str,
-            channel_id: Optional[int], role: str) -> None:
+            channel_id: Optional[int], role: str, theme: str = "default") -> None:
         with self._lock:
             if len(self._store) >= self._max_size and uid not in self._store:
                 oldest = next(iter(self._store))
@@ -83,6 +84,7 @@ class UserCache:
             self._store[uid] = _CachedUser(
                 lang=lang, timezone=timezone,
                 channel_id=channel_id, role=role,
+                theme=theme,
             )
 
     def invalidate(self, uid: str) -> None:
@@ -173,7 +175,7 @@ _KNOWN_TABLES = {
     "guild_settings", "audit_log", "schema_version", "task_completion_events",
     "user_achievements", "project_task_threads", "project_task_dependencies",
     "project_task_role_assignments", "task_templates", "task_checklists",
-    "routine_event_rules", "project_role_permissions",
+    "routine_event_rules", "project_role_permissions", "saved_filters",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1000,6 +1002,24 @@ MIGRATIONS: list[tuple[int, str]] = [
         ON project_role_permissions(project_id, role);
 
     INSERT INTO schema_version VALUES (24) ON CONFLICT (version) DO UPDATE SET version=24;
+    """),
+    (25, """
+    -- Migration 25: Custom Saved Filters / Smart Lists
+    CREATE TABLE IF NOT EXISTS saved_filters (
+        filter_id   SERIAL PRIMARY KEY,
+        owner_id    TEXT NOT NULL,
+        guild_id    TEXT,
+        name        TEXT NOT NULL,
+        criteria    JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_user_filter_name UNIQUE (owner_id, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_saved_filters_owner ON saved_filters(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_filters_guild ON saved_filters(guild_id) WHERE guild_id IS NOT NULL;
+
+    INSERT INTO schema_version VALUES (25) ON CONFLICT (version) DO UPDATE SET version=25;
     """),
 ]
 

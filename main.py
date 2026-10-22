@@ -69,6 +69,7 @@ COGS = [
     "task_import.cog",                      # /import CSV/JSON task files
     "routine_workflows.cog",                # /template & /routine workflows
     "recovery.cog",                         # /trash & /restore — Recycle Bin safe recovery
+    "organization.cog",                     # /matrix & /filter — Eisenhower Matrix & Smart Lists
 ]
 
 
