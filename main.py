@@ -67,6 +67,7 @@ COGS = [
     "discord_native.bulk_cog",              # /bulk actions
     "calendar_feed.cog",                    # /calendar feed management
     "task_import.cog",                      # /import CSV/JSON task files
+    "routine_workflows.cog",                # /template & /routine workflows
 ]
 
 

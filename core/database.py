@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 22   # bump when adding migrations below
+SCHEMA_VERSION = 23   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -927,6 +927,51 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE calendar_feed_tokens ENABLE ROW LEVEL SECURITY;
 
     INSERT INTO schema_version VALUES (22) ON CONFLICT (version) DO UPDATE SET version=22;
+    """),
+
+    # ── v23: task templates, definition of done checklists, and routine rules ─
+    (23, """
+    CREATE TABLE IF NOT EXISTS task_templates (
+        template_id SERIAL PRIMARY KEY,
+        name        TEXT NOT NULL,
+        description TEXT,
+        category    TEXT,
+        priority    INTEGER NOT NULL DEFAULT 0 CHECK (priority BETWEEN 0 AND 7),
+        owner_id    TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+        guild_id    TEXT,
+        items       JSONB NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_task_templates_scope
+        ON task_templates(COALESCE(owner_id, ''), COALESCE(guild_id, ''), LOWER(name));
+
+    CREATE TABLE IF NOT EXISTS task_checklists (
+        checklist_id SERIAL PRIMARY KEY,
+        task_id      INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        title        TEXT NOT NULL,
+        is_done      BOOLEAN NOT NULL DEFAULT FALSE,
+        position     INTEGER NOT NULL DEFAULT 0,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_checklists_task
+        ON task_checklists(task_id, position ASC);
+
+    CREATE TABLE IF NOT EXISTS routine_event_rules (
+        rule_id         SERIAL PRIMARY KEY,
+        guild_id        TEXT NOT NULL,
+        event_type      TEXT NOT NULL CHECK (event_type IN ('role_added', 'member_join')),
+        trigger_role_id BIGINT,
+        template_name   TEXT NOT NULL,
+        is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by      TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_routine_event_rules_guild
+        ON routine_event_rules(guild_id, event_type, is_active);
+
+    INSERT INTO schema_version VALUES (23) ON CONFLICT (version) DO UPDATE SET version=23;
     """),
 ]
 
