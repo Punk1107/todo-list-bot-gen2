@@ -400,10 +400,10 @@ class TasksCog(commands.Cog, name="Tasks"):
     # ─────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="done", description="✅ ทำเครื่องหมาย Task เสร็จแล้ว / Mark task done")
-    @app_commands.describe(task_id="Task ID number")
+    @app_commands.describe(task_id="Task ID number", force="Force complete even if checklist items are incomplete")
     @app_commands.autocomplete(task_id=task_autocomplete)
     @rate_limit_check("command")
-    async def done(self, interaction: discord.Interaction, task_id: int) -> None:
+    async def done(self, interaction: discord.Interaction, task_id: int, force: bool = False) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True)
@@ -423,6 +423,26 @@ class TasksCog(commands.Cog, name="Tasks"):
         if row["status"] == "Cancelled":
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
+
+        if not force:
+            from routine_workflows import service as routine_service
+            from routine_workflows.views import DoDForceConfirmView
+
+            pending_items = await routine_service.get_pending_checklists(task_id)
+            if pending_items:
+                confirm_view = DoDForceConfirmView(
+                    task_id=task_id,
+                    task_name=row["task"],
+                    user_id=uid,
+                    lang=lang,
+                    pending_items=pending_items,
+                )
+                await interaction.followup.send(
+                    embed=confirm_view.make_embed(),
+                    view=confirm_view,
+                    ephemeral=True,
+                )
+                return
 
         awarded = await gamification_service.complete_personal_task(task_id, uid)
         if awarded is None:

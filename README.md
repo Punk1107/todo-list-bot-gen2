@@ -11,7 +11,7 @@
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
 ![Deno](https://img.shields.io/badge/Deno-TypeScript-black?logo=deno&logoColor=white)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
-![Tests](https://img.shields.io/badge/Tests-281%20Passed%20(100%25)-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-312%20Passed%20(100%25)-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
@@ -39,8 +39,8 @@ Gen 3.0 is a complete architectural overhaul — not just an update. Every layer
 
 | Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v22 (Priority 0–7, completion events, streak tracking, Discord-native message/thread links, task dependencies and role assignments, nullable deadlines, private calendar feed tokens, RLS Policies) |
-| **Architecture** | Monolithic | Modular Cogs | **13 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
+| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v23 (Priority 0–7, task templates, DoD checklists, routine event rules, Discord-native thread links, task dependencies and role assignments, nullable deadlines, private calendar feed tokens, RLS Policies) |
+| **Architecture** | Monolithic | Modular Cogs | **14 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
 | **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
 | **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
 | **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
@@ -69,7 +69,7 @@ graph TD
     end
 
     subgraph Bot["🐍 Bot Application Core — Python 3.10+"]
-        subgraph Cogs["13 Modular Cogs"]
+        subgraph Cogs["14 Modular Cogs"]
             C1[tasks_cog]
             C2[settings_cog]
             C3[reminders_cog]
@@ -83,6 +83,7 @@ graph TD
             C11[discord_native.bulk_cog]
             C12[calendar_feed.cog]
             C13[task_import.cog]
+            C14[routine_workflows.cog]
         end
         subgraph Perf["⚡ High-Performance Layer"]
             AP[asyncpg Pool max_size=10]
@@ -285,6 +286,23 @@ tomorrow 09:30
 | `/bulk done` | — | Select multiple open tasks and complete them through the normal completion/gamification flow. |
 | `/bulk snooze` | — | Select multiple open tasks and move each deadline by one day. |
 | `/bulk delete` | — | Select multiple open tasks; requires a second confirmation before permanent deletion. |
+
+### 📋 Task Templates & Routine Workflows (Category 7)
+
+| Command | Parameters | Description |
+|---|---|---|
+| `/template use` | `name` | Apply a pre-built or custom template: generates the parent task, subtasks with relative deadlines (+1d, +3d, etc.), and Definition of Done checklists in one click. Autocomplete enabled. |
+| `/template create` | — | Open interactive modal to create a custom template with relative offsets, subtasks, and DoD checklist items. |
+| `/template from-task` | `task_id` `name` | Convert any existing task, its subtasks, and checklists into a reusable template. |
+| `/template list` | — | View all accessible templates (Built-in standard templates, Personal templates, and Guild-shared templates). |
+| `/template view` | `name` | Inspect a template's workflow structure, relative deadlines, and DoD requirements. |
+| `/template delete` | `name` | Delete a custom task template (creator or server admin). |
+| `/routine rule-add` | `event` `template` `[role]` | Create an event-driven automation rule (`role_added` or `member_join`). Automatically creates tasks and sends an onboarding DM to the member. |
+| `/routine rule-list` | — | List all active automated routine rules in the current server. |
+| `/routine rule-remove` | `rule_id` | Delete an automated routine rule. |
+
+> **✅ Definition of Done (DoD) Quality Guard:**
+> Tasks can have sub-checklists (e.g. Proofread, Attach files, Notify lead). Users can view and toggle items via the **`☑️ Checklist`** button on **TaskActionView**. When marking a task as Done (`/done` or button), if uncompleted checklist items remain, the bot intercepts the action with a confirmation dialog offering **`⚡ Force Complete`** or **`❌ Cancel`**.
 
 ### 🔥 Gamification & Habits
 

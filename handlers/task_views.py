@@ -1079,6 +1079,8 @@ class TaskActionView(ui.View):
                 item.label = t("btn_progress", lang)  # type: ignore[attr-defined]
             elif custom_id == f"task_{task_id}_comments":
                 item.label = t("btn_comments", lang)  # type: ignore[attr-defined]
+            elif custom_id == f"task_{task_id}_checklist":
+                item.label = t("btn_checklist", lang)  # type: ignore[attr-defined]
 
 
     def _update_pin_label(self) -> None:
@@ -1126,6 +1128,27 @@ class TaskActionView(ui.View):
         if row["status"] == "Cancelled":
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
+
+        from routine_workflows import service as routine_service
+        from routine_workflows.views import DoDForceConfirmView
+
+        pending_items = await routine_service.get_pending_checklists(self.task_id)
+        if pending_items:
+            confirm_view = DoDForceConfirmView(
+                task_id=self.task_id,
+                task_name=row["task"],
+                user_id=self.uid,
+                lang=lang,
+                pending_items=pending_items,
+                origin_view=self,
+            )
+            await interaction.followup.send(
+                embed=confirm_view.make_embed(),
+                view=confirm_view,
+                ephemeral=True,
+            )
+            return
+
         completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
         if completed is None:
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
@@ -1366,6 +1389,24 @@ class TaskActionView(ui.View):
             view=view,
             ephemeral=True,
             allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+    @ui.button(label="☑️ Checklist", style=discord.ButtonStyle.secondary, row=4, custom_id="checklist")
+    async def view_checklist(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from routine_workflows import service as routine_service
+        from routine_workflows.views import TaskChecklistView
+
+        task_row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1", (self.task_id,))
+        task_name = task_row["task"] if task_row else f"Task #{self.task_id}"
+        items = await routine_service.get_checklists(self.task_id)
+        view = TaskChecklistView(self.task_id, task_name, uid, lang, items)
+        await interaction.followup.send(
+            embed=view.make_embed(),
+            view=view,
+            ephemeral=True,
         )
 
 
@@ -1875,6 +1916,27 @@ class _QuickActionButtons(ui.View):
         if r["status"] == "Cancelled":
             await interaction.followup.send(t("task_already_cancelled", self.lang), ephemeral=True)
             return
+
+        from routine_workflows import service as routine_service
+        from routine_workflows.views import DoDForceConfirmView
+
+        pending_items = await routine_service.get_pending_checklists(self.task_id)
+        if pending_items:
+            confirm_view = DoDForceConfirmView(
+                task_id=self.task_id,
+                task_name=r["task"],
+                user_id=self.uid,
+                lang=self.lang,
+                pending_items=pending_items,
+                origin_view=self,
+            )
+            await interaction.followup.send(
+                embed=confirm_view.make_embed(),
+                view=confirm_view,
+                ephemeral=True,
+            )
+            return
+
         completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
         if completed is None:
             await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)

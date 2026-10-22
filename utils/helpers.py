@@ -786,7 +786,7 @@ def _recurring_label(recurring: Optional[str], lang: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_task_embed(row, lang: str, tz_name: str,
-                     subtasks=None, category=None) -> discord.Embed:
+                     subtasks=None, category=None, checklists=None) -> discord.Embed:
     """
     Build a premium, visually hierarchical embed for a single task.
     Accepts pre-fetched subtasks/category to avoid blocking DB calls.
@@ -934,6 +934,27 @@ def build_task_embed(row, lang: str, tz_name: str,
             name=t("task_detail_category", lang),
             value=f"{category['emoji']} {category['name']}",
             inline=True,
+        )
+
+    # ── Definition of Done (Checklists) ──────────────────────────────────────
+    if checklists:
+        done_chk = sum(
+            1 for c in checklists
+            if (c.get("is_done") if hasattr(c, "get") else getattr(c, "is_done", False))
+        )
+        total_chk = len(checklists)
+        chk_bar = progress_bar(done_chk, total_chk)
+        lines = []
+        for c in checklists[:5]:
+            is_c_done = c.get("is_done") if hasattr(c, "get") else getattr(c, "is_done", False)
+            c_title = c.get("title") if hasattr(c, "get") else getattr(c, "title", "")
+            lines.append(f"{'✅' if is_c_done else '⬜'} {c_title}")
+        if len(checklists) > 5:
+            lines.append(f"... +{len(checklists) - 5}")
+        embed.add_field(
+            name=f"📋 {t('dod_field_title', lang)} ({done_chk}/{total_chk})",
+            value=f"{chk_bar}\n" + "\n".join(lines),
+            inline=False,
         )
 
     def _fmt_ts(val) -> str:
