@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 25   # bump when adding migrations below
+SCHEMA_VERSION = 26   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -47,6 +47,7 @@ class _CachedUser:
     channel_id: Optional[int]
     role: str
     theme: str = "default"
+    weekly_retrospective: int = 1
     _expires: float = field(default_factory=lambda: time.monotonic() + _CACHE_TTL)
 
     @property
@@ -76,7 +77,8 @@ class UserCache:
             return None
 
     def set(self, uid: str, lang: str, timezone: str,
-            channel_id: Optional[int], role: str, theme: str = "default") -> None:
+            channel_id: Optional[int], role: str, theme: str = "default",
+            weekly_retrospective: int = 1) -> None:
         with self._lock:
             if len(self._store) >= self._max_size and uid not in self._store:
                 oldest = next(iter(self._store))
@@ -85,6 +87,7 @@ class UserCache:
                 lang=lang, timezone=timezone,
                 channel_id=channel_id, role=role,
                 theme=theme,
+                weekly_retrospective=weekly_retrospective,
             )
 
     def invalidate(self, uid: str) -> None:
@@ -1020,6 +1023,17 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_saved_filters_guild ON saved_filters(guild_id) WHERE guild_id IS NOT NULL;
 
     INSERT INTO schema_version VALUES (25) ON CONFLICT (version) DO UPDATE SET version=25;
+    """),
+    (26, """
+    -- Migration 26: Audit Log Target Index & Weekly Retrospective Settings
+    CREATE INDEX IF NOT EXISTS idx_audit_target_created
+        ON audit_log(target_id, created_at DESC)
+        WHERE target_id IS NOT NULL;
+
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_retrospective INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_retrospective_date TEXT;
+
+    INSERT INTO schema_version VALUES (26) ON CONFLICT (version) DO UPDATE SET version=26;
     """),
 ]
 

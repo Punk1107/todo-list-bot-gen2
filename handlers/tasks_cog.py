@@ -653,28 +653,62 @@ class TasksCog(commands.Cog, name="Tasks"):
     # /export
     # ─────────────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="export", description="📤 ส่งออก Task เป็น CSV / Export tasks as CSV")
+    @app_commands.command(
+        name="export",
+        description="📤 ส่งออก Task เป็น Interactive HTML หรือ CSV / Export tasks as Interactive HTML or CSV",
+    )
+    @app_commands.describe(format="รูปแบบไฟล์ที่ต้องการส่งออก / Export file format (html, csv)")
+    @app_commands.choices(format=[
+        app_commands.Choice(name="📄 Interactive HTML (Dashboard ออฟไลน์ ติ๊กถูกได้)", value="html"),
+        app_commands.Choice(name="📊 CSV (Spreadsheet / Excel)", value="csv"),
+    ])
     @rate_limit_check("export")
-    async def export(self, interaction: discord.Interaction) -> None:
+    async def export(
+        self,
+        interaction: discord.Interaction,
+        format: Optional[app_commands.Choice[str]] = None,
+    ) -> None:
         uid     = str(interaction.user.id)
         lang    = await get_user_lang(uid)
         tz_name = await get_user_timezone(uid)
 
         tasks = await db.afetchall(
-            "SELECT * FROM tasks WHERE owner_id=$1 ORDER BY created_at DESC", (uid,)
+            "SELECT * FROM tasks WHERE owner_id=$1 AND is_deleted=FALSE ORDER BY created_at DESC", (uid,)
         )
         if not tasks:
             await interaction.response.send_message(t("export_empty", lang), ephemeral=True)
             return
 
-        csv_bytes = build_csv_export(tasks, tz_name)
-        fname = f"tasks_{uid}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
-        await db.alog_action(uid, "task_exported", detail=f"{len(tasks)} tasks")
-        await interaction.response.send_message(
-            t("export_success", lang, filename=fname),
-            file=discord.File(csv_bytes, filename=fname),
-            ephemeral=True,
-        )
+        export_format = format.value if format else "html"
+
+        if export_format == "csv":
+            csv_bytes = build_csv_export(tasks, tz_name)
+            fname = f"tasks_{uid}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+            await db.alog_action(uid, "task_exported", detail=f"{len(tasks)} tasks (csv)")
+            await interaction.response.send_message(
+                t("export_success", lang, filename=fname),
+                file=discord.File(csv_bytes, filename=fname),
+                ephemeral=True,
+            )
+        else:
+            from history_reporting import service as history_service
+            cats = await db.afetchall(
+                "SELECT * FROM categories WHERE owner_id IN ($1, 'system')", (uid,)
+            )
+            html_bytes = history_service.build_html_export_bytes(
+                tasks=tasks,
+                categories=cats or [],
+                user_id=uid,
+                tz_name=tz_name,
+                lang=lang,
+            )
+            fname = f"tasks_report_{uid}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.html"
+            await db.alog_action(uid, "task_exported", detail=f"{len(tasks)} tasks (html)")
+            await interaction.response.send_message(
+                t("export_success_html", lang, filename=fname),
+                file=discord.File(html_bytes, filename=fname),
+                ephemeral=True,
+            )
 
     # ───────────────────────────────────────────────────────────────────────────
     # /task-stats

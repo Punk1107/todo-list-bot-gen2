@@ -267,6 +267,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.cleanup_loop.start()
         self.daily_digest_loop.start()
         self.deadline_dm_loop.start()
+        self.weekly_retrospective_loop.start()
 
         log.info(
             "RemindersCog started — reminder=%dmin recurring=%dmin dm_reminder=%dmin",
@@ -281,6 +282,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.cleanup_loop.cancel()
         self.daily_digest_loop.cancel()
         self.deadline_dm_loop.cancel()
+        self.weekly_retrospective_loop.cancel()
 
     # ── Reminder loop ─────────────────────────────────────────────────────────
 
@@ -542,6 +544,57 @@ class RemindersCog(commands.Cog, name="Reminders"):
         # Sleep until the next whole minute (:00s) for precision alignment
         now     = datetime.now(UTC)
         wait_s  = 60 - now.second
+        if wait_s < 60:
+            await asyncio.sleep(wait_s)
+
+    # ── Weekly Retrospective loop (Sunday 20:00 local time) ───────────────────
+
+    @tasks.loop(minutes=1)
+    async def weekly_retrospective_loop(self) -> None:
+        """
+        Sunday Evening Retrospective DM loop (20:00 local time per user).
+        Fires weekly summary with completion rate %, snooze bottleneck analysis,
+        and coaching tip.
+        """
+        users = await db.afetchall(
+            "SELECT user_id, timezone, lang, last_retrospective_date "
+            "FROM users WHERE weekly_retrospective = 1"
+        )
+        if not users:
+            return
+
+        from history_reporting import service as history_service
+
+        for user in users:
+            uid = str(user["user_id"])
+            tz_name = user["timezone"] or "UTC"
+            try:
+                user_tz = pytz.timezone(tz_name)
+            except Exception:
+                user_tz = UTC
+
+            local_now = datetime.now(user_tz)
+
+            # Check if Sunday (weekday 6) and hour is 20:00
+            if local_now.weekday() != 6:
+                continue
+            if local_now.hour != 20 or local_now.minute != 0:
+                continue
+
+            current_week_str = (local_now - timedelta(days=local_now.weekday())).strftime("%Y-W%W")
+            if user.get("last_retrospective_date") == current_week_str:
+                continue
+
+            try:
+                await history_service.send_weekly_retrospective_dm(self.bot, uid)
+            except Exception as exc:
+                log.error("weekly_retrospective_loop error uid=%s: %s", uid, exc)
+
+    @weekly_retrospective_loop.before_loop
+    async def before_weekly_retrospective(self) -> None:
+        await self.bot.wait_until_ready()
+        now = datetime.now(UTC)
+        wait_s = 60 - now.second
         if wait_s < 60:
             await asyncio.sleep(wait_s)
 
