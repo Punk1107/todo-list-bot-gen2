@@ -81,6 +81,11 @@ CREATE POLICY tasks_group_select ON tasks
     USING (
         project_id IS NOT NULL
         AND is_project_member(project_id, current_app_user())
+        AND (
+            NOT COALESCE(is_private, FALSE)
+            OR owner_id = current_app_user()
+            OR get_project_role(project_id, current_app_user()) = 'lead'
+        )
     );
 
 DROP POLICY IF EXISTS tasks_group_insert ON tasks;
@@ -97,6 +102,11 @@ CREATE POLICY tasks_group_update ON tasks
     USING (
         project_id IS NOT NULL
         AND can_manage_project_tasks(project_id, current_app_user())
+        AND (
+            NOT COALESCE(is_private, FALSE)
+            OR owner_id = current_app_user()
+            OR get_project_role(project_id, current_app_user()) = 'lead'
+        )
     )
     WITH CHECK (
         project_id IS NOT NULL

@@ -38,6 +38,8 @@ from collaboration.views import (
     build_members_embed,
     build_activity_embed,
     build_my_tasks_embed,
+    ProjectPermissionsView,
+    build_project_permissions_embed,
 )
 from core.security import rate_limit_check
 from locales.i18n import t
@@ -206,7 +208,8 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
     @project.command(name="add-task", description="➕ เพิ่ม Task เข้าโปรเจกต์ / Add a task to a project")
     @app_commands.describe(
         project_id="Project ID number",
-        priority="ระดับความสำคัญ / Priority level (0-7, default: 0)",
+        priority="Task priority level (0-7, default: 0)",
+        is_private="งานส่วนตัว/ความลับเฉพาะผู้สร้างและหัวหน้า / Private task visible only to creator and leads",
     )
     @app_commands.choices(priority=[
         app_commands.Choice(name="⬜ 0: Normal / ปกติ",     value=0),
@@ -220,7 +223,8 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
     ])
     @rate_limit_check("command")
     async def project_add_task(
-        self, interaction: discord.Interaction, project_id: int, priority: Optional[int] = 0
+        self, interaction: discord.Interaction, project_id: int,
+        priority: Optional[int] = 0, is_private: Optional[bool] = False,
     ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
@@ -244,7 +248,7 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             return
 
         from collaboration.views import AddProjectTaskModal
-        modal = AddProjectTaskModal(project, lang, priority=priority or 0)
+        modal = AddProjectTaskModal(project, lang, priority=priority or 0, is_private=is_private or False)
         await interaction.response.send_modal(modal)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -884,6 +888,90 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         )
         embed.set_footer(text=t("proj_footer_id", lang, project_id=project_id))
         await interaction.followup.send(embed=embed)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project permissions
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(name="permissions", description="🛡️ จัดการสิทธิ์ของสมาชิกในโปรเจกต์ / Manage project role permissions")
+    @app_commands.describe(project_id="Project ID number")
+    @rate_limit_check("command")
+    async def project_permissions(self, interaction: discord.Interaction, project_id: int) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        try:
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(
+                t("proj_not_found", lang, project_id=project_id), ephemeral=True
+            )
+            return
+
+        actor_role = await service.get_member_role(project_id, uid)
+        is_lead = actor_role == "lead" or project.owner_id == uid
+        if not (is_lead or is_admin):
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        perms = await service.get_project_role_permissions(project_id, "member")
+        embed = build_project_permissions_embed(project, "member", perms, lang)
+        view = ProjectPermissionsView(project, lang, interaction.user, role="member", permissions=perms)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project set-private
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(name="set-private", description="🔒 สลับสถานะความเป็นส่วนตัวของงาน / Set a project task as private or public")
+    @app_commands.describe(
+        project_id="Project ID number",
+        task_id="Task ID number",
+        is_private="เปิดหรือปิดงานลับ / True for private, False for public",
+    )
+    @rate_limit_check("command")
+    async def project_set_private(
+        self, interaction: discord.Interaction, project_id: int, task_id: int, is_private: bool
+    ) -> None:
+        uid  = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        try:
+            task = await service.toggle_task_privacy(
+                task_id, project_id, guild_id, uid, is_private, is_guild_admin=is_admin
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.TaskNotFound:
+            await interaction.followup.send(t("proj_task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except Exception as exc:
+            log.error("project_set_private error: %s", exc)
+            await interaction.followup.send(t("err_generic", lang), ephemeral=True)
+            return
+
+        msg_key = "task_private_toggled_on" if is_private else "task_private_toggled_off"
+        await interaction.followup.send(
+            f"✅ {t(msg_key, lang, task_id=task.task_id, name=task.task[:50])}", ephemeral=True
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
