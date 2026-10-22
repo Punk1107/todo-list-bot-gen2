@@ -149,6 +149,7 @@ class ProjectTask:
     tags:        Optional[str]
     created_at:  datetime
     updated_at:  datetime
+    is_private:  bool = False
     # Populated after JOIN with task_assignments:
     assignees:   list[str] = field(default_factory=list)
     assigned_roles: list[int] = field(default_factory=list)
@@ -175,6 +176,7 @@ class ProjectTask:
             tags        = row.get("tags"),
             created_at  = row["created_at"],
             updated_at  = row["updated_at"],
+            is_private  = bool(row.get("is_private") or False),
             assignees   = assignees or [],
             assigned_roles = assigned_roles or [],
             blocked_by  = blocked_by or [],
@@ -193,6 +195,39 @@ class ProjectTask:
     def priority_emoji(self) -> str:
         return ["⚪", "🔵", "🟡", "🟠", "🔴", "🔴", "💀", "🚨"].get(self.priority, "⚪") \
             if isinstance(self.priority, int) and 0 <= self.priority <= 7 else "⚪"
+
+
+PROJECT_PERMISSIONS = (
+    "can_create_tasks",
+    "can_change_deadline",
+    "can_assign_tasks",
+    "can_delete_tasks",
+    "can_manage_dependencies",
+)
+
+DEFAULT_ROLE_PERMISSIONS: dict[str, dict[str, bool]] = {
+    "lead": {
+        "can_create_tasks": True,
+        "can_change_deadline": True,
+        "can_assign_tasks": True,
+        "can_delete_tasks": True,
+        "can_manage_dependencies": True,
+    },
+    "member": {
+        "can_create_tasks": True,
+        "can_change_deadline": True,
+        "can_assign_tasks": True,
+        "can_delete_tasks": False,
+        "can_manage_dependencies": True,
+    },
+    "viewer": {
+        "can_create_tasks": False,
+        "can_change_deadline": False,
+        "can_assign_tasks": False,
+        "can_delete_tasks": False,
+        "can_manage_dependencies": False,
+    },
+}
 
 
 @dataclass

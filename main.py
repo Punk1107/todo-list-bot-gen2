@@ -68,6 +68,7 @@ COGS = [
     "calendar_feed.cog",                    # /calendar feed management
     "task_import.cog",                      # /import CSV/JSON task files
     "routine_workflows.cog",                # /template & /routine workflows
+    "recovery.cog",                         # /trash & /restore — Recycle Bin safe recovery
 ]
 
 

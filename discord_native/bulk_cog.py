@@ -168,18 +168,11 @@ class BulkTaskView(ui.View):
                     db.query_cache.invalidate_tables(["tasks"])
                     db.invalidate_stats(self.uid)
                 else:
-                    deleted = await db.afetchone(
-                        """DELETE FROM tasks
-                           WHERE task_id=$1 AND owner_id=$2 AND parent_task_id IS NULL
-                           RETURNING task_id""",
-                        (task_id, self.uid),
-                    )
-                    if deleted is None:
+                    from recovery import service as recovery_service
+                    deleted = await recovery_service.soft_delete_task(task_id, self.uid)
+                    if not deleted:
                         failed += 1
                         continue
-                    await db.alog_action(self.uid, "task_deleted", str(task_id))
-                    db.query_cache.invalidate_tables(["tasks"])
-                    db.invalidate_stats(self.uid)
                 succeeded += 1
             except Exception:
                 failed += 1

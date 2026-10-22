@@ -186,8 +186,9 @@ def build_board_embed(board: BoardData, lang: str, column: str = "pending") -> d
             ]
             blocker_str = f"\n⛔ Blocked by: {', '.join(active_blockers[:3])}" if active_blockers else ""
             deadline_str = format_deadline(task.deadline, "UTC") if task.deadline else "—"
+            priv_badge = "🔒 " if task.is_private else ""
             embed.add_field(
-                name=f"{task.priority_emoji} `#{task.task_id}` {task.task[:55]}",
+                name=f"{priv_badge}{task.priority_emoji} `#{task.task_id}` {task.task[:55]}",
                 value=(
                     f"📅 `{deadline_str}` · ⏱️ `{time_left_str(task.deadline)}`{assignee_str}{blocker_str}"
                 ),
@@ -358,10 +359,11 @@ class CreateProjectModal(ui.Modal):
 class AddProjectTaskModal(ui.Modal):
     """Form for adding a new task to a shared project."""
 
-    def __init__(self, project: Project, lang: str, priority: int = 0) -> None:
+    def __init__(self, project: Project, lang: str, priority: int = 0, is_private: bool = False) -> None:
         super().__init__(title=t("proj_add_task_modal_title", lang, name=project.name[:30]))
         self.project = project
         self.lang    = lang
+        self.is_private = is_private
 
         self.task_name = ui.TextInput(
             label=t("task_name_label", lang),
@@ -408,6 +410,7 @@ class AddProjectTaskModal(ui.Modal):
         if self.priority.value and self.priority.value.strip().isdigit():
             prio_val = max(0, min(7, int(self.priority.value.strip())))
 
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
             task = await service.add_project_task(
                 project_id  = self.project.project_id,
@@ -417,6 +420,8 @@ class AddProjectTaskModal(ui.Modal):
                 creator_id  = uid,
                 priority    = prio_val,
                 description = self.description_field.value.strip() or None,
+                is_private  = self.is_private,
+                is_guild_admin = is_admin,
             )
         except service.ProjectPermissionError:
             await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
@@ -1093,6 +1098,28 @@ class ProjectDashboardView(ui.View):
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @ui.button(label="🛡️ Permissions", style=discord.ButtonStyle.secondary, custom_id="proj_dash_perms", row=2)
+    async def btn_permissions(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+
+        actor_role = await service.get_member_role(self.project_id, actor_id)
+        is_lead = actor_role == "lead" or project.owner_id == actor_id
+        if not (is_lead or is_admin):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
+
+        perms = await service.get_project_role_permissions(self.project_id, "member")
+        embed = build_project_permissions_embed(project, "member", perms, lang)
+        view = ProjectPermissionsView(project, lang, self.user, role="member", permissions=perms)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 
 class BoardColumnSelect(ui.Select):
@@ -1115,8 +1142,10 @@ class BoardColumnSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction) -> None:
         col = self.values[0]
         await interaction.response.defer()
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin)
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", self.lang, project_id=self.project_id), ephemeral=True)
             return
@@ -1344,8 +1373,10 @@ class ProjectBoardView(ui.View):
     async def btn_claim(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer(ephemeral=True)
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin)
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
@@ -1367,8 +1398,10 @@ class ProjectBoardView(ui.View):
     async def btn_complete(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer(ephemeral=True)
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin)
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
@@ -1688,3 +1721,151 @@ class MembersView(ui.View):
         embed = build_project_dashboard_embed(stats, self.lang)
         view  = ProjectDashboardView(self.project.project_id, self.project.guild_id, self.lang, self.user)
         await interaction.message.edit(embed=embed, view=view)
+
+
+def build_project_permissions_embed(
+    project: Project,
+    role: str,
+    permissions: dict[str, bool],
+    lang: str,
+) -> discord.Embed:
+    """Build embed displaying granular permissions for a role in a project."""
+    color = int(project.color.lstrip("#"), 16) if project.color.startswith("#") else 0x5865F2
+    role_label = t(f"proj_role_{role}", lang) if role in ("lead", "member", "viewer") else role.capitalize()
+    embed = discord.Embed(
+        title=f"🛡️ {t('proj_perm_title', lang, project=project.name)}",
+        description=t("proj_perm_desc", lang, role=role_label),
+        color=color,
+    )
+
+    lines: list[str] = []
+    labels = {
+        "can_create_tasks": f"➕ {t('perm_can_create_tasks', lang)}",
+        "can_change_deadline": f"📅 {t('perm_can_change_deadline', lang)}",
+        "can_assign_tasks": f"👥 {t('perm_can_assign_tasks', lang)}",
+        "can_delete_tasks": f"🗑️ {t('perm_can_delete_tasks', lang)}",
+        "can_manage_dependencies": f"🔗 {t('perm_can_manage_dependencies', lang)}",
+    }
+    for perm_key, is_allowed in permissions.items():
+        state_icon = "🟢" if is_allowed else "🔴"
+        state_text = t("proj_perm_allowed", lang) if is_allowed else t("proj_perm_denied", lang)
+        label = labels.get(perm_key, perm_key)
+        lines.append(f"{state_icon} **{label}**: `{state_text}`")
+
+    embed.add_field(
+        name=t("proj_perm_role_heading", lang, role=role_label),
+        value="\n".join(lines) if lines else "—",
+        inline=False,
+    )
+    embed.set_footer(text=t("proj_perm_footer", lang))
+    return embed
+
+
+class ProjectPermissionsView(ui.View):
+    """Interactive permission editor for project roles."""
+
+    def __init__(
+        self,
+        project: Project,
+        lang: str,
+        user: discord.User | discord.Member,
+        role: str = "member",
+        permissions: Optional[dict[str, bool]] = None,
+    ) -> None:
+        super().__init__(timeout=300)
+        self.project = project
+        self.lang = lang
+        self.user = user
+        self.role = role
+        self.permissions = permissions or {}
+        self._sync_components()
+
+    def _sync_components(self) -> None:
+        self.clear_items()
+
+        # 1. Role selector dropdown (Member vs Viewer)
+        role_select = ui.Select(
+            placeholder=t("proj_perm_select_role", self.lang),
+            options=[
+                discord.SelectOption(
+                    label=f"👥 {t('proj_role_member', self.lang)}",
+                    value="member",
+                    default=(self.role == "member"),
+                ),
+                discord.SelectOption(
+                    label=f"👀 {t('proj_role_viewer', self.lang)}",
+                    value="viewer",
+                    default=(self.role == "viewer"),
+                ),
+            ],
+            row=0,
+            custom_id="perm_role_select",
+        )
+        role_select.callback = self._on_role_change
+        self.add_item(role_select)
+
+        # 2. Permission toggle buttons (row 1 & 2)
+        perm_configs = [
+            ("can_create_tasks", "➕", t("perm_short_create", self.lang), 1),
+            ("can_change_deadline", "📅", t("perm_short_deadline", self.lang), 1),
+            ("can_assign_tasks", "👥", t("perm_short_assign", self.lang), 1),
+            ("can_delete_tasks", "🗑️", t("perm_short_delete", self.lang), 2),
+            ("can_manage_dependencies", "🔗", t("perm_short_deps", self.lang), 2),
+        ]
+        for perm_key, emoji, label, row_idx in perm_configs:
+            is_allowed = self.permissions.get(perm_key, False)
+            btn = ui.Button(
+                label=f"{label}: {'ON' if is_allowed else 'OFF'}",
+                emoji=emoji,
+                style=discord.ButtonStyle.success if is_allowed else discord.ButtonStyle.secondary,
+                row=row_idx,
+                custom_id=f"perm_toggle_{perm_key}",
+            )
+            btn.callback = self._make_toggle_callback(perm_key)
+            self.add_item(btn)
+
+        # 3. Back button (row 3)
+        back_btn = ui.Button(
+            label=t("proj_btn_back", self.lang),
+            style=discord.ButtonStyle.secondary,
+            row=3,
+            custom_id="perm_back_btn",
+        )
+        back_btn.callback = self._on_back
+        self.add_item(back_btn)
+
+    def _make_toggle_callback(self, perm_key: str):
+        async def callback(interaction: discord.Interaction):
+            await interaction.response.defer()
+            actor_id = str(interaction.user.id)
+            is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+            new_val = not self.permissions.get(perm_key, False)
+            await service.set_project_role_permission(
+                self.project.project_id,
+                self.project.guild_id,
+                self.role,
+                perm_key,
+                new_val,
+                actor_id,
+                is_guild_admin=is_admin,
+            )
+            self.permissions = await service.get_project_role_permissions(self.project.project_id, self.role)
+            self._sync_components()
+            embed = build_project_permissions_embed(self.project, self.role, self.permissions, self.lang)
+            await interaction.edit_original_response(embed=embed, view=self)
+        return callback
+
+    async def _on_role_change(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        self.role = interaction.data["values"][0]
+        self.permissions = await service.get_project_role_permissions(self.project.project_id, self.role)
+        self._sync_components()
+        embed = build_project_permissions_embed(self.project, self.role, self.permissions, self.lang)
+        await interaction.edit_original_response(embed=embed, view=self)
+
+    async def _on_back(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        stats = await service.get_project_stats(self.project.project_id, self.project.guild_id)
+        embed = build_project_dashboard_embed(stats, self.lang)
+        view = ProjectDashboardView(self.project.project_id, self.project.guild_id, self.lang, self.user)
+        await interaction.edit_original_response(embed=embed, view=view)

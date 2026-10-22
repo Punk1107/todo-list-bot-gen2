@@ -542,14 +542,16 @@ class DeleteConfirmView(ui.View):
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
         try:
-            await db.aexecute(
-                "DELETE FROM tasks WHERE task_id=$1 AND owner_id=$2",
-                (self.task_id, self.uid),
+            from recovery import service as recovery_service
+            is_admin = interaction.user.guild_permissions.administrator if interaction.guild else False
+            deleted = await recovery_service.soft_delete_task(
+                self.task_id, self.uid, is_guild_admin=is_admin
             )
-            await db.alog_action(self.uid, "task_deleted", str(self.task_id))
-            db.invalidate_stats(self.uid)
+            if not deleted:
+                await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+                return
         except Exception as exc:
-            log.error("Task delete failed: %s", exc)
+            log.error("Task soft delete failed: %s", exc)
             await interaction.followup.send(t("err_db", self.lang), ephemeral=True)
             return
         self.stop()
@@ -1505,7 +1507,7 @@ class TaskListView(ui.View):
         fs  = self.filter_status
 
         if fs == "overdue":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline<$2"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status='Pending' AND deadline<$2"
             params: list = [self.uid, now]
         elif fs == "today":
             try:
@@ -1517,16 +1519,16 @@ class TaskListView(ui.View):
                 # Fallback to UTC if timezone is invalid
                 today_start = datetime.now(pytz.utc).replace(hour=0,  minute=0,  second=0,  microsecond=0).isoformat()
                 today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status='Pending' AND deadline BETWEEN $2 AND $3"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status='Pending' AND deadline BETWEEN $2 AND $3"
             params = [self.uid, today_start, today_end]
         elif fs == "pinned":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_pinned=1"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND is_pinned=1"
             params = [self.uid]
         elif fs == "all":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE"
             params = [self.uid]
         else:
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND status=$2"
+            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status=$2"
             params = [self.uid, fs]
 
         # COUNT uses a subquery so param indices are independent
@@ -1586,10 +1588,10 @@ class TaskListView(ui.View):
         # Fetch total + overdue counts for summary line
         now_iso = datetime.now(pytz.utc).isoformat()
         total_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (self.uid,)
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE", (self.uid,)
         )
         overdue_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE "
             "AND status='Pending' AND deadline<$2", (self.uid, now_iso)
         )
         total_count   = total_row["c"]   if total_row   else 0

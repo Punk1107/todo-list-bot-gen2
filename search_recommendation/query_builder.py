@@ -311,6 +311,8 @@ LIMIT {limit_placeholder}
         if not f.include_subtasks:
             clauses.append("t.parent_task_id IS NULL")
 
+        clauses.append("t.is_deleted = FALSE")
+
     def _apply_field_filters(
         self,
         f: SearchFilter,

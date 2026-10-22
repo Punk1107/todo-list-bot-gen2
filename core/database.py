@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 23   # bump when adding migrations below
+SCHEMA_VERSION = 24   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +172,8 @@ _KNOWN_TABLES = {
     "project_activity_log", "task_attachments", "task_assignments",
     "guild_settings", "audit_log", "schema_version", "task_completion_events",
     "user_achievements", "project_task_threads", "project_task_dependencies",
-    "project_task_role_assignments",
+    "project_task_role_assignments", "task_templates", "task_checklists",
+    "routine_event_rules", "project_role_permissions",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -973,6 +974,33 @@ MIGRATIONS: list[tuple[int, str]] = [
 
     INSERT INTO schema_version VALUES (23) ON CONFLICT (version) DO UPDATE SET version=23;
     """),
+
+    # ── v24: soft delete recovery, private tasks, and granular role permissions
+    (24, """
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT FALSE;
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_active_owner
+        ON tasks(owner_id, is_deleted) WHERE is_deleted = FALSE;
+    CREATE INDEX IF NOT EXISTS idx_tasks_trash
+        ON tasks(owner_id, deleted_at) WHERE is_deleted = TRUE;
+    CREATE INDEX IF NOT EXISTS idx_tasks_project_scope_private
+        ON tasks(project_id, is_private, is_deleted);
+
+    CREATE TABLE IF NOT EXISTS project_role_permissions (
+        project_id   INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+        role         TEXT NOT NULL CHECK(role IN ('lead', 'member', 'viewer')),
+        permission   TEXT NOT NULL,
+        is_allowed   BOOLEAN NOT NULL,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (project_id, role, permission)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_role_permissions_scope
+        ON project_role_permissions(project_id, role);
+
+    INSERT INTO schema_version VALUES (24) ON CONFLICT (version) DO UPDATE SET version=24;
+    """),
 ]
 
 
@@ -1431,7 +1459,7 @@ class DatabaseManager:
                 SUM(CASE WHEN status='Cancelled' THEN 1 ELSE 0 END) AS cancelled,
                 SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue,
                 SUM(CASE WHEN is_pinned=1 THEN 1 ELSE 0 END) AS pinned
-               FROM tasks WHERE owner_id=$2""",
+               FROM tasks WHERE owner_id=$2 AND is_deleted=FALSE""",
             (now, uid),
         )
         if not row:
@@ -1511,7 +1539,7 @@ class DatabaseManager:
                              AND completed_at > deadline::TIMESTAMP WITH TIME ZONE
                              THEN EXTRACT(EPOCH FROM (completed_at - deadline::TIMESTAMP WITH TIME ZONE)) / 3600.0
                              ELSE NULL END) AS avg_lag_h
-                FROM tasks WHERE owner_id=$2
+                FROM tasks WHERE owner_id=$2 AND is_deleted=FALSE
             )
             SELECT * FROM base""",
             (now_iso, uid),

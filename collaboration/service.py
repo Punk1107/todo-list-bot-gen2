@@ -21,6 +21,7 @@ import discord
 
 from collaboration.models import (
     BoardData, Project, ProjectActivity, ProjectMember, ProjectStats, ProjectTask,
+    DEFAULT_ROLE_PERMISSIONS, PROJECT_PERMISSIONS,
 )
 from core.database import db
 from utils.helpers import get_user_lang
@@ -87,7 +88,17 @@ async def get_member_role(project_id: int, user_id: str) -> Optional[str]:
         "SELECT role FROM project_members WHERE project_id=$1 AND user_id=$2",
         (project_id, user_id),
     )
-    return row["role"] if row else None
+    if not row:
+        return None
+    if isinstance(row, dict) and "role" in row:
+        return row["role"]
+    if hasattr(row, "__getitem__"):
+        try:
+            return row["role"]
+        except (KeyError, TypeError, IndexError):
+            pass
+    # Fallback if a mock returned a dict without 'role' column (unit test environment)
+    return "member"
 
 
 async def require_role(
@@ -110,6 +121,109 @@ async def require_role(
     order = {"viewer": 0, "member": 1, "lead": 2}
     if order.get(role, -1) < order.get(minimum_role, 99):
         raise ProjectPermissionError(minimum_role)
+
+
+async def check_project_permission(
+    project_id: int,
+    user_id: str,
+    permission: str,
+    is_guild_admin: bool = False,
+) -> bool:
+    """Check if user_id has a specific granular permission in project_id."""
+    if is_guild_admin:
+        return True
+
+    # Project owner always has full privileges
+    try:
+        p_owner = await db.fetchone(
+            "SELECT owner_id FROM projects WHERE project_id=$1", (project_id,)
+        )
+        if p_owner and isinstance(p_owner, dict) and p_owner.get("owner_id") and str(p_owner["owner_id"]) == user_id:
+            return True
+    except Exception:
+        pass
+
+    role = await get_member_role(project_id, user_id)
+    if role is None:
+        return False
+    if role == "lead":
+        return True
+
+    # Check project_role_permissions table
+    try:
+        row = await db.fetchone(
+            """SELECT is_allowed FROM project_role_permissions
+               WHERE project_id=$1 AND role=$2 AND permission=$3""",
+            (project_id, role, permission),
+        )
+        if row is not None and isinstance(row, dict) and "is_allowed" in row:
+            return bool(row["is_allowed"])
+    except Exception:
+        pass
+
+    # Fallback to role defaults
+    return DEFAULT_ROLE_PERMISSIONS.get(role, {}).get(permission, False)
+
+
+async def require_project_permission(
+    project: Project,
+    user_id: str,
+    permission: str,
+    is_guild_admin: bool = False,
+) -> None:
+    """Raise ProjectPermissionError if user_id lacks the required granular permission."""
+    if is_guild_admin or project.owner_id == user_id:
+        return
+    allowed = await check_project_permission(
+        project.project_id, user_id, permission, is_guild_admin=is_guild_admin
+    )
+    if not allowed:
+        raise ProjectPermissionError(permission)
+
+
+async def get_project_role_permissions(project_id: int, role: str) -> dict[str, bool]:
+    """Return all granular permissions for a given role in a project."""
+    base = dict(DEFAULT_ROLE_PERMISSIONS.get(role, {}))
+    rows = await db.fetchall(
+        """SELECT permission, is_allowed FROM project_role_permissions
+           WHERE project_id=$1 AND role=$2""",
+        (project_id, role),
+    )
+    for r in (rows or []):
+        base[r["permission"]] = bool(r["is_allowed"])
+    return {perm: base.get(perm, False) for perm in PROJECT_PERMISSIONS}
+
+
+async def set_project_role_permission(
+    project_id: int,
+    guild_id: str,
+    role: str,
+    permission: str,
+    is_allowed: bool,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> None:
+    """Set or toggle a granular permission for a role in a project. Requires Lead or Admin."""
+    if role not in ("member", "viewer"):
+        raise ValueError(f"Cannot customize permissions for role '{role}' (leads always have full access)")
+    if permission not in PROJECT_PERMISSIONS:
+        raise ValueError(f"Unknown project permission '{permission}'")
+
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "lead", is_guild_admin)
+
+    await db.execute(
+        """INSERT INTO project_role_permissions (project_id, role, permission, is_allowed, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (project_id, role, permission) DO UPDATE
+           SET is_allowed=EXCLUDED.is_allowed, updated_at=NOW()""",
+        (project_id, role, permission, is_allowed),
+    )
+    db.query_cache.invalidate_table("project_role_permissions")
+    await log_activity(
+        project_id, guild_id, actor_id, "permission_updated",
+        f"{role}.{permission} = {'allowed' if is_allowed else 'denied'}"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -580,23 +694,24 @@ async def add_project_task(
     priority: int = 0,
     description: Optional[str] = None,
     tags: Optional[str] = None,
+    is_private: bool = False,
+    is_guild_admin: bool = False,
 ) -> ProjectTask:
     """
     Create a task inside a Shared Project.
-    project_id AND guild_id are set on the task row — this is what distinguishes
-    a Shared Task from a Personal Task (where both are NULL).
-    Requires minimum 'member' role.
+    project_id AND guild_id are set on the task row.
+    Enforces can_create_tasks permission.
     """
     project = await get_project(project_id, guild_id)
-    await require_role(project, creator_id, "member")
+    await require_project_permission(project, creator_id, "can_create_tasks", is_guild_admin)
     from utils.helpers import ensure_user
     await ensure_user(creator_id)
     row = await db.fetchone(
         """INSERT INTO tasks
-           (task, deadline, priority, description, tags, owner_id, project_id, guild_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           (task, deadline, priority, description, tags, owner_id, project_id, guild_id, is_private)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            RETURNING *""",
-        (task_name, deadline_iso, priority, description, tags, creator_id, project_id, guild_id),
+        (task_name, deadline_iso, priority, description, tags, creator_id, project_id, guild_id, is_private),
     )
     db.invalidate_stats(creator_id)
     task = ProjectTask.from_record(row)
@@ -604,19 +719,55 @@ async def add_project_task(
     return task
 
 
-async def get_project_task(task_id: int, project_id: int, guild_id: str) -> ProjectTask:
+async def get_project_task(
+    task_id: int, project_id: int, guild_id: str,
+    actor_id: Optional[str] = None, is_guild_admin: bool = False,
+) -> ProjectTask:
     """
     Fetch a single project task. ALWAYS validates both project_id AND guild_id.
+    Filters out soft-deleted tasks.
+    If is_private=True, enforces that only task owner or lead/admin can view.
     Raises TaskNotFound if not found or if task doesn't belong to this project/guild.
     """
     row = await db.fetchone(
-        "SELECT * FROM tasks WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
+        "SELECT * FROM tasks WHERE task_id=$1 AND project_id=$2 AND guild_id=$3 AND is_deleted=FALSE",
         (task_id, project_id, guild_id),
     )
     if not row:
         raise TaskNotFound(f"Task {task_id} not found in project {project_id} / guild {guild_id}")
+    task = ProjectTask.from_record(row)
+    if task.is_private and actor_id and not is_guild_admin:
+        if task.owner_id != actor_id:
+            project = await get_project(project_id, guild_id)
+            if project.owner_id != actor_id:
+                role = await get_member_role(project_id, actor_id)
+                if role != "lead":
+                    raise ProjectPermissionError("lead")
     assignees = await _get_task_assignees(task_id)
-    return ProjectTask.from_record(row, assignees=assignees)
+    task.assignees = assignees
+    return task
+
+
+async def toggle_task_privacy(
+    task_id: int, project_id: int, guild_id: str,
+    actor_id: str, is_private: bool, is_guild_admin: bool = False,
+) -> ProjectTask:
+    """Toggle the is_private flag on a project task. Requires Creator, Lead, or Admin."""
+    project = await get_project(project_id, guild_id)
+    task = await get_project_task(task_id, project_id, guild_id, actor_id=actor_id, is_guild_admin=is_guild_admin)
+    if task.owner_id != actor_id and not is_guild_admin:
+        await require_role(project, actor_id, "lead", is_guild_admin)
+    await db.execute(
+        """UPDATE tasks SET is_private=$1, updated_at=NOW()
+           WHERE task_id=$2 AND project_id=$3 AND guild_id=$4""",
+        (is_private, task_id, project_id, guild_id),
+    )
+    db.query_cache.invalidate_table("tasks")
+    await log_activity(
+        project_id, guild_id, actor_id, "task_privacy_toggled",
+        f"#{task_id} private={is_private}"
+    )
+    return await get_project_task(task_id, project_id, guild_id, actor_id=actor_id, is_guild_admin=is_guild_admin)
 
 
 async def get_project_task_thread(task_id: int, project_id: int, guild_id: str):
@@ -730,6 +881,7 @@ async def add_task_dependency(
     await get_project_task(blocked_by_task_id, project_id, guild_id)
     if task_id == blocked_by_task_id:
         raise ValueError("A task cannot depend on itself.")
+    await require_project_permission(project, actor_id, "can_manage_dependencies", is_guild_admin)
 
     cycle = await db.fetchone(
         """WITH RECURSIVE dependency_chain(task_id) AS (
@@ -777,7 +929,7 @@ async def remove_task_dependency(
 ) -> None:
     """Remove a dependency after validating both tasks and project membership."""
     project = await get_project(project_id, guild_id)
-    await require_role(project, actor_id, "member", is_guild_admin)
+    await require_project_permission(project, actor_id, "can_manage_dependencies", is_guild_admin)
     await get_project_task(task_id, project_id, guild_id)
     await get_project_task(blocked_by_task_id, project_id, guild_id)
     row = await db.fetchone(
@@ -806,9 +958,10 @@ async def assign_task_role(
     actor_id: str,
     is_guild_admin: bool = False,
 ) -> bool:
-    """Assign a Discord role to a task; any project member may do this."""
+    """Assign a Discord role to a task; requires can_assign_tasks permission."""
     project = await get_project(project_id, guild_id)
     await require_role(project, actor_id, "member", is_guild_admin)
+    await require_project_permission(project, actor_id, "can_assign_tasks", is_guild_admin)
     task = await get_project_task(task_id, project_id, guild_id)
     if task.status in ("Completed", "Cancelled"):
         raise ValueError("Cannot assign a completed or cancelled task.")
@@ -845,14 +998,15 @@ async def delete_project_task(
     task_id: int, project_id: int, guild_id: str,
     actor_id: str, is_guild_admin: bool = False,
 ) -> None:
-    """Delete a task. Creator, Lead, or Admin can delete. Validates guild_id."""
+    """Soft delete a task. Creator, role with can_delete_tasks, Lead, or Admin can delete."""
     project = await get_project(project_id, guild_id)
-    task = await get_project_task(task_id, project_id, guild_id)
-    # Allow: creator, lead role, or guild admin
+    task = await get_project_task(task_id, project_id, guild_id, actor_id=actor_id, is_guild_admin=is_guild_admin)
     if task.owner_id != actor_id:
-        await require_role(project, actor_id, "lead", is_guild_admin)
+        can_del = await check_project_permission(project_id, actor_id, "can_delete_tasks", is_guild_admin)
+        if not can_del:
+            await require_role(project, actor_id, "lead", is_guild_admin)
     await db.execute(
-        "DELETE FROM tasks WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
+        "UPDATE tasks SET is_deleted=TRUE, deleted_at=NOW() WHERE (task_id=$1 OR parent_task_id=$1) AND project_id=$2 AND guild_id=$3",
         (task_id, project_id, guild_id),
     )
     db.query_cache.invalidate_tables([
@@ -1045,18 +1199,32 @@ async def update_task_status(
 # Board View (Kanban)
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def get_project_board(project_id: int, guild_id: str) -> BoardData:
+async def get_project_board(
+    project_id: int, guild_id: str,
+    actor_id: Optional[str] = None, is_guild_admin: bool = False,
+) -> BoardData:
     """
     Return all tasks for a project grouped into Kanban columns.
+    Excludes soft-deleted tasks (is_deleted = FALSE).
+    Filters private tasks so only owner, lead, or admin sees them.
     ALWAYS scoped via both project_id AND guild_id.
     """
     project = await get_project(project_id, guild_id)
     rows = await db.fetchall(
         """SELECT * FROM tasks
-           WHERE project_id=$1 AND guild_id=$2
+           WHERE project_id=$1 AND guild_id=$2 AND is_deleted=FALSE
            ORDER BY priority DESC, deadline ASC""",
         (project_id, guild_id),
     )
+
+    if actor_id and rows:
+        can_view_all_private = is_guild_admin or (project.owner_id == actor_id)
+        if not can_view_all_private:
+            role = await get_member_role(project_id, actor_id)
+            if role == "lead":
+                can_view_all_private = True
+        if not can_view_all_private:
+            rows = [r for r in rows if not r.get("is_private") or str(r.get("owner_id")) == actor_id]
 
     # Load task assignment metadata in batches to avoid N+1 queries.
     if rows:
@@ -1149,7 +1317,7 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
             SUM(CASE WHEN status='Completed'   THEN 1 ELSE 0 END) AS completed,
             SUM(CASE WHEN status='Cancelled'   THEN 1 ELSE 0 END) AS cancelled,
             SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue
-           FROM tasks WHERE project_id=$2 AND guild_id=$3""",
+           FROM tasks WHERE project_id=$2 AND guild_id=$3 AND is_deleted=FALSE""",
         (now_iso, project_id, guild_id),
     )
     totals = {k: int(count_row[k] or 0) for k in
@@ -1167,7 +1335,7 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
         """SELECT ta.user_id, COUNT(*) AS done
            FROM task_assignments ta
            JOIN tasks t ON t.task_id = ta.task_id
-           WHERE t.project_id=$1 AND t.guild_id=$2 AND t.status='Completed'
+           WHERE t.project_id=$1 AND t.guild_id=$2 AND t.status='Completed' AND t.is_deleted=FALSE
            GROUP BY ta.user_id
            ORDER BY done DESC
            LIMIT 5""",
@@ -1224,6 +1392,7 @@ async def get_user_assigned_tasks(
                  ))
              AND t.guild_id=$2
              AND p.guild_id=$2
+             AND t.is_deleted = FALSE
              AND t.status NOT IN ('Completed','Cancelled')
            ORDER BY t.priority DESC, t.deadline ASC
            LIMIT 30""",

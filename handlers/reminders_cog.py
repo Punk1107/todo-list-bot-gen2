@@ -597,6 +597,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                    FROM tasks t
                    JOIN users u ON t.owner_id = u.user_id
                    WHERE t.status = 'Pending'
+                     AND t.is_deleted = FALSE
                      AND t.deadline BETWEEN $1 AND $2
                      AND (t.dm_reminded & $3) = 0
                      AND u.notify_enabled = 1
