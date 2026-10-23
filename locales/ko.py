@@ -898,6 +898,7 @@ STRINGS = {
     "trash_expired": "30일 보관 기간이 만료되어 작업을 복구할 수 없습니다.",
     "trash_purge_success": "작업 #{task_id} 영구 삭제 완료.",
     "trash_purged_all": "휴지통에서 {count}개의 작업을 영구 삭제했습니다.",
+    "task_already_in_trash": "🗑️ 작업 #{task_id}은(는) 이미 휴지통에 있습니다. 복구하거나 영구 삭제하려면 /trash를 사용하세요.",
     "task_private_label": "비공개 / 비밀 작업",
     "task_private_badge": "🔒 비공개",
     "task_private_toggled_on": "작업 #{task_id} '{name}'이(가) 비공개로 설정되었습니다.",

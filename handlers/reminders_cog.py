@@ -63,23 +63,23 @@ async def _build_digest_embed(
         db.afetchall(
             """SELECT task_id, task, deadline, priority
                FROM tasks
-               WHERE owner_id=$1 AND status='Pending'
+               WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE
                  AND deadline BETWEEN $2 AND $3
                ORDER BY priority DESC, deadline ASC LIMIT 10""",
             (uid, day_start, day_end),
         ),
         db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2",
             (uid, utc_now.isoformat()),
         ),
         db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending'",
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE",
             (uid,),
         ),
         db.afetchall(
             """SELECT task_id, task, deadline, priority
                FROM tasks
-               WHERE owner_id=$1 AND status='Pending'
+               WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE
                  AND deadline > $2 AND deadline <= $3
                ORDER BY deadline ASC LIMIT 3""",
             (uid, day_end, upcoming_end),
@@ -302,6 +302,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                FROM tasks t
                JOIN users u ON t.owner_id = u.user_id
                WHERE t.status = 'Pending'
+                 AND t.is_deleted = FALSE
                  AND t.deadline <= $1
                  AND t.deadline > $2
                  AND u.notify_enabled = 1
@@ -407,6 +408,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     expired = await conn.fetch(
                         """SELECT * FROM tasks
                            WHERE status='Pending'
+                             AND is_deleted = FALSE
                              AND (recurring IS NOT NULL OR recurrence_rule IS NOT NULL)
                              AND deadline < $1
                            ORDER BY deadline ASC

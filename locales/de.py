@@ -949,6 +949,7 @@ STRINGS = {
     "trash_expired": "Aufgabe hat die 30-Tage-Frist überschritten und kann nicht wiederhergestellt werden.",
     "trash_purge_success": "Aufgabe #{task_id} dauerhaft gelöscht.",
     "trash_purged_all": "{count} Aufgabe(n) dauerhaft aus dem Papierkorb gelöscht.",
+    "task_already_in_trash": "🗑️ Aufgabe #{task_id} befindet sich bereits im Papierkorb. Verwenden Sie /trash zum Wiederherstellen oder endgültigen Löschen.",
     "task_private_label": "Vertrauliche / Private Aufgabe",
     "task_private_badge": "🔒 Privat",
     "task_private_toggled_on": "Aufgabe #{task_id} '{name}' ist jetzt als Privat markiert.",

@@ -131,7 +131,7 @@ async def _record_completion(
     remaining = await conn.fetchval(
         """SELECT EXISTS (
              SELECT 1 FROM tasks
-             WHERE owner_id=$1 AND status='Pending'
+             WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE
                AND CASE
                      WHEN deadline ~ '^\\d{4}-\\d{2}-\\d{2}'
                      THEN deadline::timestamptz < $2
@@ -159,6 +159,7 @@ async def complete_personal_task(task_id: int, user_id: str) -> Optional[list[st
                    SET status='Completed', completed_at=NOW(), updated_at=NOW()
                    WHERE task_id=$1 AND owner_id=$2
                      AND status IN ('Pending','In_Progress')
+                     AND is_deleted = FALSE
                    RETURNING task_id, task, priority, deadline, project_id, guild_id,
                              completed_at""",
                 task_id, user_id,

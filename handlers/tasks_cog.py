@@ -83,6 +83,7 @@ async def task_autocomplete(
                 """SELECT task_id, task, deadline, status
                FROM tasks
                WHERE owner_id=$1
+                 AND is_deleted = FALSE
                  AND status IN ('Pending', 'In_Progress')
                  AND parent_task_id IS NULL
                  AND (task ILIKE $2 OR CAST(task_id AS TEXT) ILIKE $2)
@@ -97,6 +98,7 @@ async def task_autocomplete(
                 """SELECT task_id, task, deadline, status
                FROM tasks
                WHERE owner_id=$1
+                 AND is_deleted = FALSE
                  AND status IN ('Pending', 'In_Progress')
                  AND parent_task_id IS NULL
                ORDER BY
@@ -476,10 +478,15 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         # Fetch task name BEFORE responding (send_message with view must be first response)
-        row = await db.afetchone("SELECT task, owner_id FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT task, owner_id, is_deleted FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
+            )
+            return
+        if row.get("is_deleted"):
+            await interaction.response.send_message(
+                t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
             )
             return
         if row["owner_id"] != uid:

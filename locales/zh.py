@@ -899,6 +899,7 @@ STRINGS = {
     "trash_expired": "该任务已超过 30 天恢复期限，无法恢复。",
     "trash_purge_success": "任务 #{task_id} 已永久删除。",
     "trash_purged_all": "已从回收站永久清除 {count} 项任务。",
+    "task_already_in_trash": "🗑️ 任务 #{task_id} 已在回收站中。使用 /trash 进行恢复或永久删除。",
     "task_private_label": "保密 / 私人任务",
     "task_private_badge": "🔒 私人",
     "task_private_toggled_on": "任务 #{task_id} '{name}' 已设为私人任务（仅创建者与主管可见）。",

@@ -582,7 +582,10 @@ def parse_deadline(
             localized = tz.localize(naive)
             # Roll to next year for yearless shorthand that is already past
             if not year_str and localized.astimezone(pytz.utc) < now_utc:
-                naive = naive.replace(year=year + 1)
+                try:
+                    naive = naive.replace(year=year + 1)
+                except ValueError:
+                    naive = naive.replace(year=year + 1, day=28)
                 localized = tz.localize(naive)
             return localized.astimezone(pytz.utc)
         except ValueError:
@@ -675,7 +678,11 @@ def parse_deadline(
                 # Roll over to next year if the resulting date is already past
                 localized = tz.localize(naive)
                 if localized < now_utc:
-                    naive = naive.replace(year=now_local.year + 1)
+                    try:
+                        naive = naive.replace(year=now_local.year + 1)
+                    except ValueError:
+                        # Feb 29 rollover to non-leap year falls back to Feb 28
+                        naive = naive.replace(year=now_local.year + 1, day=28)
             if "%H" not in fmt:
                 naive = naive.replace(hour=23, minute=59)
             return tz.localize(naive).astimezone(pytz.utc)

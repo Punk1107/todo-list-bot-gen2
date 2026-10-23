@@ -898,6 +898,7 @@ STRINGS = {
     "trash_expired": "La tarea superó el límite de 30 días y no se puede restaurar.",
     "trash_purge_success": "Tarea #{task_id} eliminada permanentemente.",
     "trash_purged_all": "Se eliminaron permanentemente {count} tarea(s).",
+    "task_already_in_trash": "🗑️ La tarea #{task_id} ya está en la papelera. Usa /trash para restaurarla o eliminarla permanentemente.",
     "task_private_label": "Tarea Confidencial / Privada",
     "task_private_badge": "🔒 Privada",
     "task_private_toggled_on": "Tarea #{task_id} '{name}' marcada como Privada.",
