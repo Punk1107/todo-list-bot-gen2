@@ -138,8 +138,10 @@ async def check_project_permission(
         p_owner = await db.fetchone(
             "SELECT owner_id FROM projects WHERE project_id=$1", (project_id,)
         )
-        if p_owner and isinstance(p_owner, dict) and p_owner.get("owner_id") and str(p_owner["owner_id"]) == user_id:
-            return True
+        if p_owner is not None:
+            owner_val = p_owner.get("owner_id") if hasattr(p_owner, "get") else p_owner["owner_id"]
+            if owner_val and str(owner_val) == user_id:
+                return True
     except Exception:
         pass
 
@@ -156,8 +158,10 @@ async def check_project_permission(
                WHERE project_id=$1 AND role=$2 AND permission=$3""",
             (project_id, role, permission),
         )
-        if row is not None and isinstance(row, dict) and "is_allowed" in row:
-            return bool(row["is_allowed"])
+        if row is not None:
+            allowed = row.get("is_allowed") if hasattr(row, "get") else row["is_allowed"]
+            if allowed is not None:
+                return bool(allowed)
     except Exception:
         pass
 
@@ -1029,7 +1033,7 @@ async def claim_task(
     Sets status to In_Progress automatically.
     """
     project = await get_project(project_id, guild_id)  # guild scope guard
-    task = await get_project_task(task_id, project_id, guild_id)
+    task = await get_project_task(task_id, project_id, guild_id, actor_id=claimer_id)
 
     if task.status in ("Completed", "Cancelled"):
         raise ValueError("Cannot claim a completed or cancelled task.")
@@ -1040,6 +1044,8 @@ async def claim_task(
 
     # Auto-add claimant as member if not already in project
     existing_role = await get_member_role(project_id, claimer_id)
+    if existing_role == "viewer":
+        raise ProjectPermissionError("member")
     if existing_role is None:
         from utils.helpers import ensure_user
         await ensure_user(claimer_id)
@@ -1128,7 +1134,7 @@ async def update_task_status(
     Allowed actors: assignee, task creator, project lead, guild admin.
     """
     project = await get_project(project_id, guild_id)
-    task = await get_project_task(task_id, project_id, guild_id)
+    task = await get_project_task(task_id, project_id, guild_id, actor_id=actor_id, is_guild_admin=is_guild_admin)
 
     # Permission: assignee OR task creator OR lead/admin
     is_assignee = actor_id in task.assignees
@@ -1145,9 +1151,9 @@ async def update_task_status(
     is_creator  = task.owner_id == actor_id
     actor_role  = await get_member_role(project_id, actor_id)
     is_lead     = actor_role == "lead" or project.owner_id == actor_id
-    is_member   = actor_role is not None
+    is_member   = actor_role in ("member", "lead")
 
-    # Anyone who is a member of the project can mark tasks as Completed
+    # Anyone who is a member (not viewer) of the project can mark tasks as Completed
     if new_status == "Completed":
         allowed = is_member or is_assignee or is_creator or is_lead or is_guild_admin
     else:
@@ -1259,6 +1265,7 @@ async def get_project_board(
                       AND dependency.guild_id=${len(task_ids) + 2}
                       AND blocker.project_id=${len(task_ids) + 1}
                       AND blocker.guild_id=${len(task_ids) + 2}
+                      AND blocker.is_deleted = FALSE
                     ORDER BY dependency.task_id, blocker.task_id""",
                 [*task_ids, project_id, guild_id],
             )

@@ -174,6 +174,10 @@ class TodoBot(commands.Bot):
 
     async def close(self) -> None:
         """Graceful shutdown: stop monitoring, flush BulkWriter, stop webserver."""
+        if getattr(self, "_is_closing", False):
+            return
+        self._is_closing = True
+
         # Stop monitoring tasks first (they may be writing logs)
         if config.monitoring.enabled:
             try:
@@ -312,7 +316,6 @@ async def on_interaction(interaction: discord.Interaction) -> None:
 
 
 
-@bot.event
 async def on_app_command_error(
     interaction: discord.Interaction,
     error: discord.app_commands.AppCommandError,
@@ -322,15 +325,18 @@ async def on_app_command_error(
     # get_user_lang is now async
     lang = await get_user_lang(interaction.user.id)
 
-    if isinstance(error, discord.app_commands.CommandOnCooldown):
-        msg = t("rate_limited", lang, seconds=error.retry_after)
-    elif isinstance(error, discord.app_commands.MissingPermissions):
+    actual_error = getattr(error, "original", error)
+
+    if isinstance(actual_error, discord.app_commands.CommandOnCooldown) or isinstance(error, discord.app_commands.CommandOnCooldown):
+        err = actual_error if isinstance(actual_error, discord.app_commands.CommandOnCooldown) else error
+        msg = t("rate_limited", lang, seconds=err.retry_after)
+    elif isinstance(actual_error, discord.app_commands.MissingPermissions) or isinstance(error, discord.app_commands.MissingPermissions):
         msg = t("permission_denied", lang)
-    elif isinstance(error, discord.app_commands.BotMissingPermissions):
+    elif isinstance(actual_error, discord.app_commands.BotMissingPermissions) or isinstance(error, discord.app_commands.BotMissingPermissions):
         msg = t("bot_missing_permissions", lang)
-    elif isinstance(error, discord.app_commands.NoPrivateMessage):
+    elif isinstance(actual_error, discord.app_commands.NoPrivateMessage) or isinstance(error, discord.app_commands.NoPrivateMessage):
         msg = t("err_dm_not_allowed", lang)
-    elif isinstance(error, discord.app_commands.CommandNotFound):
+    elif isinstance(actual_error, discord.app_commands.CommandNotFound) or isinstance(error, discord.app_commands.CommandNotFound):
         return   # Silently ignore — can happen during deploy
     else:
         # ── Record & dispatch unhandled errors ──────────────────────────────
@@ -340,7 +346,7 @@ async def on_app_command_error(
 
         log.error(
             "Unhandled app_command_error: %s",
-            error,
+            actual_error,
             exc_info=True,
             extra={"guild_id": gid, "user_id": uid, "command": cmd_name},
         )
@@ -348,13 +354,13 @@ async def on_app_command_error(
         # Record into error tracker
         if config.monitoring.enabled:
             from monitoring.error_tracker import error_tracker
-            error_tracker.record(error, command=cmd_name, user_id=uid)
+            error_tracker.record(actual_error, command=cmd_name, user_id=uid)
 
             # Dispatch alert to admin channel (rate-limited, non-blocking)
             if bot._alert_dispatcher:
                 asyncio.create_task(
                     bot._alert_dispatcher.dispatch_error(
-                        error,
+                        actual_error,
                         level=logging.ERROR,
                         command=cmd_name,
                         user_id=uid,
@@ -370,7 +376,7 @@ async def on_app_command_error(
                 user_id=uid,
                 guild_id=gid,
                 success=False,
-                error_type=type(error).__name__,
+                error_type=type(actual_error).__name__,
             )
 
         msg = t("err_generic", lang)
@@ -384,6 +390,9 @@ async def on_app_command_error(
         pass   # interaction already responded — safe to ignore
     except Exception as exc:
         log.debug("on_app_command_error: could not reply: %s", exc)
+
+
+bot.tree.on_error = on_app_command_error
 
 
 @bot.event

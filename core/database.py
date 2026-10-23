@@ -1630,7 +1630,8 @@ class DatabaseManager:
         #    30% completion rate vs total non-cancelled (max 30 pts)
         #    20% velocity score: done_7d capped at 20 (1 pt/task, max 20 pts)
         #    10% consistency bonus: on_time_count >= 5 → full 10 pts
-        total_eligible = base["completed"] + base["pending"] + base["overdue"]
+        # overdue is already counted in pending, so total_eligible is completed + pending
+        total_eligible = base["completed"] + base["pending"]
         completion_rate = base["completed"] / total_eligible * 100 if total_eligible > 0 else 0.0
 
         score_ontime     = on_time_rate * 0.40

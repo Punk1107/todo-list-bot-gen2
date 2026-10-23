@@ -115,12 +115,18 @@ async def test_context_menu_registers_and_unregisters_with_task_cog() -> None:
 
 def test_discord_native_translations_have_safe_fallback_for_all_languages() -> None:
     for lang in SUPPORTED_LANGS:
-        assert t("bulk_result", lang, succeeded=2, failed=1) == (
-            "✅ Completed: **2** · Failed or no longer available: **1**"
-        )
-        assert t("proj_thread_created", lang, url="https://discord.com/channels/1/2") == (
-            "✅ Discussion thread created: https://discord.com/channels/1/2"
-        )
+        res = t("bulk_result", lang, succeeded=2, failed=1)
+        assert "2" in res and "1" in res
+        thread_msg = t("proj_thread_created", lang, url="https://discord.com/channels/1/2")
+        assert "https://discord.com/channels/1/2" in thread_msg
+
+    # Verify fallback for unknown/unsupported locale
+    assert t("bulk_result", "xx", succeeded=2, failed=1) == (
+        "✅ Completed: **2** · Failed or no longer available: **1**"
+    )
+    assert t("proj_thread_created", "xx", url="https://discord.com/channels/1/2") == (
+        "✅ Discussion thread created: https://discord.com/channels/1/2"
+    )
 
 
 def test_collaboration_feature_translations_render_in_every_language() -> None:

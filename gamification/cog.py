@@ -103,40 +103,43 @@ class GamificationCog(commands.Cog, name="Gamification"):
 
     @tasks.loop(minutes=1)
     async def streak_reminder_loop(self) -> None:
-        rows = await db.afetchall(
-            """SELECT user_id, timezone, streak_days, streak_last_completion
-               FROM users
-               WHERE notify_enabled=1 AND streak_days > 0
-                 AND streak_last_completion IS NOT NULL"""
-        )
-        now = datetime.now(timezone.utc)
-        for row in rows or []:
-            try:
-                user_tz = ZoneInfo(row["timezone"] or "UTC")
-            except ZoneInfoNotFoundError:
-                log.warning(
-                    "Unknown timezone %r for streak reminder user %s; using UTC",
-                    row["timezone"], row["user_id"],
-                )
-                user_tz = timezone.utc
-            local_now = now.astimezone(user_tz)
-            if local_now.hour != 20:
-                continue
-            local_day = local_now.date()
-            if row["streak_last_completion"] != local_day - timedelta(days=1):
-                continue
-            if not await service.claim_streak_reminder(row["user_id"], local_day):
-                continue
-            try:
-                user = self.bot.get_user(int(row["user_id"]))
-                if user is None:
-                    user = await self.bot.fetch_user(int(row["user_id"]))
-                lang = await get_user_lang(row["user_id"])
-                await user.send(
-                    t("streak_reminder", lang, streak_days=int(row["streak_days"]))
-                )
-            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
-                log.warning("Could not send streak reminder to %s: %s", row["user_id"], exc)
+        try:
+            rows = await db.afetchall(
+                """SELECT user_id, timezone, streak_days, streak_last_completion
+                   FROM users
+                   WHERE notify_enabled=1 AND streak_days > 0
+                     AND streak_last_completion IS NOT NULL"""
+            )
+            now = datetime.now(timezone.utc)
+            for row in rows or []:
+                try:
+                    user_tz = ZoneInfo(row["timezone"] or "UTC")
+                except ZoneInfoNotFoundError:
+                    log.warning(
+                        "Unknown timezone %r for streak reminder user %s; using UTC",
+                        row["timezone"], row["user_id"],
+                    )
+                    user_tz = timezone.utc
+                local_now = now.astimezone(user_tz)
+                if local_now.hour != 20:
+                    continue
+                local_day = local_now.date()
+                if row["streak_last_completion"] != local_day - timedelta(days=1):
+                    continue
+                if not await service.claim_streak_reminder(row["user_id"], local_day):
+                    continue
+                try:
+                    user = self.bot.get_user(int(row["user_id"]))
+                    if user is None:
+                        user = await self.bot.fetch_user(int(row["user_id"]))
+                    lang = await get_user_lang(row["user_id"])
+                    await user.send(
+                        t("streak_reminder", lang, streak_days=int(row["streak_days"]))
+                    )
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                    log.warning("Could not send streak reminder to %s: %s", row["user_id"], exc)
+        except Exception as loop_exc:
+            log.error("Unexpected error in streak_reminder_loop: %s", loop_exc, exc_info=True)
 
     @streak_reminder_loop.before_loop
     async def before_streak_reminder_loop(self) -> None:

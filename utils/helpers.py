@@ -166,7 +166,7 @@ async def _load_user_from_db_async(uid: str):
     )
     if row:
         theme = row.get("theme") or "default"
-        weekly_retro = int(row.get("weekly_retrospective") or 1)
+        weekly_retro = 1 if row.get("weekly_retrospective") is None else int(row["weekly_retrospective"])
         db.user_cache.set(
             uid, row["lang"], row["timezone"], row["channel_id"], row["role"],
             theme=theme, weekly_retrospective=weekly_retro,
@@ -336,7 +336,7 @@ async def get_user_weekly_retrospective(user_id) -> int:
         return cached.weekly_retrospective
     row = await _load_user_from_db_async(uid)
     if row and "weekly_retrospective" in row.keys():
-        return int(row["weekly_retrospective"] or 1)
+        return 1 if row["weekly_retrospective"] is None else int(row["weekly_retrospective"])
     return 1
 
 
@@ -550,16 +550,19 @@ def parse_deadline(
     # ── 1. Relative delta  (+2h, +3d, +1w, +30m) ───────────────────────────
     m = _DELTA_RE.match(raw)
     if m:
-        val = float(m.group("value"))
-        unit = m.group("unit").lower()
-        seconds = {
-            "s": val,
-            "m": val * 60,
-            "h": val * 3600,
-            "d": val * 86400,
-            "w": val * 604800,
-        }[unit]
-        return now_utc + timedelta(seconds=seconds)
+        try:
+            val = float(m.group("value"))
+            unit = m.group("unit").lower()
+            seconds = {
+                "s": val,
+                "m": val * 60,
+                "h": val * 3600,
+                "d": val * 86400,
+                "w": val * 604800,
+            }[unit]
+            return now_utc + timedelta(seconds=seconds)
+        except (OverflowError, ValueError):
+            return None
 
     # ── 2. Asian date: YYYY年/년MM月/월DD日/일 [HH:MM]  (Kanji, Hanzi, Hangul)
     #    Year is optional — when missing, current/next year is inferred.
@@ -665,7 +668,15 @@ def parse_deadline(
                 # warning about parsing dates without a year being ambiguous.
                 year_raw = f"{now_local.year}/{raw}"
                 year_fmt = f"%Y/{fmt}"
-                naive = datetime.strptime(year_raw, year_fmt)
+                try:
+                    naive = datetime.strptime(year_raw, year_fmt)
+                except ValueError:
+                    # If parsing failed on leap day (e.g. 29/02 in non-leap year), find next leap year
+                    import calendar
+                    y_candidate = now_local.year
+                    while not calendar.isleap(y_candidate) and y_candidate < now_local.year + 8:
+                        y_candidate += 1
+                    naive = datetime.strptime(f"{y_candidate}/{raw}", year_fmt)
             else:
                 naive = datetime.strptime(raw, fmt)
 
@@ -673,20 +684,21 @@ def parse_deadline(
             if naive.year >= 2400:
                 naive = naive.replace(year=naive.year - 543)
 
+            if "%H" not in fmt:
+                naive = naive.replace(hour=23, minute=59)
+
             # Infer current/next year for shorthand formats missing the year
             if "%Y" not in fmt:
                 # Roll over to next year if the resulting date is already past
                 localized = tz.localize(naive)
-                if localized < now_utc:
+                if localized.astimezone(pytz.utc) < now_utc:
                     try:
-                        naive = naive.replace(year=now_local.year + 1)
+                        naive = naive.replace(year=naive.year + 1)
                     except ValueError:
                         # Feb 29 rollover to non-leap year falls back to Feb 28
-                        naive = naive.replace(year=now_local.year + 1, day=28)
-            if "%H" not in fmt:
-                naive = naive.replace(hour=23, minute=59)
+                        naive = naive.replace(year=naive.year + 1, day=28)
             return tz.localize(naive).astimezone(pytz.utc)
-        except ValueError:
+        except (ValueError, OverflowError):
             continue
 
     return None
@@ -797,7 +809,9 @@ def calculate_next_deadline(deadline_val: Any, recurring: str) -> Optional[str]:
             try:
                 nxt = dt.replace(month=m, year=y)
             except ValueError:
-                nxt = dt + timedelta(days=30)
+                import calendar
+                max_day = calendar.monthrange(y, m)[1]
+                nxt = dt.replace(year=y, month=m, day=min(dt.day, max_day))
         else:
             return None
         return nxt.isoformat()
@@ -821,10 +835,11 @@ _PRIORITY_KEYS = {
     7: "priority_7",
 }
 _STATUS_KEYS = {
-    "Pending":   "status_pending",
-    "Completed": "status_completed",
-    "Cancelled": "status_cancelled",
-    "Overdue":   "status_overdue",
+    "Pending":     "status_pending",
+    "In_Progress": "status_in_progress",
+    "Completed":   "status_completed",
+    "Cancelled":   "status_cancelled",
+    "Overdue":     "status_overdue",
 }
 _RECURRING_KEYS = {
     "daily":   "recurring_daily",
@@ -929,8 +944,9 @@ def build_task_embed(row, lang: str, tz_name: str,
     )
 
     # ── Description ──────────────────────────────────────────────────────────────────
-    if row["description"]:
-        desc_display = row["description"][:500]
+    desc_val = row.get("description") if hasattr(row, "get") else (row["description"] if "description" in row else None)
+    if desc_val:
+        desc_display = desc_val[:500]
         # Use blockquote for better readability instead of codeblock
         desc_lines = "\n".join(f"> {line}" for line in desc_display.splitlines()) or f"> {desc_display}"
         embed.add_field(
@@ -947,19 +963,21 @@ def build_task_embed(row, lang: str, tz_name: str,
         )
 
     # ── Tags ─────────────────────────────────────────────────────────────────
-    if row["tags"]:
+    tags_val = row.get("tags") if hasattr(row, "get") else (row["tags"] if "tags" in row else None)
+    if tags_val:
         tag_display = "  ".join(
             f"`{tag.strip()}`"
-            for tag in row["tags"].split(",")
+            for tag in tags_val.split(",")
             if tag.strip()
         )
         embed.add_field(name=t("task_detail_tags", lang), value=tag_display, inline=True)
 
     # ── Recurring ────────────────────────────────────────────────────────────
-    if row["recurring"]:
+    rec_val = row.get("recurring") if hasattr(row, "get") else (row["recurring"] if "recurring" in row else None)
+    if rec_val:
         embed.add_field(
             name=t("task_detail_recurring", lang),
-            value=_recurring_label(row["recurring"], lang),
+            value=_recurring_label(rec_val, lang),
             inline=True,
         )
 
@@ -1435,6 +1453,11 @@ def build_csv_export(tasks, tz_name: str) -> io.BytesIO:
         "ID", "Task", "Status", "Priority", "Deadline", "Recurring",
         "Category", "Tags", "Description", "Pinned", "Created",
     ])
+    def _sanitize_csv_cell(val: Any) -> Any:
+        if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+            return "'" + val
+        return val
+
     for row in tasks:
         created_val = row.get("created_at") if hasattr(row, "get") else row["created_at"]
         if isinstance(created_val, datetime):
@@ -1449,13 +1472,16 @@ def build_csv_export(tasks, tz_name: str) -> io.BytesIO:
             created_str = str(created_val or "")
 
         w.writerow([
-            row["task_id"], row["task"], row["status"], row["priority"],
-            format_deadline(row["deadline"], tz_name),
-            row["recurring"] or "",
-            row["category_id"] or "",
-            row["tags"] or "",
-            (row["description"] or "").replace("\n", " "),
-            bool(row["is_pinned"]) if hasattr(row, "keys") and "is_pinned" in row.keys() else False,
+            row.get("task_id") if hasattr(row, "get") else row["task_id"],
+            _sanitize_csv_cell(row.get("task") if hasattr(row, "get") else row["task"]),
+            row.get("status") if hasattr(row, "get") else row["status"],
+            row.get("priority", 0) if hasattr(row, "get") else row["priority"],
+            format_deadline(row.get("deadline") if hasattr(row, "get") else row["deadline"], tz_name),
+            (row.get("recurring") if hasattr(row, "get") else row.get("recurring", "")) or "",
+            (row.get("category_id") if hasattr(row, "get") else row.get("category_id", "")) or "",
+            _sanitize_csv_cell((row.get("tags") if hasattr(row, "get") else row.get("tags", "")) or ""),
+            _sanitize_csv_cell(((row.get("description") if hasattr(row, "get") else row.get("description", "")) or "").replace("\n", " ")),
+            bool(row.get("is_pinned", 0)) if hasattr(row, "get") else False,
             created_str,
         ])
     return io.BytesIO(out.getvalue().encode("utf-8-sig"))  # BOM for Excel

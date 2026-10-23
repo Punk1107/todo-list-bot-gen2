@@ -111,14 +111,20 @@ async def _build_digest_embed(
     )
 
     if today_tasks:
-        lines = [
-            (
+        lines = []
+        for r in today_tasks:
+            line = (
                 f"{_PRIO_ICONS[min(r['priority'], 7)]} `#{r['task_id']}` "
                 f"**{r['task'][:50]}**\n   ╰ 📅 `{format_deadline(r['deadline'], tz_name)}`"
                 f"  ·  ⏱️ `{time_left_str(r['deadline'])}`"
             )
-            for r in today_tasks
-        ]
+            # Ensure total embed field value does not exceed 1000 characters
+            current_len = sum(len(x) + 1 for x in lines)
+            if current_len + len(line) + 30 > 1000:
+                remaining = len(today_tasks) - len(lines)
+                lines.append(f"... {t('and_more_tasks', lang, count=remaining)}")
+                break
+            lines.append(line)
         embed.add_field(
             name=f"📅 {t('digest_today_tasks', lang)} ({len(today_tasks)})",
             value="\n".join(lines),
@@ -205,11 +211,11 @@ class DailyDigestView(discord.ui.View):
         filter_label = t("tasks_filter_Pending", lang)
         now_iso = datetime.now(UTC).isoformat()
         total_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (uid,)
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE", (uid,)
         )
         overdue_row = await db.afetchone(
             "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
-            "AND status='Pending' AND deadline<$2", (uid, now_iso)
+            "AND status='Pending' AND deadline<$2 AND is_deleted=FALSE", (uid, now_iso)
         )
         total_count   = total_row["c"]   if total_row   else 0
         overdue_count = overdue_row["c"] if overdue_row else 0
@@ -292,104 +298,107 @@ class RemindersCog(commands.Cog, name="Reminders"):
         Uses compound index idx_tasks_compound_status_dl for fast filtering.
         Processes up to 100 tasks per run (was 50).
         """
-        now            = datetime.now(UTC)
-        soon_threshold = (now + timedelta(hours=24)).isoformat()
-        remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).replace(tzinfo=None)
+        try:
+            now            = datetime.now(UTC)
+            soon_threshold = (now + timedelta(hours=24)).isoformat()
+            remind_cutoff  = (now - timedelta(hours=config.notifications.overdue_remind_hours)).replace(tzinfo=None)
 
-        rows = await db.afetchall(
-            """SELECT t.task_id, t.task, t.deadline, t.is_pinned, t.priority,
-                      u.user_id, u.channel_id, u.timezone, u.lang, u.notify_enabled
-               FROM tasks t
-               JOIN users u ON t.owner_id = u.user_id
-               WHERE t.status = 'Pending'
-                 AND t.is_deleted = FALSE
-                 AND t.deadline <= $1
-                 AND t.deadline > $2
-                 AND u.notify_enabled = 1
-                 AND u.channel_id IS NOT NULL
-                 AND (t.last_reminder IS NULL OR t.last_reminder < $3)
-               ORDER BY t.deadline ASC
-               LIMIT 100""",
-            (soon_threshold, (now - timedelta(days=30)).isoformat(), remind_cutoff),
-        )
+            rows = await db.afetchall(
+                """SELECT t.task_id, t.task, t.deadline, t.is_pinned, t.priority,
+                          u.user_id, u.channel_id, u.timezone, u.lang, u.notify_enabled
+                   FROM tasks t
+                   JOIN users u ON t.owner_id = u.user_id
+                   WHERE t.status = 'Pending'
+                     AND t.is_deleted = FALSE
+                     AND t.deadline <= $1
+                     AND t.deadline > $2
+                     AND u.notify_enabled = 1
+                     AND u.channel_id IS NOT NULL
+                     AND (t.last_reminder IS NULL OR t.last_reminder < $3)
+                   ORDER BY t.deadline ASC
+                   LIMIT 100""",
+                (soon_threshold, (now - timedelta(days=30)).isoformat(), remind_cutoff),
+            )
 
-        # Batch-update last_reminder timestamps to reduce individual execute() calls
-        reminder_updates: list[tuple[str, tuple]] = []
+            # Batch-update last_reminder timestamps to reduce individual execute() calls
+            reminder_updates: list[tuple[str, tuple]] = []
 
-        for row in rows:
-            channel = self.bot.get_channel(row["channel_id"])
-            if not channel:
-                continue
+            for row in rows:
+                channel = self.bot.get_channel(row["channel_id"])
+                if not channel:
+                    continue
 
-            lang    = row["lang"] or config.bot.default_lang
-            tz_name = row["timezone"] or config.bot.default_timezone
-            tid     = row["task_id"]
+                lang    = row["lang"] or config.bot.default_lang
+                tz_name = row["timezone"] or config.bot.default_timezone
+                tid     = row["task_id"]
 
-            try:
-                dt = datetime.fromisoformat(row["deadline"])
-                if dt.tzinfo is None:
-                    dt = UTC.localize(dt)
-                is_overdue = dt < now
+                try:
+                    dt = datetime.fromisoformat(row["deadline"])
+                    if dt.tzinfo is None:
+                        dt = UTC.localize(dt)
+                    is_overdue = dt < now
 
-                if is_overdue:
-                    msg   = t("reminder_overdue", lang,
-                              task=row["task"], deadline=format_deadline(row["deadline"], tz_name))
-                    icon  = "🚨"
-                else:
-                    msg   = t("reminder_due_soon", lang,
-                              task=row["task"], time_left=time_left_str(row["deadline"]))
-                    icon  = "⏰"
+                    if is_overdue:
+                        msg   = t("reminder_overdue", lang,
+                                  task=row["task"], deadline=format_deadline(row["deadline"], tz_name))
+                        icon  = "🚨"
+                    else:
+                        msg   = t("reminder_due_soon", lang,
+                                  task=row["task"], time_left=time_left_str(row["deadline"]))
+                        icon  = "⏰"
 
-                color = urgency_color(row["deadline"], "Overdue" if is_overdue else "Pending")
-                pin_note  = " 📌" if row["is_pinned"] else ""
-                prio_icon = _PRIO_ICONS[min(row["priority"], 7)]
+                    color = urgency_color(row["deadline"], "Overdue" if is_overdue else "Pending")
+                    pin_note  = " 📌" if row["is_pinned"] else ""
+                    prio_icon = _PRIO_ICONS[min(row["priority"], 7)]
 
-                embed = discord.Embed(
-                    title=f"{icon} {t('reminder_title', lang)}{pin_note}",
-                    description=msg,
-                    color=color,
-                )
-                embed.add_field(
-                    name=t("reminder_field_deadline", lang),
-                    value=f"`{format_deadline(row['deadline'], tz_name)}`  ({time_left_str(row['deadline'])})",
-                    inline=True,
-                )
-                embed.add_field(
-                    name=t("reminder_field_priority", lang),
-                    value=prio_icon,
-                    inline=True,
-                )
-                embed.add_field(
-                    name=t("reminder_field_task_id", lang),
-                    value=f"`#{tid}` — `/task {tid}`",
-                    inline=True,
-                )
-                # Action hint — tell user how to stop reminders
-                hint = t("reminder_action_hint", lang, task_id=tid)
-                embed.add_field(name="\u200B", value=f"> 💡 {hint}", inline=False)
-                embed.set_footer(text=t("footer_text", lang))
+                    embed = discord.Embed(
+                        title=f"{icon} {t('reminder_title', lang)}{pin_note}",
+                        description=msg,
+                        color=color,
+                    )
+                    embed.add_field(
+                        name=t("reminder_field_deadline", lang),
+                        value=f"`{format_deadline(row['deadline'], tz_name)}`  ({time_left_str(row['deadline'])})",
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name=t("reminder_field_priority", lang),
+                        value=prio_icon,
+                        inline=True,
+                    )
+                    embed.add_field(
+                        name=t("reminder_field_task_id", lang),
+                        value=f"`#{tid}` — `/task {tid}`",
+                        inline=True,
+                    )
+                    # Action hint — tell user how to stop reminders
+                    hint = t("reminder_action_hint", lang, task_id=tid)
+                    embed.add_field(name="\u200B", value=f"> 💡 {hint}", inline=False)
+                    embed.set_footer(text=t("footer_text", lang))
 
-                await channel.send(f"<@{row['user_id']}>", embed=embed)
+                    await channel.send(f"<@{row['user_id']}>", embed=embed)
 
-                # Queue last_reminder update into BulkWriter instead of individual execute()
-                reminder_updates.append((
-                    "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
-                    (tid,),
-                ))
-                log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
-                # Throttle: avoid Discord rate-limit when many reminders fire at once
-                await asyncio.sleep(0.3)
-            except discord.Forbidden:
-                log.warning("No permission to send reminder in channel %s", row["channel_id"])
-            except Exception as exc:
-                log.error("Reminder error task_id=%d: %s", tid, exc)
+                    # Queue last_reminder update into BulkWriter instead of individual execute()
+                    reminder_updates.append((
+                        "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
+                        (tid,),
+                    ))
+                    log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
+                    # Throttle: avoid Discord rate-limit when many reminders fire at once
+                    await asyncio.sleep(0.3)
+                except discord.Forbidden:
+                    log.warning("No permission to send reminder in channel %s", row["channel_id"])
+                except Exception as exc:
+                    log.error("Reminder error task_id=%d: %s", tid, exc)
 
-        # Flush all last_reminder updates as a batch
-        if reminder_updates:
-            try:
-                await db.aexecute_batch(reminder_updates)
-            except Exception as exc:
-                log.error("Batch reminder update failed: %s", exc)
+            # Flush all last_reminder updates as a batch
+            if reminder_updates:
+                try:
+                    await db.aexecute_batch(reminder_updates)
+                except Exception as exc:
+                    log.error("Batch reminder update failed: %s", exc)
+        except Exception as loop_exc:
+            log.error("Unexpected error in reminder_loop: %s", loop_exc, exc_info=True)
 
     @reminder_loop.before_loop
     async def before_reminder(self) -> None:
@@ -426,6 +435,15 @@ class RemindersCog(commands.Cog, name="Reminders"):
                         if not nxt:
                             log.error("Could not calculate next deadline for recurring task_id=%d", row["task_id"])
                             continue
+
+                        # Advance until nxt is in the future to prevent duplicate task cascade
+                        iterations = 0
+                        while nxt <= now and iterations < 100:
+                            nxt_after = next_deadline(nxt, row["recurring"], rule)
+                            if not nxt_after or nxt_after == nxt:
+                                break
+                            nxt = nxt_after
+                            iterations += 1
 
                         await conn.execute(
                             """UPDATE tasks
@@ -465,80 +483,83 @@ class RemindersCog(commands.Cog, name="Reminders"):
         an in-memory set (_digest_sent_today) AND the persisted
         last_digest_date column in the users table (survives restarts).
         """
-        if not config.notifications.daily_summary_enabled:
-            return
+        try:
+            if not config.notifications.daily_summary_enabled:
+                return
 
-        now = datetime.now(UTC)
+            now = datetime.now(UTC)
 
-        # Reset in-memory set at UTC midnight (safe guard — DB column is the truth)
-        today_key = now.strftime("%Y-%m-%d")
-        if self._digest_day != today_key:
-            self._digest_sent_today = set()
-            self._digest_day = today_key
+            # Reset in-memory set at UTC midnight (safe guard — DB column is the truth)
+            today_key = now.strftime("%Y-%m-%d")
+            if self._digest_day != today_key:
+                self._digest_sent_today = set()
+                self._digest_day = today_key
 
-        # Only trigger near the :00 mark of the minute — the HH:MM check below
-        # and the in-memory/DB idempotency guards prevent double-sending.
-        # We allow the full 60-second window so event-loop lag never silently
-        # drops a user's digest for the day.
+            # Only trigger near the :00 mark of the minute — the HH:MM check below
+            # and the in-memory/DB idempotency guards prevent double-sending.
+            # We allow the full 60-second window so event-loop lag never silently
+            # drops a user's digest for the day.
 
-        users = await db.afetchall(
-            """SELECT user_id, channel_id, timezone, lang, last_digest_date,
-                      COALESCE(digest_hour, 8) AS digest_hour
-               FROM users
-               WHERE daily_digest=1 AND notify_enabled=1 AND channel_id IS NOT NULL""",
-        )
+            users = await db.afetchall(
+                """SELECT user_id, channel_id, timezone, lang, last_digest_date,
+                          COALESCE(digest_hour, 8) AS digest_hour
+                   FROM users
+                   WHERE daily_digest=1 AND notify_enabled=1 AND channel_id IS NOT NULL""",
+            )
 
-        for user in users:
-            uid        = user["user_id"]
-            tz_name    = user["timezone"] or "Asia/Bangkok"
-            digest_hour = int(user["digest_hour"] or 8)
+            for user in users:
+                uid        = user["user_id"]
+                tz_name    = user["timezone"] or "Asia/Bangkok"
+                digest_hour = int(user["digest_hour"] or 8)
 
-            # ── Compute user local time ────────────────────────────────────────
-            try:
-                local_tz  = pytz.timezone(tz_name)
-                local_now = now.astimezone(local_tz)
-            except Exception:
-                continue
+                # ── Compute user local time ────────────────────────────────────────
+                try:
+                    local_tz  = pytz.timezone(tz_name)
+                    local_now = now.astimezone(local_tz)
+                except Exception:
+                    continue
 
-            # Only fire when user's local HH:MM == digest_hour:00
-            if local_now.hour != digest_hour or local_now.minute != 0:
-                continue
+                # Only fire when user's local HH:MM == digest_hour:00
+                if local_now.hour != digest_hour or local_now.minute != 0:
+                    continue
 
-            # ── Idempotency: in-memory guard ───────────────────────────────────
-            if uid in self._digest_sent_today:
-                continue
+                # ── Idempotency: in-memory guard ───────────────────────────────────
+                if uid in self._digest_sent_today:
+                    continue
 
-            # ── Idempotency: DB guard (survives restarts) ─────────────────────
-            today_local_str = local_now.strftime("%Y-%m-%d")
-            last_sent = user["last_digest_date"]
-            if last_sent == today_local_str:
-                self._digest_sent_today.add(uid)
-                continue
+                # ── Idempotency: DB guard (survives restarts) ─────────────────────
+                today_local_str = local_now.strftime("%Y-%m-%d")
+                last_sent = user["last_digest_date"]
+                if last_sent == today_local_str:
+                    self._digest_sent_today.add(uid)
+                    continue
 
-            channel = self.bot.get_channel(user["channel_id"])
-            if not channel:
-                continue
+                channel = self.bot.get_channel(user["channel_id"])
+                if not channel:
+                    continue
 
-            lang = user["lang"] or "th"
+                lang = user["lang"] or "th"
 
-            try:
-                embed = await _build_digest_embed(uid, lang, tz_name, local_now, now)
-                view  = DailyDigestView(lang)
-                await channel.send(f"<@{uid}>", embed=embed, view=view)
-                self._digest_sent_today.add(uid)
+                try:
+                    embed = await _build_digest_embed(uid, lang, tz_name, local_now, now)
+                    view  = DailyDigestView(lang)
+                    await channel.send(f"<@{uid}>", embed=embed, view=view)
+                    self._digest_sent_today.add(uid)
 
-                # Persist to DB — prevents double-send even after restart
-                db.bulk_writer.enqueue(
-                    "UPDATE users SET last_digest_date=$1 WHERE user_id=$2",
-                    (today_local_str, uid),
-                )
-                log.info("Daily digest sent: uid=%s tz=%s local=%s",
-                         uid, tz_name, local_now.strftime("%H:%M"))
-            except discord.Forbidden:
-                log.warning("Digest: no send permission in channel %s for user %s",
-                            user["channel_id"], uid)
-            except Exception as exc:
-                log.error("Daily digest error uid=%s: %s", uid, exc)
+                    # Persist to DB — prevents double-send even after restart
+                    db.bulk_writer.enqueue(
+                        "UPDATE users SET last_digest_date=$1 WHERE user_id=$2",
+                        (today_local_str, uid),
+                    )
+                    log.info("Daily digest sent: uid=%s tz=%s local=%s",
+                             uid, tz_name, local_now.strftime("%H:%M"))
+                except discord.Forbidden:
+                    log.warning("Digest: no send permission in channel %s for user %s",
+                                user["channel_id"], uid)
+                except Exception as exc:
+                    log.error("Daily digest error uid=%s: %s", uid, exc)
+        except Exception as loop_exc:
+            log.error("Unexpected error in daily_digest_loop: %s", loop_exc, exc_info=True)
 
     @daily_digest_loop.before_loop
     async def before_digest(self) -> None:
@@ -558,39 +579,42 @@ class RemindersCog(commands.Cog, name="Reminders"):
         Fires weekly summary with completion rate %, snooze bottleneck analysis,
         and coaching tip.
         """
-        users = await db.afetchall(
-            "SELECT user_id, timezone, lang, last_retrospective_date "
-            "FROM users WHERE weekly_retrospective = 1"
-        )
-        if not users:
-            return
+        try:
+            users = await db.afetchall(
+                "SELECT user_id, timezone, lang, last_retrospective_date "
+                "FROM users WHERE weekly_retrospective = 1"
+            )
+            if not users:
+                return
 
-        from history_reporting import service as history_service
+            from history_reporting import service as history_service
 
-        for user in users:
-            uid = str(user["user_id"])
-            tz_name = user["timezone"] or "UTC"
-            try:
-                user_tz = pytz.timezone(tz_name)
-            except Exception:
-                user_tz = UTC
+            for user in users:
+                uid = str(user["user_id"])
+                tz_name = user["timezone"] or "UTC"
+                try:
+                    user_tz = pytz.timezone(tz_name)
+                except Exception:
+                    user_tz = UTC
 
-            local_now = datetime.now(user_tz)
+                local_now = datetime.now(user_tz)
 
-            # Check if Sunday (weekday 6) and hour is 20:00
-            if local_now.weekday() != 6:
-                continue
-            if local_now.hour != 20 or local_now.minute != 0:
-                continue
+                # Check if Sunday (weekday 6) and hour is 20:00
+                if local_now.weekday() != 6:
+                    continue
+                if local_now.hour != 20 or local_now.minute != 0:
+                    continue
 
-            current_week_str = (local_now - timedelta(days=local_now.weekday())).strftime("%Y-W%W")
-            if user.get("last_retrospective_date") == current_week_str:
-                continue
+                current_week_str = (local_now - timedelta(days=local_now.weekday())).strftime("%Y-W%W")
+                if user.get("last_retrospective_date") == current_week_str:
+                    continue
 
-            try:
-                await history_service.send_weekly_retrospective_dm(self.bot, uid)
-            except Exception as exc:
-                log.error("weekly_retrospective_loop error uid=%s: %s", uid, exc)
+                try:
+                    await history_service.send_weekly_retrospective_dm(self.bot, uid)
+                except Exception as exc:
+                    log.error("weekly_retrospective_loop error uid=%s: %s", uid, exc)
+        except Exception as loop_exc:
+            log.error("Unexpected error in weekly_retrospective_loop: %s", loop_exc, exc_info=True)
 
     @weekly_retrospective_loop.before_loop
     async def before_weekly_retrospective(self) -> None:
@@ -604,12 +628,15 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     @tasks.loop(minutes=10)
     async def cleanup_loop(self) -> None:
-        from core.security import rate_limiter
-        rate_limiter.cleanup()
-        counts = db.purge_all_caches()
-        total_removed = sum(counts.values())
-        if total_removed:
-            log.debug("Cache cleanup: %s", counts)
+        try:
+            from core.security import rate_limiter
+            rate_limiter.cleanup()
+            counts = db.purge_all_caches()
+            total_removed = sum(counts.values())
+            if total_removed:
+                log.debug("Cache cleanup: %s", counts)
+        except Exception as exc:
+            log.error("Unexpected error in cleanup_loop: %s", exc, exc_info=True)
 
     @cleanup_loop.before_loop
     async def before_cleanup(self) -> None:
@@ -633,116 +660,119 @@ class RemindersCog(commands.Cog, name="Reminders"):
         Uses dm_reminded bitmask to guarantee each threshold fires exactly once.
         Works even if the user has not configured a notification channel.
         """
-        now = datetime.now(UTC)
+        try:
+            now = datetime.now(UTC)
 
-        # Define (bit, label_key, lower_mins, upper_mins, color)
-        thresholds = [
-            (self._DM_BIT_24H, "dm_reminder_24h",  20 * 60,  26 * 60, 0x5865F2),  # blurple
-            (self._DM_BIT_3H,  "dm_reminder_3h",   150,      210,     0xE67E22),  # orange
-            (self._DM_BIT_1H,  "dm_reminder_1h",    45,       75,     0xED4245),  # red
-        ]
+            # Define (bit, label_key, lower_mins, upper_mins, color)
+            thresholds = [
+                (self._DM_BIT_24H, "dm_reminder_24h",  20 * 60,  26 * 60, 0x5865F2),  # blurple
+                (self._DM_BIT_3H,  "dm_reminder_3h",   150,      210,     0xE67E22),  # orange
+                (self._DM_BIT_1H,  "dm_reminder_1h",    45,       75,     0xED4245),  # red
+            ]
 
-        for bit, label_key, lower_mins, upper_mins, color in thresholds:
-            lower_dt = (now + timedelta(minutes=lower_mins)).isoformat()
-            upper_dt = (now + timedelta(minutes=upper_mins)).isoformat()
+            for bit, label_key, lower_mins, upper_mins, color in thresholds:
+                lower_dt = (now + timedelta(minutes=lower_mins)).isoformat()
+                upper_dt = (now + timedelta(minutes=upper_mins)).isoformat()
 
-            rows = await db.afetchall(
-                """SELECT t.task_id, t.task, t.deadline, t.dm_reminded,
-                          u.user_id, u.timezone, u.lang, u.notify_enabled
-                   FROM tasks t
-                   JOIN users u ON t.owner_id = u.user_id
-                   WHERE t.status = 'Pending'
-                     AND t.is_deleted = FALSE
-                     AND t.deadline BETWEEN $1 AND $2
-                     AND (t.dm_reminded & $3) = 0
-                     AND u.notify_enabled = 1
-                   LIMIT 200""",
-                (lower_dt, upper_dt, bit),
-            )
+                rows = await db.afetchall(
+                    """SELECT t.task_id, t.task, t.deadline, t.dm_reminded,
+                              u.user_id, u.timezone, u.lang, u.notify_enabled
+                       FROM tasks t
+                       JOIN users u ON t.owner_id = u.user_id
+                       WHERE t.status = 'Pending'
+                         AND t.is_deleted = FALSE
+                         AND t.deadline BETWEEN $1 AND $2
+                         AND (t.dm_reminded & $3) = 0
+                         AND u.notify_enabled = 1
+                       LIMIT 200""",
+                    (lower_dt, upper_dt, bit),
+                )
 
-            if not rows:
-                continue
+                if not rows:
+                    continue
 
-            dm_updates: list[tuple[str, tuple]] = []
+                dm_updates: list[tuple[str, tuple]] = []
 
-            for row in rows:
-                uid     = row["user_id"]
-                lang    = row["lang"] or config.bot.default_lang
-                tz_name = row["timezone"] or config.bot.default_timezone
-                tid     = row["task_id"]
+                for row in rows:
+                    uid     = row["user_id"]
+                    lang    = row["lang"] or config.bot.default_lang
+                    tz_name = row["timezone"] or config.bot.default_timezone
+                    tid     = row["task_id"]
 
-                # Fetch the Discord user object — try cache first, then API
-                user = self.bot.get_user(int(uid))
-                if user is None:
+                    # Fetch the Discord user object — try cache first, then API
+                    user = self.bot.get_user(int(uid))
+                    if user is None:
+                        try:
+                            user = await self.bot.fetch_user(int(uid))
+                        except Exception:
+                            log.debug("deadline_dm_loop: could not fetch user %s", uid)
+                            continue
+
                     try:
-                        user = await self.bot.fetch_user(int(uid))
-                    except Exception:
-                        log.debug("deadline_dm_loop: could not fetch user %s", uid)
-                        continue
+                        tl = time_left_str(row["deadline"])
+                        dl_fmt = format_deadline(row["deadline"], tz_name)
 
-                try:
-                    tl = time_left_str(row["deadline"])
-                    dl_fmt = format_deadline(row["deadline"], tz_name)
+                        body = t(label_key, lang, task=row["task"][:80], time_left=tl)
+                        footer = t("dm_reminder_footer", lang, task_id=tid)
 
-                    body = t(label_key, lang, task=row["task"][:80], time_left=tl)
-                    footer = t("dm_reminder_footer", lang, task_id=tid)
+                        embed = discord.Embed(
+                            title=t("dm_reminder_title", lang),
+                            description=body,
+                            color=color,
+                        )
+                        embed.add_field(
+                            name=t("reminder_field_deadline", lang),
+                            value=f"`{dl_fmt}`",
+                            inline=True,
+                        )
+                        embed.add_field(
+                            name=t("dm_reminder_field_time_left", lang),
+                            value=f"`{tl}`",
+                            inline=True,
+                        )
+                        embed.add_field(
+                            name=t("reminder_field_task_id", lang),
+                            value=f"`#{tid}`",
+                            inline=True,
+                        )
+                        embed.set_footer(text=footer)
 
-                    embed = discord.Embed(
-                        title=t("dm_reminder_title", lang),
-                        description=body,
-                        color=color,
-                    )
-                    embed.add_field(
-                        name=t("reminder_field_deadline", lang),
-                        value=f"`{dl_fmt}`",
-                        inline=True,
-                    )
-                    embed.add_field(
-                        name=t("dm_reminder_field_time_left", lang),
-                        value=f"`{tl}`",
-                        inline=True,
-                    )
-                    embed.add_field(
-                        name=t("reminder_field_task_id", lang),
-                        value=f"`#{tid}`",
-                        inline=True,
-                    )
-                    embed.set_footer(text=footer)
+                        await user.send(embed=embed)
+                        log.debug(
+                            "DM reminder (%s) sent: task_id=%d user=%s", label_key, tid, uid
+                        )
+                        # Rate-limit pacing: avoid hitting Discord HTTP 429 when many DMs fire
+                        await asyncio.sleep(0.2)
 
-                    await user.send(embed=embed)
-                    log.debug(
-                        "DM reminder (%s) sent: task_id=%d user=%s", label_key, tid, uid
-                    )
-                    # Rate-limit pacing: avoid hitting Discord HTTP 429 when many DMs fire
-                    await asyncio.sleep(0.2)
+                        # Mark this bit as sent
+                        new_mask = row["dm_reminded"] | bit
+                        dm_updates.append((
+                            "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                            (new_mask, tid),
+                        ))
 
-                    # Mark this bit as sent
-                    new_mask = row["dm_reminded"] | bit
-                    dm_updates.append((
-                        "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
-                        (new_mask, tid),
-                    ))
+                    except discord.Forbidden:
+                        log.debug("DM blocked for user %s (DMs disabled)", uid)
+                        # Still mark as sent so we don't keep retrying for closed DMs
+                        new_mask = row["dm_reminded"] | bit
+                        dm_updates.append((
+                            "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                            (new_mask, tid),
+                        ))
+                    except Exception as exc:
+                        log.error("deadline_dm_loop error task_id=%d: %s", tid, exc)
 
-                except discord.Forbidden:
-                    log.debug("DM blocked for user %s (DMs disabled)", uid)
-                    # Still mark as sent so we don't keep retrying for closed DMs
-                    new_mask = row["dm_reminded"] | bit
-                    dm_updates.append((
-                        "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
-                        (new_mask, tid),
-                    ))
-                except Exception as exc:
-                    log.error("deadline_dm_loop error task_id=%d: %s", tid, exc)
+                if dm_updates:
+                    try:
+                        await db.aexecute_batch(dm_updates)
+                    except Exception as exc:
+                        log.error("deadline_dm_loop batch update failed: %s", exc)
 
-            if dm_updates:
-                try:
-                    await db.aexecute_batch(dm_updates)
-                except Exception as exc:
-                    log.error("deadline_dm_loop batch update failed: %s", exc)
-
-            # Brief sleep between threshold iterations to avoid Discord rate-limit
-            # bursts when many tasks fire across multiple thresholds simultaneously.
-            await asyncio.sleep(0.1)
+                # Brief sleep between threshold iterations to avoid Discord rate-limit
+                # bursts when many tasks fire across multiple thresholds simultaneously.
+                await asyncio.sleep(0.1)
+        except Exception as loop_exc:
+            log.error("Unexpected error in deadline_dm_loop: %s", loop_exc, exc_info=True)
 
     @deadline_dm_loop.before_loop
     async def before_deadline_dm(self) -> None:
