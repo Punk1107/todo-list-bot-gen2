@@ -181,7 +181,7 @@ def generate_interactive_html(
         tid = r["task_id"]
         tname = str(r["task"] or "")
         tstatus = str(r.get("status") or "pending").lower()
-        tpriority = int(r.get("priority") or 1)
+        tpriority = 0 if r.get("priority") == 0 else int(r.get("priority") or 1)
         tdl_raw = r.get("deadline")
         tdesc = str(r.get("description") or "")
         ttags = str(r.get("tags") or "")
@@ -189,9 +189,10 @@ def generate_interactive_html(
         tpinned = bool(r.get("is_pinned", False))
 
         is_completed = (tstatus == "completed")
+        is_cancelled = (tstatus == "cancelled")
         if is_completed:
             completed_count += 1
-        else:
+        elif not is_cancelled:
             pending_count += 1
 
         is_overdue = False
@@ -802,6 +803,8 @@ async def get_weekly_retrospective_data(
 
     start_utc = start_of_week.astimezone(pytz.utc)
     end_utc = end_of_week.astimezone(pytz.utc)
+    start_utc_naive = start_utc.replace(tzinfo=None)
+    end_utc_naive = end_utc.replace(tzinfo=None)
     now_utc = datetime.now(timezone.utc)
 
     # 1. Query completed tasks this week (from task_completion_events or audit_log)
@@ -819,7 +822,7 @@ async def get_weekly_retrospective_data(
             """SELECT target_id FROM audit_log
                WHERE user_id = $1 AND action = 'task_completed'
                  AND created_at >= $2 AND created_at <= $3""",
-            (user_id, start_utc, end_utc),
+            (user_id, start_utc_naive, end_utc_naive),
         )
         completed_tasks_count = len(audit_comps or [])
 
@@ -867,7 +870,7 @@ async def get_weekly_retrospective_data(
            GROUP BY target_id
            ORDER BY snooze_cnt DESC
            LIMIT 3""",
-        (user_id, start_utc, end_utc),
+        (user_id, start_utc_naive, end_utc_naive),
     )
     snooze_total = 0
     top_snoozed: List[Dict[str, Any]] = []
@@ -960,11 +963,11 @@ async def send_weekly_retrospective_dm(
     # Snooze Bottleneck Analysis
     if retro_data.top_snoozed_tasks:
         snooze_lines = [
-            f"• **{t_info['name']}** &mdash; {t('retro_snoozed_times', lang, count=t_info['snooze_count'])}"
+            f"• **{t_info['name']}** — {t('retro_snoozed_times', lang, count=t_info['snooze_count'])}"
             for t_info in retro_data.top_snoozed_tasks
         ]
         embed.add_field(
-            name=f"⏰ {t('retro_snooze_bottlenecks', lang)} ({retro_data.snooze_count_total} total)",
+            name=f"⏰ {t('retro_snooze_bottlenecks', lang)} ({retro_data.snooze_count_total} {t('retro_total_label', lang)})",
             value="\n".join(snooze_lines),
             inline=False,
         )
@@ -978,11 +981,11 @@ async def send_weekly_retrospective_dm(
     # Overdue Carryovers
     if retro_data.overdue_carryover_tasks:
         carry_lines = [
-            f"• [P{t_info['priority']}] **#{t_info['task_id']}** {t_info['task']} *(due {t_info['deadline']})*"
+            f"• [P{t_info['priority']}] **#{t_info['task_id']}** {t_info['task']} *({t('retro_due_label', lang, deadline=t_info['deadline'])})*"
             for t_info in retro_data.overdue_carryover_tasks[:5]
         ]
         if len(retro_data.overdue_carryover_tasks) > 5:
-            carry_lines.append(f"... +{len(retro_data.overdue_carryover_tasks) - 5} more")
+            carry_lines.append(f"... {t('and_more_tasks', lang, count=len(retro_data.overdue_carryover_tasks) - 5)}")
         embed.add_field(
             name=f"⚠️ {t('retro_overdue_carryovers', lang)} ({len(retro_data.overdue_carryover_tasks)})",
             value="\n".join(carry_lines),
@@ -997,7 +1000,7 @@ async def send_weekly_retrospective_dm(
         ]
         embed.add_field(
             name=f"🏷️ {t('retro_category_breakdown', lang)}",
-            value=" &bull; ".join(cat_lines),
+            value=" • ".join(cat_lines),
             inline=False,
         )
 

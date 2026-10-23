@@ -235,7 +235,7 @@ class AddTaskModal(ui.Modal):
         parent_deadline_iso: Optional[str] = None
         if self.parent_task_id:
             parent_row = await db.afetchone(
-                "SELECT deadline, status FROM tasks WHERE task_id=$1", (self.parent_task_id,)
+                "SELECT deadline, status FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.parent_task_id,)
             )
             if parent_row:
                 if parent_row["status"] in ("Completed", "Cancelled"):
@@ -369,6 +369,8 @@ class EditTaskModal(ui.Modal):
 
         # Pre-fill deadline in user-friendly format using the caller-supplied timezone
         current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
+        self._initial_deadline_str = current_dl
+        self._initial_deadline_raw = task_row["deadline"]
 
         self.task_name = ui.TextInput(
             label=t("task_name_label", lang),
@@ -378,7 +380,7 @@ class EditTaskModal(ui.Modal):
             label=t("task_deadline_label", lang),
             default=current_dl,
             placeholder=t("task_deadline_placeholder", lang),
-            max_length=20,
+            max_length=50,
             required=False,
         )
         self.priority = ui.TextInput(
@@ -418,16 +420,27 @@ class EditTaskModal(ui.Modal):
         prio_val = int(prio_raw)
 
         tz_name = await get_user_timezone(uid)
-        # Defensive deadline validation (blocks past deadlines on edit too)
+        # Defensive deadline validation (preserves unchanged past deadline on edit)
         deadline_value = self.deadline.value.strip()
         dt = None
+        deadline_changed = False
         if deadline_value:
-            try:
-                dt = validate_deadline_defensive(deadline_value, tz_name)
-            except DeadlineValidationError as e:
-                err_msg = t(e.i18n_key, lang, **e.kwargs)
-                await _safe_respond(interaction, err_msg)
-                return
+            if deadline_value == self._initial_deadline_str:
+                if self._initial_deadline_raw:
+                    try:
+                        dt = datetime.fromisoformat(self._initial_deadline_raw)
+                    except Exception:
+                        dt = None
+            else:
+                try:
+                    dt = validate_deadline_defensive(deadline_value, tz_name)
+                    deadline_changed = True
+                except DeadlineValidationError as e:
+                    err_msg = t(e.i18n_key, lang, **e.kwargs)
+                    await _safe_respond(interaction, err_msg)
+                    return
+        elif self._initial_deadline_str:
+            deadline_changed = True
         elif self._has_recurrence:
             await _safe_respond(interaction, t("task_deadline_required_for_recurring", lang))
             return
@@ -472,13 +485,22 @@ class EditTaskModal(ui.Modal):
             return
 
         try:
-            await db.aexecute(
-                """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
-                   tags=$5, dm_reminded=0, updated_at=NOW()
-                   WHERE task_id=$6 AND owner_id=$7""",
-                (name_or_err, dt.isoformat() if dt else None, prio_val,
-                 description, tags, self.task_id, uid),
-            )
+            if deadline_changed:
+                await db.aexecute(
+                    """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
+                       tags=$5, dm_reminded=0, last_reminder=NULL, updated_at=NOW()
+                       WHERE task_id=$6 AND owner_id=$7""",
+                    (name_or_err, dt.isoformat() if dt else None, prio_val,
+                     description, tags, self.task_id, uid),
+                )
+            else:
+                await db.aexecute(
+                    """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
+                       tags=$5, updated_at=NOW()
+                       WHERE task_id=$6 AND owner_id=$7""",
+                    (name_or_err, dt.isoformat() if dt else None, prio_val,
+                     description, tags, self.task_id, uid),
+                )
             await db.alog_action(uid, "task_edited", str(self.task_id), name_or_err)
             db.invalidate_stats(uid)
         except Exception as exc:
@@ -612,7 +634,7 @@ class SnoozeConfirmView(ui.View):
 
         try:
             await db.aexecute(
-                "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
+                "UPDATE tasks SET deadline=$1, dm_reminded=0, last_reminder=NULL, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
                 (self.new_deadline_iso, self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_snoozed", str(self.task_id), f"new_dl={self.new_deadline_iso}")
@@ -1077,7 +1099,21 @@ class TaskActionView(ui.View):
         self._update_pin_label()
         for item in self.children:
             custom_id = getattr(item, "custom_id", None)
-            if custom_id == f"task_{task_id}_progress":
+            if not custom_id:
+                continue
+            if custom_id.endswith("_done"):
+                item.label = t("btn_mark_done", lang)  # type: ignore[attr-defined]
+            elif custom_id.endswith("_edit"):
+                item.label = t("btn_edit", lang)  # type: ignore[attr-defined]
+            elif custom_id.endswith("_del"):
+                item.label = t("btn_delete", lang)  # type: ignore[attr-defined]
+            elif custom_id.endswith("_snz"):
+                item.label = t("btn_snooze", lang)  # type: ignore[attr-defined]
+            elif custom_id.endswith("_sub"):
+                item.label = t("btn_subtask", lang)  # type: ignore[attr-defined]
+            elif custom_id.endswith("_files"):
+                item.label = t("btn_files", lang)  # type: ignore[attr-defined]
+            elif custom_id == f"task_{task_id}_progress":
                 item.label = t("btn_progress", lang)  # type: ignore[attr-defined]
             elif custom_id == f"task_{task_id}_comments":
                 item.label = t("btn_comments", lang)  # type: ignore[attr-defined]
@@ -1089,7 +1125,7 @@ class TaskActionView(ui.View):
         pin_cid = f"task_{self.task_id}_pin"
         for item in self.children:
             if getattr(item, "custom_id", None) == pin_cid:
-                item.label = "📌 Unpin" if self.is_pinned else "📍 Pin"  # type: ignore[attr-defined]
+                item.label = t("btn_unpin", self.lang) if self.is_pinned else t("btn_pin", self.lang)  # type: ignore[attr-defined]
 
     async def on_timeout(self) -> None:
         pass  # timeout=None — persistent views never expire; kept as no-op for safety
@@ -1158,7 +1194,11 @@ class TaskActionView(ui.View):
         await db.alog_action(self.uid, "task_completed", str(self.task_id))
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
-        self.stop()
+        if interaction.message:
+            try:
+                await interaction.message.edit(view=self)
+            except Exception:
+                pass
         await interaction.followup.send(t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]), ephemeral=True)
         dm_embed = discord.Embed(
             title=t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]),
@@ -1176,7 +1216,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -1196,7 +1236,7 @@ class TaskActionView(ui.View):
             return
         # Re-fetch current pin state from DB — self.is_pinned can be stale after bot restart
         pin_row = await db.afetchone(
-            "SELECT is_pinned FROM tasks WHERE task_id=$1 AND owner_id=$2",
+            "SELECT is_pinned FROM tasks WHERE task_id=$1 AND owner_id=$2 AND is_deleted=FALSE",
             (self.task_id, self.uid),
         )
         if not pin_row:
@@ -1232,7 +1272,7 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1", (self.task_id,))
+        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
@@ -1263,7 +1303,7 @@ class TaskActionView(ui.View):
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
-        if row["status"] != "Pending":
+        if row["status"] not in ("Pending", "In_Progress"):
             await interaction.followup.send(
                 t("task_already_done", lang) if row["status"] == "Completed" else t("task_already_cancelled", lang),
                 ephemeral=True,
@@ -1291,9 +1331,12 @@ class TaskActionView(ui.View):
             await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
-            "SELECT parent_task_id, status FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT parent_task_id, status FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,)
         )
-        if row and row["parent_task_id"] is not None:
+        if not row:
+            await interaction.response.send_message(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if row["parent_task_id"] is not None:
             await interaction.response.send_message(t("subtask_no_nested", lang), ephemeral=True)
             return
         # Defensive: prevent adding subtasks to completed or cancelled parent tasks
@@ -1821,7 +1864,7 @@ class _SnoozePresetSelect(ui.Select):
         new_dl = self._presets[preset]
         try:
             await db.aexecute(
-                "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
+                "UPDATE tasks SET deadline=$1, dm_reminded=0, last_reminder=NULL, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3",
                 (new_dl.isoformat(), self.task_id, self.uid),
             )
             await db.alog_action(self.uid, "task_snoozed", str(self.task_id), f"preset={preset}")
@@ -1924,6 +1967,10 @@ class _QuickActionButtons(ui.View):
         self.lang     = lang
         self.tz_name  = tz_name
         self.row_data = row_data
+        self.quick_done.label = t("btn_mark_done", lang)
+        self.quick_pin.label = t("btn_pin", lang)
+        self.quick_snooze.label = t("btn_quick_snooze_1d", lang)
+        self.quick_detail.label = t("btn_detail", lang)
 
     @ui.button(label="✅ Done", style=discord.ButtonStyle.success)
     async def quick_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -1981,8 +2028,9 @@ class _QuickActionButtons(ui.View):
         if str(interaction.user.id) != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        pin_row = await db.afetchone("SELECT is_pinned FROM tasks WHERE task_id=$1", (self.task_id,))
+        pin_row = await db.afetchone("SELECT is_pinned FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
         if not pin_row:
+            await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
             return
         new_val = 0 if pin_row["is_pinned"] else 1
         await db.aexecute("UPDATE tasks SET is_pinned=$1 WHERE task_id=$2", (new_val, self.task_id))
@@ -1996,12 +2044,13 @@ class _QuickActionButtons(ui.View):
         if str(interaction.user.id) != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        r = await db.afetchone("SELECT deadline FROM tasks WHERE task_id=$1", (self.task_id,))
+        r = await db.afetchone("SELECT deadline FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
         if not r:
+            await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
             return
         new_dl = calculate_defensive_snooze(r["deadline"])
         await db.aexecute(
-            "UPDATE tasks SET deadline=$1, updated_at=NOW() WHERE task_id=$2",
+            "UPDATE tasks SET deadline=$1, dm_reminded=0, last_reminder=NULL, updated_at=NOW() WHERE task_id=$2",
             (new_dl, self.task_id),
         )
         await db.alog_action(self.uid, "task_snoozed", str(self.task_id))
@@ -2042,6 +2091,8 @@ class TodayView(ui.View):
         self.lang    = lang
         self.tz_name = tz_name
         self._tasks  = tasks
+        self.refresh.label = t("btn_refresh", lang)
+        self.view_all.label = t("btn_view_all", lang)
         if tasks:
             self.add_item(TaskQuickActionSelect(tasks, uid, lang, tz_name, row=0))
 
@@ -2078,7 +2129,10 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
     """Helper that (re-)builds the Today embed + TodayView."""
     from utils.helpers import format_deadline, time_left_str
     now_utc  = datetime.now(pytz.utc)
-    local_tz = pytz.timezone(tz_name)
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except Exception:
+        local_tz = pytz.utc
     local_now = now_utc.astimezone(local_tz)
     start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
     end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
@@ -2117,7 +2171,7 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
             dl   = format_deadline(r["deadline"], tz_name)
             lines.append(f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{dl}`  ·  ⏱️ `{tl}`")
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"{len(tasks)} task(s) today  |  {_t('footer_text', lang)}")
+        embed.set_footer(text=f"{_t('today_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}")
 
     view = TodayView(uid, lang, tz_name, list(tasks))
     return embed, view
@@ -2136,6 +2190,8 @@ class OverdueView(ui.View):
         self.lang    = lang
         self.tz_name = tz_name
         self._tasks  = tasks
+        self.refresh.label = t("btn_refresh", lang)
+        self.view_all.label = t("btn_view_all", lang)
         if tasks:
             self.add_item(TaskQuickActionSelect(tasks, uid, lang, tz_name, row=0))
 
@@ -2185,12 +2241,18 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
         note    = _t("overdue_note", lang)
         lines   = [f"**{summary}**\n> *{note}*\n"]
         for r in tasks:
-            lines.append(
+            line = (
                 f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
                 f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
             )
+            current_len = sum(len(x) + 1 for x in lines)
+            if current_len + len(line) + 30 > 3900:
+                remaining = len(tasks) - (len(lines) - 1)
+                lines.append(f"\n... {_t('and_more_tasks', lang, count=remaining)}")
+                break
+            lines.append(line)
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"⚠️ {len(tasks)} overdue  |  {_t('footer_text', lang)}")
+        embed.set_footer(text=f"{_t('overdue_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}")
     view = OverdueView(uid, lang, tz_name, list(tasks))
     return embed, view
 

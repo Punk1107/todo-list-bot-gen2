@@ -44,18 +44,19 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
     """Async wrapper: fetches subtasks + category then builds the embed."""
     task_id = row["task_id"]
 
-    # Fetch subtasks (non-cancelled only)
+    # Fetch subtasks (non-cancelled and non-deleted only)
     subtasks = await db.afetchall(
-        "SELECT task_id, task, status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled' ORDER BY task_id ASC",
+        "SELECT task_id, task, status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled' AND is_deleted = FALSE ORDER BY task_id ASC",
         (task_id,),
     )
 
     # Fetch category
     category = None
-    if row["category_id"]:
+    cat_id = row.get("category_id") if hasattr(row, "get") else row["category_id"]
+    if cat_id:
         category = await db.afetchone(
             "SELECT name, emoji FROM categories WHERE category_id=$1",
-            (row["category_id"],),
+            (cat_id,),
         )
 
     return build_task_embed(row, lang, tz_name,
@@ -308,11 +309,11 @@ class TasksCog(commands.Cog, name="Tasks"):
         # Count total and overdue for summary line
         now_iso = datetime.now(pytz.utc).isoformat()
         total_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL", (uid,)
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE", (uid,)
         )
         overdue_row = await db.afetchone(
             "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
-            "AND status='Pending' AND deadline<$2", (uid, now_iso)
+            "AND status='Pending' AND deadline<$2 AND is_deleted=FALSE", (uid, now_iso)
         )
         total_count   = total_row["c"]   if total_row   else 0
         overdue_count = overdue_row["c"] if overdue_row else 0
@@ -371,7 +372,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await interaction.response.defer()
 
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -410,7 +411,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True)
 
-        row = await db.afetchone("SELECT task, status, owner_id FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT task, status, owner_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -484,13 +485,13 @@ class TasksCog(commands.Cog, name="Tasks"):
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
+        if row["owner_id"] != uid:
+            await interaction.response.send_message(t("task_not_owned", lang), ephemeral=True)
+            return
         if row.get("is_deleted"):
             await interaction.response.send_message(
                 t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
             )
-            return
-        if row["owner_id"] != uid:
-            await interaction.response.send_message(t("task_not_owned", lang), ephemeral=True)
             return
 
         view = DeleteConfirmView(task_id, uid, lang)
@@ -515,7 +516,7 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def pin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id, is_pinned FROM tasks WHERE task_id=$1", (task_id,))
+        row  = await db.afetchone("SELECT owner_id, is_pinned FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -535,7 +536,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         row  = await db.afetchone(
-            "SELECT owner_id, deadline FROM tasks WHERE task_id=$1", (task_id,)
+            "SELECT owner_id, deadline FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,)
         )
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
@@ -581,7 +582,7 @@ class TasksCog(commands.Cog, name="Tasks"):
     ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id FROM tasks WHERE task_id=$1", (task_id,))
+        row  = await db.afetchone("SELECT owner_id, deadline FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -636,7 +637,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         else:
             label = t(f"recurring_{interval}", lang) if interval != "none" else t("recurring_none", lang)
         await interaction.response.send_message(
-            f"🔄 Task **#{task_id}** → {label}", ephemeral=True
+            t("task_recurring_updated", lang, task_id=task_id, interval=label), ephemeral=True
         )
 
 

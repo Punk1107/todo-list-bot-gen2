@@ -53,6 +53,7 @@ async def check_duplicate_task(
             FROM tasks
             WHERE owner_id=$1
               AND status='Pending'
+              AND is_deleted=FALSE
               AND parent_task_id=$2
               AND LOWER(TRIM(task))=$3
         """
@@ -64,6 +65,7 @@ async def check_duplicate_task(
             FROM tasks
             WHERE owner_id=$1
               AND status='Pending'
+              AND is_deleted=FALSE
               AND parent_task_id IS NULL
               AND LOWER(TRIM(task))=$2
         """
@@ -93,20 +95,21 @@ async def suggest_unique_task_name(
     """
     from core.database import db
 
+    clean_name = base_name.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     if parent_task_id is not None:
         sql = """
             SELECT task FROM tasks
-            WHERE owner_id=$1 AND status='Pending' AND parent_task_id=$2
-              AND LOWER(TRIM(task)) LIKE LOWER($3)
+            WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND parent_task_id=$2
+              AND LOWER(TRIM(task)) LIKE LOWER($3) ESCAPE '\\'
         """
-        params = (uid, parent_task_id, f"{base_name.strip()} (%)")
+        params = (uid, parent_task_id, f"{clean_name} (%)")
     else:
         sql = """
             SELECT task FROM tasks
-            WHERE owner_id=$1 AND status='Pending' AND parent_task_id IS NULL
-              AND LOWER(TRIM(task)) LIKE LOWER($2)
+            WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND parent_task_id IS NULL
+              AND LOWER(TRIM(task)) LIKE LOWER($2) ESCAPE '\\'
         """
-        params = (uid, f"{base_name.strip()} (%)")
+        params = (uid, f"{clean_name} (%)")
 
     existing_rows = await db.afetchall(sql, params)
 
@@ -245,11 +248,16 @@ def calculate_defensive_snooze(
     if now_utc.tzinfo is None:
         now_utc = pytz.utc.localize(now_utc)
 
-    # Parse the current deadline
-    if isinstance(current_deadline_iso, datetime):
+    # Parse the current deadline (defaults to now_utc if unset/invalid)
+    if not current_deadline_iso:
+        dt = now_utc
+    elif isinstance(current_deadline_iso, datetime):
         dt = current_deadline_iso
     else:
-        dt = datetime.fromisoformat(current_deadline_iso)
+        try:
+            dt = datetime.fromisoformat(current_deadline_iso)
+        except Exception:
+            dt = now_utc
     if dt.tzinfo is None:
         dt = pytz.utc.localize(dt)
 

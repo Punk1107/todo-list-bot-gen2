@@ -135,7 +135,7 @@ async def _record_completion(
                AND CASE
                      WHEN deadline ~ '^\\d{4}-\\d{2}-\\d{2}'
                      THEN deadline::timestamptz < $2
-                     ELSE TRUE
+                     ELSE FALSE
                    END
            )""",
         user_id, end_of_local_day,
@@ -188,6 +188,7 @@ async def complete_shared_task(
                    SET status='Completed', completed_at=NOW(), updated_at=NOW()
                    WHERE task_id=$1 AND project_id=$2 AND guild_id=$3
                      AND status IN ('Pending','In_Progress')
+                     AND is_deleted = FALSE
                    RETURNING task_id, task, priority, deadline, project_id, guild_id,
                              completed_at""",
                 task_id, project_id, guild_id,
@@ -216,6 +217,7 @@ async def complete_shared_project_tasks(
                    SET status='Completed', completed_at=NOW(), updated_at=NOW()
                    WHERE project_id=$1 AND guild_id=$2
                      AND status IN ('Pending','In_Progress')
+                     AND is_deleted = FALSE
                    RETURNING task_id, task, priority, deadline, project_id, guild_id,
                              completed_at, owner_id""",
                 project_id, guild_id,
