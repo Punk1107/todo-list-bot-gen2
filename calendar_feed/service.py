@@ -111,6 +111,7 @@ async def build_calendar_feed(token: str) -> str:
         """SELECT task_id, task, description, deadline, updated_at
            FROM tasks
            WHERE owner_id=$1 AND deadline IS NOT NULL
+             AND is_deleted = FALSE
              AND status NOT IN ('Completed', 'Cancelled')
            ORDER BY deadline ASC, task_id ASC""",
         (owner["user_id"],),

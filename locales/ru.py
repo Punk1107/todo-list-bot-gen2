@@ -905,6 +905,7 @@ STRINGS = {
     "trash_expired": "Истёк 30-дневный срок восстановления задачи.",
     "trash_purge_success": "Задача #{task_id} окончательно удалена.",
     "trash_purged_all": "{count} задач(и) окончательно удалено из корзины.",
+    "task_already_in_trash": "🗑️ Задача #{task_id} уже находится в корзине. Используйте /trash для восстановления или окончательного удаления.",
     "task_private_label": "Конфиденциальная / Личная задача",
     "task_private_badge": "🔒 Приватная",
     "task_private_toggled_on": "Задача #{task_id} '{name}' помечена как Приватная.",

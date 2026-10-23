@@ -899,6 +899,7 @@ STRINGS = {
     "trash_expired": "復元期限（30日）を過ぎたため復元できません。",
     "trash_purge_success": "タスク #{task_id} を完全に削除しました。",
     "trash_purged_all": "{count}件のタスクをごみ箱から完全削除しました。",
+    "task_already_in_trash": "🗑️ タスク #{task_id} はすでにゴミ箱にあります。復元または完全削除するには /trash を使用してください。",
     "task_private_label": "非公開 / 機密タスク",
     "task_private_badge": "🔒 非公開",
     "task_private_toggled_on": "タスク #{task_id} '{name}' を非公開に設定しました（作成者とリーダーのみ閲覧可能）。",

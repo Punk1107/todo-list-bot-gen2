@@ -154,7 +154,7 @@ async def get_eisenhower_matrix(
         rows = await db.afetchall(
             """SELECT * FROM tasks
                WHERE owner_id = $1
-                 AND guild_id IS NULL
+                 AND project_id IS NULL
                  AND is_deleted = FALSE
                  AND status NOT IN ('Completed', 'Cancelled')
                ORDER BY priority DESC, deadline ASC NULLS LAST""",

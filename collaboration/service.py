@@ -860,6 +860,7 @@ async def _get_incomplete_task_blockers(
              AND blocker.project_id=$2
              AND blocker.guild_id=$3
              AND blocker.status <> 'Completed'
+             AND blocker.is_deleted = FALSE
            ORDER BY blocker.task_id""",
         (task_id, project_id, guild_id),
     )

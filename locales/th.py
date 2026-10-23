@@ -975,6 +975,7 @@ STRINGS = {
     "trash_expired": "งานนี้เกินกำหนดกู้คืน 30 วันแล้ว จึงไม่สามารถกู้คืนได้",
     "trash_purge_success": "ลบงาน #{task_id} ถาวรเรียบร้อยแล้ว",
     "trash_purged_all": "ล้างงานออกจากถังขยะถาวร {count} รายการ",
+    "task_already_in_trash": "🗑️ งาน #{task_id} อยู่ในถังขยะแล้ว ใช้ /trash เพื่อกู้คืนหรือลบถาวร",
     "task_private_label": "งานส่วนตัว / ความลับ (Private)",
     "task_private_badge": "🔒 ความลับ",
     "task_private_toggled_on": "ตั้งค่างาน #{task_id} '{name}' เป็นงานส่วนตัวเรียบร้อยแล้ว (เฉพาะผู้สร้างและหัวหน้าเท่านั้นที่มองเห็น)",

@@ -965,6 +965,7 @@ STRINGS = {
     "trash_expired": "Task has exceeded the 30-day recovery limit and cannot be restored.",
     "trash_purge_success": "Task #{task_id} permanently deleted.",
     "trash_purged_all": "Permanently deleted {count} task(s) from Recycle Bin.",
+    "task_already_in_trash": "🗑️ Task #{task_id} is already in the Recycle Bin. Use /trash to restore or purge it.",
     "task_private_label": "Confidential / Private Task",
     "task_private_badge": "🔒 Private",
     "task_private_toggled_on": "Task #{task_id} '{name}' is now marked as Private (visible only to creator & leads).",

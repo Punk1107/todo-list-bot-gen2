@@ -905,6 +905,7 @@ STRINGS = {
     "trash_expired": "La tâche a dépassé le délai de récupération de 30 jours.",
     "trash_purge_success": "Tâche #{task_id} définitivement supprimée.",
     "trash_purged_all": "{count} tâche(s) définitivement supprimée(s).",
+    "task_already_in_trash": "🗑️ La tâche #{task_id} est déjà dans la corbeille. Utilisez /trash pour la restaurer ou la supprimer définitivement.",
     "task_private_label": "Tâche confidentielle / privée",
     "task_private_badge": "🔒 Privée",
     "task_private_toggled_on": "La tâche #{task_id} '{name}' est désormais privée.",

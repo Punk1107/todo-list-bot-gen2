@@ -53,7 +53,7 @@ class FocusCog(commands.Cog, name="Focus"):
                 async with conn.transaction():
                     task = await conn.fetchrow(
                         """SELECT task FROM tasks
-                           WHERE task_id=$1 AND owner_id=$2 AND status='Pending'""",
+                           WHERE task_id=$1 AND owner_id=$2 AND status='Pending' AND is_deleted=FALSE""",
                         task_id, uid,
                     )
                     if task is None:

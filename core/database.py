@@ -394,6 +394,12 @@ class BulkWriter:
                     self._queue.extendleft(reversed(requeue))
                 self._dropped_count += dropped
             return total_flushed
+        except asyncio.CancelledError:
+            with self._lock:
+                unflushed = batch[total_flushed:]
+                if unflushed:
+                    self._queue.extendleft(reversed(unflushed))
+            raise
         except Exception as exc:
             log.error("BulkWriter connection error: %s — re-queuing %d items", exc, len(batch))
             with self._lock:
@@ -402,21 +408,23 @@ class BulkWriter:
 
 
     async def _run(self) -> None:
-        while True:
+        while not getattr(self, "_stopping", False):
             await asyncio.sleep(self._interval)
             await self.flush()
 
     def start(self) -> None:
         loop = asyncio.get_running_loop()
+        self._stopping = False
         self._task = loop.create_task(self._run(), name="bulk_writer")
         log.info("BulkWriter started (interval=%.0f ms)", self._interval * 1000)
 
     async def stop(self) -> None:
+        self._stopping = True
         if self._task:
             self._task.cancel()
             try:
                 await self._task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, Exception):
                 pass
         await self.flush()  # drain remaining
 
@@ -1508,6 +1516,7 @@ class DatabaseManager:
     def invalidate_stats(self, uid: str) -> None:
         """Call this after any task mutation to keep stats fresh."""
         self.stats_cache.invalidate(uid)
+        self.stats_cache.invalidate(f"analytics:{uid}")
         self.query_cache.invalidate_table("tasks")  # targeted bust — preserves other table caches
 
     # ── Productivity analytics (for /task-stats) ──────────────────────────────

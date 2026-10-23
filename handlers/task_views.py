@@ -2084,11 +2084,11 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
     end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
 
     tasks = await db.afetchall(
-        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline BETWEEN $2 AND $3 ORDER BY deadline ASC",
+        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline BETWEEN $2 AND $3 ORDER BY deadline ASC",
         (uid, start, end),
     )
     overdue_row = await db.afetchone(
-        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2",
+        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2",
         (uid, now_utc.isoformat()),
     )
     overdue_c = overdue_row["c"] if overdue_row else 0
@@ -2174,7 +2174,7 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
     from locales.i18n import t as _t
     now = datetime.now(pytz.utc).isoformat()
     tasks = await db.afetchall(
-        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND deadline<$2 ORDER BY deadline ASC",
+        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2 ORDER BY deadline ASC",
         (uid, now),
     )
     embed = discord.Embed(title=f"🚨 {_t('overdue_view_title', lang)}", color=0xED4245)

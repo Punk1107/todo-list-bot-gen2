@@ -351,7 +351,7 @@ async def create_template_from_task(
     guild_id: Optional[str] = None,
 ) -> Optional[TaskTemplate]:
     """Generate a template from an existing task (including its subtasks and checklists)."""
-    parent = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+    parent = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted = FALSE", (task_id,))
     if not parent:
         return None
 
@@ -361,7 +361,7 @@ async def create_template_from_task(
 
     # Fetch subtasks
     sub_rows = await db.afetchall(
-        "SELECT * FROM tasks WHERE parent_task_id=$1 ORDER BY task_id ASC",
+        "SELECT * FROM tasks WHERE parent_task_id=$1 AND is_deleted = FALSE ORDER BY task_id ASC",
         (task_id,),
     )
     subtasks_data: list[dict[str, Any]] = []
