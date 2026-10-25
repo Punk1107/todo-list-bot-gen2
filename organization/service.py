@@ -378,7 +378,7 @@ async def execute_saved_filter(
 
     if crit.due_within_days is not None and crit.due_within_days >= 0:
         where_clauses.append(
-            f"t.deadline IS NOT NULL AND t.deadline <= (NOW() + INTERVAL '{int(crit.due_within_days)} days')::text"
+            f"(t.deadline IS NOT NULL AND CASE WHEN t.deadline ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN t.deadline::timestamptz <= (NOW() + INTERVAL '{int(crit.due_within_days)} days') ELSE FALSE END)"
         )
 
     # Sort

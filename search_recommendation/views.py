@@ -313,7 +313,7 @@ class TaskSelectFromSearch(ui.Select):
         from core.database import db
         from handlers.task_views import TaskActionView
         from handlers.tasks_cog import _async_build_task_embed
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
             return
@@ -520,7 +520,7 @@ class TaskQuickActionFromRecommend(ui.Select):
         from core.database import db
         from handlers.task_views import TaskActionView
         from handlers.tasks_cog import _async_build_task_embed
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row:
             await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
             return

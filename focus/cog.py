@@ -158,7 +158,7 @@ class FocusCog(commands.Cog, name="Focus"):
             """SELECT fs.phase, fs.phase_ends_at, t.task
                FROM focus_sessions fs
                JOIN tasks t ON t.task_id=fs.task_id
-               WHERE fs.user_id=$1 AND fs.status='active'""",
+               WHERE fs.user_id=$1 AND fs.status='active' AND t.is_deleted=FALSE""",
             (uid,),
         )
         if row is None:
@@ -201,7 +201,7 @@ class FocusCog(commands.Cog, name="Focus"):
                     row = await conn.fetchrow(
                         """SELECT fs.session_id, fs.user_id, fs.task_id, fs.phase,
                                   fs.phase_started_at, fs.phase_ends_at,
-                                  fs.notification_pending, t.task
+                                  fs.notification_pending, t.task, t.is_deleted, t.status AS task_status
                            FROM focus_sessions fs
                            JOIN tasks t ON t.task_id=fs.task_id
                            WHERE fs.session_id=$1 AND fs.status='active'
@@ -209,6 +209,15 @@ class FocusCog(commands.Cog, name="Focus"):
                         session_id,
                     )
                     if row is None:
+                        return
+
+                    if row.get("is_deleted") or row.get("task_status") in ("Completed", "Cancelled"):
+                        await conn.execute(
+                            """UPDATE focus_sessions
+                               SET status='stopped', notification_pending=FALSE, updated_at=NOW()
+                               WHERE session_id=$1""",
+                            session_id,
+                        )
                         return
 
                     if row["notification_pending"]:

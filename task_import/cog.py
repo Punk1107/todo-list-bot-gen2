@@ -54,8 +54,8 @@ class TaskImportCog(commands.Cog, name="Task Import"):
         statements = [
             (
                 """INSERT INTO tasks
-                   (task, deadline, priority, status, recurring, tags, description, is_pinned, owner_id)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                   (task, deadline, priority, status, recurring, tags, description, is_pinned, owner_id, completed_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, (CASE WHEN $4 = 'Completed' THEN NOW() ELSE NULL END))""",
                 (
                     task.task, task.deadline, task.priority, task.status, task.recurring,
                     task.tags, task.description, task.is_pinned, uid,

@@ -251,6 +251,7 @@ FROM tasks t
         where_clauses = [
             f"t.status NOT IN ('Completed', 'Cancelled')",
             f"t.parent_task_id IS NULL",   # top-level tasks only by default
+            "t.is_deleted = FALSE",
         ]
 
         if guild_id:
