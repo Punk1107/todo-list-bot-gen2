@@ -489,7 +489,7 @@ class EditTaskModal(ui.Modal):
                 await db.aexecute(
                     """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
                        tags=$5, dm_reminded=0, last_reminder=NULL, updated_at=NOW()
-                       WHERE task_id=$6 AND owner_id=$7""",
+                       WHERE task_id=$6 AND owner_id=$7 AND is_deleted=FALSE""",
                     (name_or_err, dt.isoformat() if dt else None, prio_val,
                      description, tags, self.task_id, uid),
                 )
@@ -497,7 +497,7 @@ class EditTaskModal(ui.Modal):
                 await db.aexecute(
                     """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
                        tags=$5, updated_at=NOW()
-                       WHERE task_id=$6 AND owner_id=$7""",
+                       WHERE task_id=$6 AND owner_id=$7 AND is_deleted=FALSE""",
                     (name_or_err, dt.isoformat() if dt else None, prio_val,
                      description, tags, self.task_id, uid),
                 )
@@ -508,7 +508,10 @@ class EditTaskModal(ui.Modal):
             await _safe_respond(interaction, t("err_db", lang))
             return
 
-        row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
+        row   = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
+        if not row:
+            await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+            return
         embed = build_task_embed(row, lang, tz_name)
         view  = TaskActionView(self.task_id, uid, lang,
                                current_priority=prio_val)
@@ -817,7 +820,7 @@ class TaskConflictView(ui.View):
         tz_name = self.tz_name
         try:
             row = await db.afetchone(
-                "SELECT * FROM tasks WHERE task_id=$1", (self.conflict_row["task_id"],)
+                "SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.conflict_row["task_id"],)
             )
             if not row:
                 await interaction.followup.send(t("task_not_found", lang, task_id=self.conflict_row["task_id"]), ephemeral=True)
@@ -1156,9 +1159,12 @@ class TaskActionView(ui.View):
         if not self._check_owner(interaction):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
-        row = await db.afetchone("SELECT task, status FROM tasks WHERE task_id=$1", (self.task_id,))
+        row = await db.afetchone("SELECT task, status, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if row.get("is_deleted"):
+            await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
             return
         if row["status"] == "Completed":
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
@@ -1298,10 +1304,13 @@ class TaskActionView(ui.View):
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         row = await db.afetchone(
-            "SELECT task, deadline, status FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT task, deadline, status, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if row.get("is_deleted"):
+            await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
             return
         if row["status"] not in ("Pending", "In_Progress"):
             await interaction.followup.send(
@@ -1371,9 +1380,15 @@ class TaskActionView(ui.View):
         from storage.views import build_attachments_embed, TaskAttachmentsView
 
         task_row = await db.afetchone(
-            "SELECT task FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT task, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,)
         )
-        task_name = task_row["task"] if task_row else f"Task #{self.task_id}"
+        if not task_row:
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if task_row.get("is_deleted"):
+            await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
+            return
+        task_name = task_row["task"]
         uid = str(interaction.user.id)
 
         files = await storage_svc.get_attachments(self.task_id)
@@ -1444,8 +1459,14 @@ class TaskActionView(ui.View):
         from routine_workflows import service as routine_service
         from routine_workflows.views import TaskChecklistView
 
-        task_row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1", (self.task_id,))
-        task_name = task_row["task"] if task_row else f"Task #{self.task_id}"
+        task_row = await db.afetchone("SELECT task, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
+        if not task_row:
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if task_row.get("is_deleted"):
+            await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
+            return
+        task_name = task_row["task"]
         items = await routine_service.get_checklists(self.task_id)
         view = TaskChecklistView(self.task_id, task_name, uid, lang, items)
         await interaction.followup.send(
@@ -1938,7 +1959,7 @@ class TaskQuickActionSelect(ui.Select):
             return
 
         task_id = int(task_id_str)
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
         if not row:
             await _safe_respond(interaction, t("task_not_found", self.lang, task_id=task_id))
             return
@@ -1978,10 +1999,15 @@ class _QuickActionButtons(ui.View):
         if str(interaction.user.id) != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        r = await db.afetchone("SELECT task, status FROM tasks WHERE task_id=$1", (self.task_id,))
+        r = await db.afetchone("SELECT task, status, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not r:
             await interaction.followup.send(
                 t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True
+            )
+            return
+        if r.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
             )
             return
         if r["status"] == "Completed":
@@ -2028,13 +2054,19 @@ class _QuickActionButtons(ui.View):
         if str(interaction.user.id) != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        pin_row = await db.afetchone("SELECT is_pinned FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
+        pin_row = await db.afetchone("SELECT is_pinned, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not pin_row:
             await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
             return
+        if pin_row.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
+            )
+            return
         new_val = 0 if pin_row["is_pinned"] else 1
-        await db.aexecute("UPDATE tasks SET is_pinned=$1 WHERE task_id=$2", (new_val, self.task_id))
+        await db.aexecute("UPDATE tasks SET is_pinned=$1 WHERE task_id=$2 AND is_deleted=FALSE", (new_val, self.task_id))
         await db.alog_action(self.uid, "task_pinned" if new_val else "task_unpinned", str(self.task_id))
+        db.invalidate_stats(self.uid)
         msg_key = "task_pinned" if new_val else "task_unpinned"
         await interaction.followup.send(t(msg_key, self.lang, task_id=self.task_id), ephemeral=True)
 
@@ -2044,9 +2076,14 @@ class _QuickActionButtons(ui.View):
         if str(interaction.user.id) != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        r = await db.afetchone("SELECT deadline FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (self.task_id,))
+        r = await db.afetchone("SELECT deadline, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not r:
             await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
+            return
+        if r.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
+            )
             return
         new_dl = calculate_defensive_snooze(r["deadline"])
         await db.aexecute(
@@ -2067,9 +2104,14 @@ class _QuickActionButtons(ui.View):
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
         from utils.helpers import build_task_embed
-        r = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (self.task_id,))
+        r = await db.afetchone("SELECT *, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not r:
             await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
+            return
+        if r.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
+            )
             return
         embed = build_task_embed(r, self.lang, self.tz_name)
         view  = TaskActionView(self.task_id, self.uid, self.lang,
@@ -2285,6 +2327,7 @@ async def register_all_persistent_views(bot: discord.Client) -> None:
            FROM tasks t
            LEFT JOIN users u ON t.owner_id = u.user_id
            WHERE t.status != 'Cancelled'
+             AND t.is_deleted = FALSE
              AND (t.status != 'Completed' OR t.updated_at >= NOW() - ($2 || ' days')::INTERVAL)
            ORDER BY t.task_id DESC
            LIMIT $3""",

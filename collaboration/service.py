@@ -531,7 +531,7 @@ async def get_project_stakeholder_ids(project_id: int, guild_id: str) -> set[str
             """SELECT DISTINCT ta.user_id
                FROM task_assignments ta
                JOIN tasks t ON t.task_id = ta.task_id
-               WHERE t.project_id=$1 AND t.guild_id=$2""",
+               WHERE t.project_id=$1 AND t.guild_id=$2 AND t.is_deleted = FALSE""",
             (project_id, guild_id),
         )
         for r in (ta_rows or []):
@@ -545,7 +545,7 @@ async def get_project_stakeholder_ids(project_id: int, guild_id: str) -> set[str
         to_rows = await db.fetchall(
             """SELECT DISTINCT owner_id
                FROM tasks
-               WHERE project_id=$1 AND guild_id=$2 AND owner_id IS NOT NULL""",
+               WHERE project_id=$1 AND guild_id=$2 AND owner_id IS NOT NULL AND is_deleted = FALSE""",
             (project_id, guild_id),
         )
         for r in (to_rows or []):
@@ -1184,10 +1184,13 @@ async def update_task_status(
             return task
     else:
         await db.execute(
-            "UPDATE tasks SET status=$1, updated_at=NOW()"
+            "UPDATE tasks SET status=$1, completed_at=NULL, updated_at=NOW()"
             " WHERE task_id=$2 AND project_id=$3 AND guild_id=$4",
             (new_status, task_id, project_id, guild_id),
         )
+        for uid in task.assignees:
+            db.invalidate_stats(uid)
+        db.invalidate_stats(task.owner_id)
     db.query_cache.invalidate_tables(["tasks", "task_assignments"])
 
     action_map = {

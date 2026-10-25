@@ -169,10 +169,16 @@ async def complete_personal_task(task_id: int, user_id: str) -> Optional[list[st
             completed_at = task["completed_at"]
             if completed_at.tzinfo is None:
                 completed_at = completed_at.replace(tzinfo=timezone.utc)
+            await conn.execute(
+                """UPDATE focus_sessions
+                   SET status='stopped', notification_pending=FALSE, updated_at=NOW()
+                   WHERE task_id=$1 AND status='active'""",
+                task_id,
+            )
             awarded = await _record_completion(conn, task, user_id, completed_at)
     db.invalidate_stats(user_id)
     db.query_cache.invalidate_tables([
-        "tasks", "users", "task_completion_events", "user_achievements",
+        "tasks", "users", "task_completion_events", "user_achievements", "focus_sessions",
     ])
     return awarded
 
@@ -198,10 +204,16 @@ async def complete_shared_task(
             completed_at = task["completed_at"]
             if completed_at.tzinfo is None:
                 completed_at = completed_at.replace(tzinfo=timezone.utc)
+            await conn.execute(
+                """UPDATE focus_sessions
+                   SET status='stopped', notification_pending=FALSE, updated_at=NOW()
+                   WHERE task_id=$1 AND status='active'""",
+                task_id,
+            )
             awarded = await _record_completion(conn, task, user_id, completed_at)
     db.invalidate_stats(user_id)
     db.query_cache.invalidate_tables([
-        "tasks", "users", "task_completion_events", "user_achievements",
+        "tasks", "users", "task_completion_events", "user_achievements", "focus_sessions",
     ])
     return awarded
 

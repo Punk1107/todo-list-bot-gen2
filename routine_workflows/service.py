@@ -444,7 +444,7 @@ async def apply_template(
     parent_rel_days = int(items.get("relative_days", 3))
 
     parent_deadline_dt = now_local + timedelta(days=parent_rel_days)
-    parent_deadline_iso = parent_deadline_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    parent_deadline_iso = parent_deadline_dt.astimezone(timezone.utc).isoformat()
 
     parent_checklists: list[str] = items.get("checklists") or []
     subtasks: list[dict[str, Any]] = items.get("subtasks") or []
@@ -459,7 +459,7 @@ async def apply_template(
                 """INSERT INTO tasks
                    (task, deadline, priority, status, description, tags,
                     owner_id, guild_id, project_id, created_at, updated_at)
-                   VALUES ($1, $2::timestamp, $3, 'Pending', $4, $5, $6, $7, $8, NOW(), NOW())
+                   VALUES ($1, $2, $3, 'Pending', $4, $5, $6, $7, $8, NOW(), NOW())
                    RETURNING task_id""",
                 parent_title,
                 parent_deadline_iso,
@@ -492,13 +492,13 @@ async def apply_template(
                 s_desc = s.get("description")
                 s_rel_days = int(s.get("relative_days", 1))
                 s_dl_dt = now_local + timedelta(days=s_rel_days)
-                s_dl_iso = s_dl_dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                s_dl_iso = s_dl_dt.astimezone(timezone.utc).isoformat()
 
                 s_row = await conn.fetchrow(
                     """INSERT INTO tasks
                        (task, deadline, priority, status, description, tags,
                         owner_id, guild_id, project_id, parent_task_id, created_at, updated_at)
-                       VALUES ($1, $2::timestamp, $3, 'Pending', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                       VALUES ($1, $2, $3, 'Pending', $4, $5, $6, $7, $8, $9, NOW(), NOW())
                        RETURNING task_id""",
                     s_title,
                     s_dl_iso,

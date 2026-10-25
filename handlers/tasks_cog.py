@@ -372,7 +372,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         tz_name = await get_user_timezone(uid)
         await interaction.response.defer()
 
-        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
+        row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -380,6 +380,11 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
         if row["owner_id"] != uid:
             await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
+            return
+        if row.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
+            )
             return
 
         # Fetch categories for the Category Select dropdown
@@ -411,7 +416,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True)
 
-        row = await db.afetchone("SELECT task, status, owner_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
+        row = await db.afetchone("SELECT task, status, owner_id, is_deleted FROM tasks WHERE task_id=$1", (task_id,))
         if not row:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
@@ -419,6 +424,11 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
         if row["owner_id"] != uid:
             await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
+            return
+        if row.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
+            )
             return
         if row["status"] == "Completed":
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
@@ -516,14 +526,20 @@ class TasksCog(commands.Cog, name="Tasks"):
     async def pin(self, interaction: discord.Interaction, task_id: int) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
-        row  = await db.afetchone("SELECT owner_id, is_pinned FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
+        row  = await db.afetchone("SELECT owner_id, is_pinned, is_deleted FROM tasks WHERE task_id=$1", (task_id,))
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
-        await db.aexecute("UPDATE tasks SET is_pinned=1 WHERE task_id=$1", (task_id,))
+        if row.get("is_deleted"):
+            await interaction.response.send_message(
+                t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
+            )
+            return
+        await db.aexecute("UPDATE tasks SET is_pinned=1 WHERE task_id=$1 AND owner_id=$2 AND is_deleted=FALSE", (task_id, uid))
         await db.alog_action(uid, "task_pinned", str(task_id))
+        db.invalidate_stats(uid)
         await interaction.response.send_message(
             t("task_pinned", lang, task_id=task_id), ephemeral=True
         )
@@ -536,15 +552,21 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         row  = await db.afetchone(
-            "SELECT owner_id, deadline FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,)
+            "SELECT owner_id, is_pinned, is_deleted FROM tasks WHERE task_id=$1", (task_id,)
         )
         if not row or row["owner_id"] != uid:
             await interaction.response.send_message(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True
             )
             return
-        await db.aexecute("UPDATE tasks SET is_pinned=0 WHERE task_id=$1", (task_id,))
+        if row.get("is_deleted"):
+            await interaction.response.send_message(
+                t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
+            )
+            return
+        await db.aexecute("UPDATE tasks SET is_pinned=0 WHERE task_id=$1 AND owner_id=$2 AND is_deleted=FALSE", (task_id, uid))
         await db.alog_action(uid, "task_unpinned", str(task_id))
+        db.invalidate_stats(uid)
         await interaction.response.send_message(
             t("task_unpinned", lang, task_id=task_id), ephemeral=True
         )
@@ -625,10 +647,11 @@ class TasksCog(commands.Cog, name="Tasks"):
         encoded_rule = json.dumps(rule) if rule is not None else None
         await db.aexecute(
             """UPDATE tasks SET recurring=$1, recurrence_rule=$2::jsonb, updated_at=NOW()
-               WHERE task_id=$3""",
-            (new_val, encoded_rule, task_id),
+               WHERE task_id=$3 AND owner_id=$4 AND is_deleted=FALSE""",
+            (new_val, encoded_rule, task_id, uid),
         )
         await db.alog_action(uid, "task_recurring_set", str(task_id), interval)
+        db.invalidate_stats(uid)
         if interval in {"every_n_days", "every_n_weeks"}:
             key = "recurring_every_days" if interval == "every_n_days" else "recurring_every_weeks"
             label = t(key, lang, count=every)

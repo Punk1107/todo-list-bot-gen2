@@ -105,11 +105,15 @@ async def test_soft_delete_personal_task_by_owner():
 
         ok = await service.soft_delete_task(task_id=1, user_id="u1")
         assert ok is True
-        mock_exec.assert_called_once()
+        assert mock_exec.call_count == 2
         # Verify query updates is_deleted and deleted_at
-        call_sql = mock_exec.call_args[0][0]
+        call_sql = mock_exec.call_args_list[0][0][0]
         assert "is_deleted=TRUE" in call_sql
         assert "deleted_at=NOW()" in call_sql
+        # Verify focus sessions stopped
+        focus_sql = mock_exec.call_args_list[1][0][0]
+        assert "UPDATE focus_sessions" in focus_sql
+        assert "status='stopped'" in focus_sql
         mock_audit.assert_called_once_with("u1", "task_soft_deleted", "1")
 
 
@@ -149,7 +153,9 @@ async def test_soft_delete_project_task_by_member_with_permission():
 
         ok = await service.soft_delete_task(task_id=10, user_id="u2", project_id=5, guild_id="g1")
         assert ok is True
-        mock_exec.assert_called_once()
+        assert mock_exec.call_count == 2
+        assert "is_deleted=TRUE" in mock_exec.call_args_list[0][0][0]
+        assert "UPDATE focus_sessions" in mock_exec.call_args_list[1][0][0]
 
 
 @pytest.mark.asyncio

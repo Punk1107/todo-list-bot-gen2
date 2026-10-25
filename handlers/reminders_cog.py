@@ -452,17 +452,23 @@ class RemindersCog(commands.Cog, name="Reminders"):
                             row["task_id"],
                         )
                         encoded_rule = json.dumps(rule) if rule is not None else None
+                        row_dict = dict(row)
+                        proj_id = row_dict.get("project_id")
+                        guild_id = row_dict.get("guild_id")
+                        is_pinned = int(row_dict.get("is_pinned") or 0)
+                        is_private = bool(row_dict.get("is_private") or False)
                         await conn.execute(
                             """INSERT INTO tasks
                                (task, deadline, priority, status, recurring, recurrence_rule,
-                                category_id, tags, description, owner_id)
-                               VALUES ($1,$2,$3,'Pending',$4,$5::jsonb,$6,$7,$8,$9)""",
+                                category_id, tags, description, owner_id, project_id, guild_id, is_pinned, is_private)
+                               VALUES ($1,$2,$3,'Pending',$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13)""",
                             row["task"], nxt, row["priority"], row["recurring"], encoded_rule,
                             row["category_id"], row["tags"], row["description"], row["owner_id"],
+                            proj_id, guild_id, is_pinned, is_private,
                         )
                         changed_owners.add(row["owner_id"])
-                        log.info("Recurring task renewed: id=%d owner=%s next=%s",
-                                 row["task_id"], row["owner_id"], nxt[:16])
+                        log.info("Recurring task renewed: id=%d owner=%s next=%s project=%s",
+                                 row["task_id"], row["owner_id"], nxt[:16], proj_id)
             for owner_id in changed_owners:
                 db.invalidate_stats(owner_id)
         except Exception as exc:
@@ -635,6 +641,12 @@ class RemindersCog(commands.Cog, name="Reminders"):
             total_removed = sum(counts.values())
             if total_removed:
                 log.debug("Cache cleanup: %s", counts)
+
+            # Purge expired soft-deleted tasks older than 30 days
+            from recovery import service as recovery_service
+            purged = await recovery_service.purge_expired_trash(days=30)
+            if purged:
+                log.info("Auto-purged %d expired soft-deleted tasks from Recycle Bin", purged)
         except Exception as exc:
             log.error("Unexpected error in cleanup_loop: %s", exc, exc_info=True)
 

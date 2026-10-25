@@ -625,15 +625,20 @@ class SettingsCog(commands.Cog, name="Settings"):
         if row["owner_id"] == "system":
             await interaction.response.send_message(t("cat_cannot_remove_default", lang), ephemeral=True)
             return
+        cat_owner = str(row["owner_id"])
         # Nullify tasks referencing this category
         await db.aexecute(
             "UPDATE tasks SET category_id=NULL WHERE category_id=$1 AND owner_id=$2",
-            (category_id, uid),
+            (category_id, cat_owner),
         )
         await db.aexecute(
-            "DELETE FROM categories WHERE category_id=$1 AND owner_id=$2", (category_id, uid)
+            "DELETE FROM categories WHERE category_id=$1 AND owner_id=$2", (category_id, cat_owner)
         )
         await db.alog_action(uid, "category_deleted", str(category_id), row["name"])
+        db.invalidate_stats(cat_owner)
+        if cat_owner != uid:
+            db.invalidate_stats(uid)
+        db.query_cache.invalidate_tables(["categories", "tasks"])
         await interaction.response.send_message(
             t("cat_removed", lang, name=row["name"]), ephemeral=True
         )

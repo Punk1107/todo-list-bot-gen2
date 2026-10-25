@@ -837,7 +837,10 @@ async def get_weekly_retrospective_data(
     )
     user_tasks = user_tasks or []
 
-    pending_tasks = [t for t in user_tasks if str(t.get("status", "")).lower() != "completed"]
+    pending_tasks = [
+        t for t in user_tasks
+        if str(t.get("status", "")).lower() in ("pending", "in_progress")
+    ]
     total_active_week = completed_tasks_count + len(pending_tasks)
 
     completion_rate = (
