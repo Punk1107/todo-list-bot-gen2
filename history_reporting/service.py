@@ -1022,7 +1022,7 @@ async def send_weekly_retrospective_dm(
         if hasattr(bot, "get_user") and callable(bot.get_user):
             try:
                 cached_user = bot.get_user(uid_val)
-                if cached_user and (not isinstance(cached_user, MagicMock) or isinstance(getattr(cached_user, "send", None), AsyncMock)):
+                if isinstance(cached_user, (discord.User, discord.Member)):
                     user_obj = cached_user
             except Exception:
                 user_obj = None
