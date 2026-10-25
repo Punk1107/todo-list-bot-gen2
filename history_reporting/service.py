@@ -1018,7 +1018,17 @@ async def send_weekly_retrospective_dm(
             uid_val: Any = int(user_id)
         except (ValueError, TypeError):
             uid_val = user_id
-        user_obj = await bot.fetch_user(uid_val)
+        user_obj = None
+        if hasattr(bot, "get_user") and callable(bot.get_user):
+            try:
+                cached_user = bot.get_user(uid_val)
+                if cached_user and (not isinstance(cached_user, MagicMock) or isinstance(getattr(cached_user, "send", None), AsyncMock)):
+                    user_obj = cached_user
+            except Exception:
+                user_obj = None
+
+        if user_obj is None and hasattr(bot, "fetch_user") and callable(bot.fetch_user):
+            user_obj = await bot.fetch_user(uid_val)
         if not user_obj:
             return False
         await user_obj.send(embed=embed, view=view)

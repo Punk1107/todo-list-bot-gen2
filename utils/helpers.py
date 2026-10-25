@@ -259,10 +259,23 @@ async def ensure_user(user_id, lang: Optional[str] = None,
         return
     if lang is None and discord_locale is not None:
         lang = locale_to_lang(discord_locale)
+    user_lang = lang or config.bot.default_lang
     await db.aexecute(
         "INSERT INTO users (user_id, timezone, lang) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
-        (uid, config.bot.default_timezone, lang or config.bot.default_lang),
+        (uid, config.bot.default_timezone, user_lang),
     )
+    # Warm UserCache immediately so subsequent calls to get_user_lang,
+    # get_user_timezone, etc. in the same command flow hit L1 cache without DB round-trips
+    if db.user_cache.get(uid) is None:
+        db.user_cache.set(
+            uid,
+            lang=user_lang,
+            timezone=config.bot.default_timezone,
+            channel_id=None,
+            role="user",
+            theme="default",
+            weekly_retrospective=1,
+        )
 
 
 
