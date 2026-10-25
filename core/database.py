@@ -18,7 +18,7 @@ import json
 import logging
 import random
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 27   # bump when adding migrations below
+SCHEMA_VERSION = 28   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ class UserCache:
     """
 
     def __init__(self, max_size: int = 5000) -> None:
-        self._store: dict[str, _CachedUser] = {}
+        self._store: OrderedDict[str, _CachedUser] = OrderedDict()
         self._max_size = max_size
         self._lock = Lock()
 
@@ -71,6 +71,7 @@ class UserCache:
         with self._lock:
             entry = self._store.get(uid)
             if entry and not entry.expired:
+                self._store.move_to_end(uid)
                 return entry
             if entry:
                 del self._store[uid]
@@ -80,9 +81,10 @@ class UserCache:
             channel_id: Optional[int], role: str, theme: str = "default",
             weekly_retrospective: int = 1) -> None:
         with self._lock:
-            if len(self._store) >= self._max_size and uid not in self._store:
-                oldest = next(iter(self._store))
-                del self._store[oldest]
+            if uid in self._store:
+                self._store.move_to_end(uid)
+            elif len(self._store) >= self._max_size:
+                self._store.popitem(last=False)
             self._store[uid] = _CachedUser(
                 lang=lang, timezone=timezone,
                 channel_id=channel_id, role=role,
@@ -130,7 +132,7 @@ class StatsCache:
     """Thread-safe short-lived stats cache bounded by max_size (default 5000)."""
 
     def __init__(self, max_size: int = 5000) -> None:
-        self._store: dict[str, _CachedStats] = {}
+        self._store: OrderedDict[str, _CachedStats] = OrderedDict()
         self._max_size = max_size
         self._lock = Lock()
 
@@ -138,6 +140,7 @@ class StatsCache:
         with self._lock:
             entry = self._store.get(uid)
             if entry and not entry.expired:
+                self._store.move_to_end(uid)
                 return entry.data
             if entry:
                 del self._store[uid]
@@ -145,9 +148,10 @@ class StatsCache:
 
     def set(self, uid: str, data: dict) -> None:
         with self._lock:
-            if len(self._store) >= self._max_size and uid not in self._store:
-                oldest = next(iter(self._store))
-                del self._store[oldest]
+            if uid in self._store:
+                self._store.move_to_end(uid)
+            elif len(self._store) >= self._max_size:
+                self._store.popitem(last=False)
             self._store[uid] = _CachedStats(data=data)
 
     def invalidate(self, uid: str) -> None:
@@ -208,7 +212,7 @@ class QueryCache:
     def __init__(self, ttl: float = 30.0, max_size: int = 2048) -> None:
         self._ttl = ttl
         self._max_size = max_size
-        self._store: dict[Any, _CachedQuery] = {}
+        self._store: OrderedDict[Any, _CachedQuery] = OrderedDict()
         self._table_map: dict[str, set[Any]] = {}  # table -> set of cache keys
         self._lock = Lock()
         # Track hits/misses for /metrics
@@ -233,6 +237,7 @@ class QueryCache:
             entry = self._store.get(k)
             if entry and not entry.expired:
                 self._hits += 1
+                self._store.move_to_end(k)
                 return entry.result
             if entry:
                 del self._store[k]
@@ -246,10 +251,10 @@ class QueryCache:
         expires = time.monotonic() + self._ttl
         tables = _detect_tables(sql)
         with self._lock:
-            # Evict oldest entries if at capacity (simple FIFO eviction)
-            if len(self._store) >= self._max_size:
-                oldest_key = next(iter(self._store))
-                del self._store[oldest_key]
+            if k in self._store:
+                self._store.move_to_end(k)
+            elif len(self._store) >= self._max_size:
+                oldest_key, _ = self._store.popitem(last=False)
                 for keys in self._table_map.values():
                     keys.discard(oldest_key)
             self._store[k] = _CachedQuery(result=result, _expires=expires)
@@ -330,11 +335,12 @@ class BulkWriter:
     Uses asyncpg pool directly — no thread-hopping.
     """
 
-    def __init__(self, pool_getter, interval_ms: int = 500) -> None:
+    def __init__(self, pool_getter, interval_ms: int = 500, max_queue_size: int = 10000) -> None:
         # pool_getter is a callable: () -> asyncpg.Pool
         self._pool_getter = pool_getter
         self._interval = interval_ms / 1000.0
         self._queue: deque[tuple[str, tuple, int]] = deque()  # (sql, params, fail_count)
+        self._max_queue_size = max_queue_size
         self._lock = Lock()
         self._task: Optional[asyncio.Task] = None
         self._flushed_count = 0
@@ -344,6 +350,13 @@ class BulkWriter:
 
     def enqueue(self, sql: str, params: tuple = ()) -> None:
         with self._lock:
+            if len(self._queue) >= self._max_queue_size:
+                self._dropped_count += 1
+                log.warning(
+                    "BulkWriter: queue overflow (%d >= %d), dropping write: %.100s",
+                    len(self._queue), self._max_queue_size, sql,
+                )
+                return
             self._queue.append((sql, params, 0))  # fail_count starts at 0
 
     async def flush(self) -> int:
@@ -445,6 +458,7 @@ class BulkWriter:
                 "batch_count": self._batch_count,
                 "dropped_rows": self._dropped_count,
                 "interval_ms": int(self._interval * 1000),
+                "max_queue_size": self._max_queue_size,
             }
 
 
@@ -1070,6 +1084,26 @@ MIGRATIONS: list[tuple[int, str]] = [
         WHERE status='active';
 
     INSERT INTO schema_version VALUES (27) ON CONFLICT (version) DO UPDATE SET version=27;
+    """),
+    (28, """
+    -- Migration 28: High-frequency user background scans & active task index
+    CREATE INDEX IF NOT EXISTS idx_users_daily_digest
+        ON users(daily_digest, notify_enabled)
+        WHERE daily_digest = 1 AND notify_enabled = 1 AND channel_id IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_users_weekly_retrospective
+        ON users(weekly_retrospective)
+        WHERE weekly_retrospective = 1;
+
+    CREATE INDEX IF NOT EXISTS idx_users_streak_reminder
+        ON users(notify_enabled, streak_days)
+        WHERE notify_enabled = 1 AND streak_days > 0 AND streak_last_completion IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_user_active_root
+        ON tasks(owner_id, status, deadline ASC)
+        WHERE is_deleted = FALSE AND parent_task_id IS NULL;
+
+    INSERT INTO schema_version VALUES (28) ON CONFLICT (version) DO UPDATE SET version=28;
     """),
 ]
 

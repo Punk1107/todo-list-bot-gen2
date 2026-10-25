@@ -190,6 +190,10 @@ class PhoenixWSClient:
                             break
                 finally:
                     heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
                     self._connected = False
 
     async def _join_channels(self) -> None:

@@ -220,7 +220,7 @@ async def test_deadline_dm_loop_not_found_handling():
 
 def test_schema_version_and_migration_27_indexes():
     """Verify Schema version 27 contains all performance partial indexes."""
-    assert SCHEMA_VERSION == 27
+    assert SCHEMA_VERSION >= 27
     v27_sql = next(sql for v, sql in MIGRATIONS if v == 27)
     assert "idx_tasks_recurring_due" in v27_sql
     assert "idx_tasks_deadline_dm_pending" in v27_sql
