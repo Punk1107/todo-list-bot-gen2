@@ -56,8 +56,7 @@ async def _build_digest_embed(
 
     (
         today_tasks,
-        overdue_row,
-        pending_row,
+        counts_row,
         upcoming_tasks,
     ) = await asyncio.gather(
         db.afetchall(
@@ -69,11 +68,10 @@ async def _build_digest_embed(
             (uid, day_start, day_end),
         ),
         db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2",
-            (uid, utc_now.isoformat()),
-        ),
-        db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE",
+            """SELECT COUNT(*) AS pending_total,
+                      COUNT(*) FILTER (WHERE deadline < NOW()) AS overdue_count
+               FROM tasks
+               WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE""",
             (uid,),
         ),
         db.afetchall(
@@ -86,8 +84,21 @@ async def _build_digest_embed(
         ),
     )
 
-    overdue_count = overdue_row["c"] if overdue_row else 0
-    pending_total = pending_row["c"] if pending_row else 0
+    overdue_count = 0
+    pending_total = 0
+    if counts_row:
+        if hasattr(counts_row, "get"):
+            overdue_count = counts_row.get("overdue_count", counts_row.get("c", 0))
+            pending_total = counts_row.get("pending_total", counts_row.get("c", 0))
+        else:
+            try:
+                overdue_count = counts_row["overdue_count"]
+            except (KeyError, TypeError):
+                overdue_count = counts_row["c"] if "c" in counts_row else 0
+            try:
+                pending_total = counts_row["pending_total"]
+            except (KeyError, TypeError):
+                pending_total = counts_row["c"] if "c" in counts_row else 0
 
     # Motivational message & color
     if overdue_count > 0:

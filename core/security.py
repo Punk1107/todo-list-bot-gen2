@@ -9,6 +9,7 @@ import re
 import time
 from collections import defaultdict, deque
 from functools import wraps
+from threading import Lock
 from typing import Callable, Optional, TypeVar
 
 import discord
@@ -124,6 +125,7 @@ class RateLimiter:
         self._search_limit: int = rl.searches_per_minute
         self._export_limit: int = rl.exports_per_day
         self._block_dur:    int = rl.block_duration_seconds
+        self._lock = Lock()
 
         self._stats = {"total": 0, "blocked": 0, "cleanups": 0}
 
@@ -138,30 +140,31 @@ class RateLimiter:
         label: str,
     ) -> bool:
         now = time.monotonic()
-        q = bucket[uid]
-        while q and q[0] < now - window:
-            q.popleft()
-        if len(q) >= limit:
-            self._blocked[uid] = now + self._block_dur
-            log.warning("Rate limit [%s] — user=%s count=%d", label, uid, len(q))
-            self._stats["blocked"] += 1
-            return True           # is limited
-        q.append(now)
-        return False
+        with self._lock:
+            q = bucket[uid]
+            while q and q[0] < now - window:
+                q.popleft()
+            if len(q) >= limit:
+                self._blocked[uid] = now + self._block_dur
+                log.warning("Rate limit [%s] — user=%s count=%d", label, uid, len(q))
+                self._stats["blocked"] += 1
+                return True           # is limited
+            q.append(now)
+            return False
 
     # ── Public ────────────────────────────────────────────────────────────────
 
     def check_command(self, uid: str) -> bool:
-        self._stats["total"] += 1
-        if uid in self._blocked and time.monotonic() < self._blocked[uid]:
-            # User is still in the blocked cooldown period.
-            # Count here only — _check() is NOT called so there is no double-count.
-            self._stats["blocked"] += 1
-            return True
-        elif uid in self._blocked:
-            # Block period expired — remove the entry before continuing
-            del self._blocked[uid]
-        # _check() will increment blocked if this call tips the user over the limit
+        now = time.monotonic()
+        with self._lock:
+            self._stats["total"] += 1
+            if uid in self._blocked and now < self._blocked[uid]:
+                # User is still in the blocked cooldown period.
+                self._stats["blocked"] += 1
+                return True
+            elif uid in self._blocked:
+                # Block period expired — remove the entry before continuing
+                del self._blocked[uid]
         return self._check(uid, self._cmds, 60, self._cmd_limit, "cmd")
 
     def check_task_creation(self, uid: str) -> bool:
@@ -174,31 +177,34 @@ class RateLimiter:
         return self._check(uid, self._exports, 86400, self._export_limit, "export")
 
     def remaining_block_seconds(self, uid: str) -> float:
-        if uid in self._blocked:
-            return max(0.0, self._blocked[uid] - time.monotonic())
-        return 0.0
+        with self._lock:
+            if uid in self._blocked:
+                return max(0.0, self._blocked[uid] - time.monotonic())
+            return 0.0
 
     def cleanup(self) -> None:
         """Purge stale entries — call periodically from a background task."""
         now = time.monotonic()
-        for bucket, window in (
-            (self._cmds, 60),
-            (self._tasks, 3600),
-            (self._search, 60),
-            (self._exports, 86400),
-        ):
-            for uid in list(bucket):
-                q = bucket[uid]
-                while q and q[0] < now - window:
-                    q.popleft()
-                if not q:
-                    del bucket[uid]
-        self._blocked = {u: t for u, t in self._blocked.items() if t > now}
-        self._stats["cleanups"] += 1
+        with self._lock:
+            for bucket, window in (
+                (self._cmds, 60),
+                (self._tasks, 3600),
+                (self._search, 60),
+                (self._exports, 86400),
+            ):
+                for uid in list(bucket):
+                    q = bucket[uid]
+                    while q and q[0] < now - window:
+                        q.popleft()
+                    if not q:
+                        del bucket[uid]
+            self._blocked = {u: t for u, t in self._blocked.items() if t > now}
+            self._stats["cleanups"] += 1
 
     @property
     def stats(self) -> dict:
-        return dict(self._stats)
+        with self._lock:
+            return dict(self._stats)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

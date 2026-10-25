@@ -7,6 +7,7 @@ Changes over v3:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import json
 import re
@@ -44,20 +45,22 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
     """Async wrapper: fetches subtasks + category then builds the embed."""
     task_id = row["task_id"]
 
-    # Fetch subtasks (non-cancelled and non-deleted only)
-    subtasks = await db.afetchall(
+    cat_id = row.get("category_id") if hasattr(row, "get") else row["category_id"]
+    subtasks_coro = db.afetchall(
         "SELECT task_id, task, status FROM tasks WHERE parent_task_id=$1 AND status != 'Cancelled' AND is_deleted = FALSE ORDER BY task_id ASC",
         (task_id,),
     )
-
-    # Fetch category
-    category = None
-    cat_id = row.get("category_id") if hasattr(row, "get") else row["category_id"]
     if cat_id:
-        category = await db.afetchone(
-            "SELECT name, emoji FROM categories WHERE category_id=$1",
-            (cat_id,),
+        subtasks, category = await asyncio.gather(
+            subtasks_coro,
+            db.afetchone(
+                "SELECT name, emoji FROM categories WHERE category_id=$1",
+                (cat_id,),
+            ),
         )
+    else:
+        subtasks = await subtasks_coro
+        category = None
 
     return build_task_embed(row, lang, tz_name,
                             subtasks=subtasks or None,
@@ -77,8 +80,9 @@ async def task_autocomplete(
     Filter is pushed into SQL via ILIKE so results are not limited by a pre-fetch cap.
     """
     uid = str(interaction.user.id)
+    # Quantize to minute to allow QueryCache hits during active user typing while honoring parameterized query requirements
+    now_iso = datetime.now(timezone.utc).replace(second=0, microsecond=0).isoformat()
     try:
-        now_iso = datetime.now(timezone.utc).isoformat()
         if current:
             rows = await db.afetchall(
                 """SELECT task_id, task, deadline, status
@@ -306,17 +310,16 @@ class TasksCog(commands.Cog, name="Tasks"):
         tasks, page, tot = await view._fetch_page()
         filter_label     = t("tasks_filter_Pending", lang)
 
-        # Count total and overdue for summary line
-        now_iso = datetime.now(pytz.utc).isoformat()
-        total_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE", (uid,)
+        # Single combined query for total and overdue counts via SQL FILTER
+        stats_row = await db.afetchone(
+            """SELECT COUNT(*) AS total_count,
+                      COUNT(*) FILTER (WHERE status='Pending' AND deadline < NOW()) AS overdue_count
+               FROM tasks
+               WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE""",
+            (uid,),
         )
-        overdue_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL "
-            "AND status='Pending' AND deadline<$2 AND is_deleted=FALSE", (uid, now_iso)
-        )
-        total_count   = total_row["c"]   if total_row   else 0
-        overdue_count = overdue_row["c"] if overdue_row else 0
+        total_count   = stats_row["total_count"]   if stats_row else 0
+        overdue_count = stats_row["overdue_count"] if stats_row else 0
 
         embed = build_task_list_embed(
             tasks, page, tot, lang, tz_name, filter_label,

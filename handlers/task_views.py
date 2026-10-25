@@ -14,6 +14,7 @@ v5 additions (Conflict Resolution & Defensive Programming):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
@@ -2179,13 +2180,15 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
     start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(pytz.utc).isoformat()
     end   = local_now.replace(hour=23, minute=59, second=59, microsecond=0).astimezone(pytz.utc).isoformat()
 
-    tasks = await db.afetchall(
-        "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline BETWEEN $2 AND $3 ORDER BY deadline ASC",
-        (uid, start, end),
-    )
-    overdue_row = await db.afetchone(
-        "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2",
-        (uid, now_utc.isoformat()),
+    tasks, overdue_row = await asyncio.gather(
+        db.afetchall(
+            "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline BETWEEN $2 AND $3 ORDER BY deadline ASC",
+            (uid, start, end),
+        ),
+        db.afetchone(
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline < NOW()",
+            (uid,),
+        ),
     )
     overdue_c = overdue_row["c"] if overdue_row else 0
 
