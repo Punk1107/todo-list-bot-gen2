@@ -324,13 +324,22 @@ class RemindersCog(commands.Cog, name="Reminders"):
             reminder_updates: list[tuple[str, tuple]] = []
 
             for row in rows:
+                tid     = row["task_id"]
                 channel = self.bot.get_channel(row["channel_id"])
                 if not channel:
+                    # Prevent Head-of-Line blocking: if channel is deleted, inaccessible,
+                    # or bot removed from guild, advance last_reminder so dead tasks do not
+                    # permanently stall the LIMIT 100 query window.
+                    reminder_updates.append((
+                        "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
+                        (tid,),
+                    ))
+                    log.debug("Reminder channel missing (cid=%s) for task_id=%d; advancing last_reminder",
+                              row["channel_id"], tid)
                     continue
 
                 lang    = row["lang"] or config.bot.default_lang
                 tz_name = row["timezone"] or config.bot.default_timezone
-                tid     = row["task_id"]
 
                 try:
                     dt = datetime.fromisoformat(row["deadline"])
@@ -386,10 +395,19 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     log.debug("Reminder sent: task_id=%d user=%s", tid, row["user_id"])
                     # Throttle: avoid Discord rate-limit when many reminders fire at once
                     await asyncio.sleep(0.3)
-                except discord.Forbidden:
-                    log.warning("No permission to send reminder in channel %s", row["channel_id"])
+                except (discord.Forbidden, discord.NotFound) as perm_exc:
+                    log.warning("Cannot send reminder in channel %s (task_id=%d): %s",
+                                row["channel_id"], tid, perm_exc)
+                    reminder_updates.append((
+                        "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
+                        (tid,),
+                    ))
                 except Exception as exc:
                     log.error("Reminder error task_id=%d: %s", tid, exc)
+                    reminder_updates.append((
+                        "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
+                        (tid,),
+                    ))
 
             # Flush all last_reminder updates as a batch
             if reminder_updates:
@@ -586,6 +604,12 @@ class RemindersCog(commands.Cog, name="Reminders"):
         and coaching tip.
         """
         try:
+            # Temporal guard: Sunday 20:00 local time anywhere on Earth can only occur
+            # when UTC weekday is Saturday (5), Sunday (6), or Monday (0).
+            # On Tue-Fri UTC, skip scanning the database entirely to save thousands of queries/week.
+            if datetime.now(UTC).weekday() not in (5, 6, 0):
+                return
+
             users = await db.afetchall(
                 "SELECT user_id, timezone, lang, last_retrospective_date "
                 "FROM users WHERE weekly_retrospective = 1"
@@ -716,8 +740,21 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     if user is None:
                         try:
                             user = await self.bot.fetch_user(int(uid))
-                        except Exception:
-                            log.debug("deadline_dm_loop: could not fetch user %s", uid)
+                        except (discord.NotFound, discord.HTTPException) as user_exc:
+                            log.debug("deadline_dm_loop: could not fetch user %s: %s; setting bitmask to prevent retry hammer", uid, user_exc)
+                            new_mask = row["dm_reminded"] | bit
+                            dm_updates.append((
+                                "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                                (new_mask, tid),
+                            ))
+                            continue
+                        except Exception as exc:
+                            log.debug("deadline_dm_loop: unexpected error fetching user %s: %s", uid, exc)
+                            new_mask = row["dm_reminded"] | bit
+                            dm_updates.append((
+                                "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                                (new_mask, tid),
+                            ))
                             continue
 
                     try:
@@ -773,6 +810,11 @@ class RemindersCog(commands.Cog, name="Reminders"):
                         ))
                     except Exception as exc:
                         log.error("deadline_dm_loop error task_id=%d: %s", tid, exc)
+                        new_mask = row["dm_reminded"] | bit
+                        dm_updates.append((
+                            "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                            (new_mask, tid),
+                        ))
 
                 if dm_updates:
                     try:

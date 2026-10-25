@@ -148,7 +148,7 @@ def test_collaboration_feature_translations_render_in_every_language() -> None:
 def test_schema_v20_contains_context_menu_and_thread_mapping() -> None:
     migration = dict(MIGRATIONS)[20]
     statements = _split_sql_statements(migration)
-    assert SCHEMA_VERSION == 26
+    assert SCHEMA_VERSION == 27
     assert any("source_message_url" in statement for statement in statements)
     assert any("CREATE TABLE IF NOT EXISTS project_task_threads" in statement for statement in statements)
     assert any("thread_type IN ('public', 'private')" in statement for statement in statements)
@@ -157,7 +157,7 @@ def test_schema_v20_contains_context_menu_and_thread_mapping() -> None:
 def test_schema_v21_contains_scoped_dependencies_and_role_assignments() -> None:
     migration = dict(MIGRATIONS)[21]
     statements = _split_sql_statements(migration)
-    assert SCHEMA_VERSION == 26
+    assert SCHEMA_VERSION == 27
     assert any("CREATE TABLE IF NOT EXISTS project_task_dependencies" in statement for statement in statements)
     assert any("CREATE TABLE IF NOT EXISTS project_task_role_assignments" in statement for statement in statements)
     assert any("CHECK (task_id <> blocked_by_task_id)" in statement for statement in statements)

@@ -304,13 +304,10 @@ async def on_interaction(interaction: discord.Interaction) -> None:
         for k in [k for k, v in _last_active_cache.items() if v < cutoff]:
             _last_active_cache.pop(k, None)
 
-    # Ensure user row exists before updating last_active
+    # Ensure user row exists and update last_active in a single atomic UPSERT
     db.bulk_writer.enqueue(
-        "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-        (uid,),
-    )
-    db.bulk_writer.enqueue(
-        "UPDATE users SET last_active=NOW() WHERE user_id=$1",
+        "INSERT INTO users (user_id, last_active) VALUES ($1, NOW()) "
+        "ON CONFLICT (user_id) DO UPDATE SET last_active=NOW()",
         (uid,),
     )
 

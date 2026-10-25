@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 26   # bump when adding migrations below
+SCHEMA_VERSION = 27   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ _KNOWN_TABLES = {
     "user_achievements", "project_task_threads", "project_task_dependencies",
     "project_task_role_assignments", "task_templates", "task_checklists",
     "routine_event_rules", "project_role_permissions", "saved_filters",
+    "focus_sessions", "calendar_feed_tokens", "task_comments",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -207,17 +208,24 @@ class QueryCache:
     def __init__(self, ttl: float = 30.0, max_size: int = 2048) -> None:
         self._ttl = ttl
         self._max_size = max_size
-        self._store: dict[str, _CachedQuery] = {}
-        self._table_map: dict[str, set[str]] = {}  # table -> set of cache keys
+        self._store: dict[Any, _CachedQuery] = {}
+        self._table_map: dict[str, set[Any]] = {}  # table -> set of cache keys
         self._lock = Lock()
         # Track hits/misses for /metrics
         self._hits = 0
         self._misses = 0
 
     @staticmethod
-    def _key(sql: str, params: Any) -> str:
-        raw = json.dumps([sql, list(params) if params else []], sort_keys=True, default=str)
-        return hashlib.blake2b(raw.encode(), digest_size=16).hexdigest()
+    def _key(sql: str, params: Any) -> Any:
+        try:
+            if not params:
+                return (sql, ())
+            p_tuple = tuple(params)
+            hash(p_tuple)
+            return (sql, p_tuple)
+        except (TypeError, Exception):
+            raw = json.dumps([sql, list(params) if params else []], sort_keys=True, default=str)
+            return (sql, raw)
 
     def get(self, sql: str, params: Any) -> Any:
         k = self._key(sql, params)
@@ -1043,6 +1051,26 @@ MIGRATIONS: list[tuple[int, str]] = [
 
     INSERT INTO schema_version VALUES (26) ON CONFLICT (version) DO UPDATE SET version=26;
     """),
+    (27, """
+    -- Migration 27: Background Loop Performance & Partial Indexes
+    CREATE INDEX IF NOT EXISTS idx_tasks_recurring_due
+        ON tasks(deadline ASC)
+        WHERE status='Pending' AND is_deleted=FALSE AND (recurring IS NOT NULL OR recurrence_rule IS NOT NULL);
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_deadline_dm_pending
+        ON tasks(deadline ASC, dm_reminded)
+        WHERE status='Pending' AND is_deleted=FALSE;
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_pending_reminders
+        ON tasks(deadline ASC, last_reminder)
+        WHERE status='Pending' AND is_deleted=FALSE;
+
+    CREATE INDEX IF NOT EXISTS idx_focus_sessions_active_lookup
+        ON focus_sessions(phase_ends_at, notification_pending)
+        WHERE status='active';
+
+    INSERT INTO schema_version VALUES (27) ON CONFLICT (version) DO UPDATE SET version=27;
+    """),
 ]
 
 
@@ -1265,7 +1293,7 @@ class DatabaseManager:
         Retries on transient connection errors with exponential backoff.
         """
         lower_sql = sql.lower()
-        if "last_reminder" in lower_sql or "last_active" in lower_sql:
+        if "last_reminder" in lower_sql or "last_active" in lower_sql or "last_digest_date" in lower_sql:
             pass  # Background timestamp writes don't invalidate user query caches
         else:
             tables = _detect_tables(sql)
@@ -1342,12 +1370,25 @@ class DatabaseManager:
         Far more efficient than calling execute() N times for bulk operations.
         """
         all_tables: set[str] = set()
+        has_substantive = False
+        has_unknown = False
+
         for stmt_sql, _ in statements:
-            all_tables.update(_detect_tables(stmt_sql))
+            lower = stmt_sql.lower()
+            if "last_reminder" in lower or "last_active" in lower or "last_digest_date" in lower:
+                continue
+            has_substantive = True
+            tables = _detect_tables(stmt_sql)
+            if tables:
+                all_tables.update(tables)
+            else:
+                has_unknown = True
+
         if all_tables:
             self.query_cache.invalidate_tables(list(all_tables))
-        else:
+        elif has_unknown:
             self.query_cache.invalidate_all()
+        # If no substantive writes (only timestamp updates), preserve query cache
 
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
