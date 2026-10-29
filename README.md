@@ -1,981 +1,842 @@
-# 📝 To-Do List Bot Gen 3.0
+# 📝 To-Do List Discord Bot Gen 3.5+
 
-### Enterprise-Grade Discord Productivity & Project Management System
+### Enterprise-Grade Discord Productivity, Collaboration & Project Management System
 
-> Powered by **Supabase PostgreSQL**, **Realtime CDC**, **9-Language NLP Date Engine**, and **Deno Edge Analytics** — engineered for teams and power users who demand reliability, transparency, and speed.
+> Powered by **Supabase PostgreSQL (Schema v28)**, **Realtime CDC**, **17 Modular Cogs**, **9-Language NLP Date Engine**, **True LRU Caching**, **Row Level Security (RLS)**, and **Deno Edge Analytics** — engineered for agile teams and power users who demand zero-lag responsiveness, transparency, and data integrity.
 
 ---
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)
 ![discord.py](https://img.shields.io/badge/discord.py-2.4%2B-5865F2?logo=discord&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
-![Deno](https://img.shields.io/badge/Deno-TypeScript-black?logo=deno&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20v28-3ECF8E?logo=supabase&logoColor=white)
+![Modular Cogs](https://img.shields.io/badge/Modular%20Cogs-17%20Loaded-purple)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
-![Tests](https://img.shields.io/badge/Tests-312%20Passed%20(100%25)-brightgreen)
+![Themes](https://img.shields.io/badge/Themes-10%20Curated-pink)
+![Tests](https://img.shields.io/badge/Tests-18%20Suites%20Passing-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
 ## 📑 Table of Contents
 
-1. [✨ What's New in Gen 3.0](#-whats-new-in-gen-30)
-2. [🏛️ System Architecture](#-system-architecture)
+1. [✨ What's New in Gen 3.5+](#-whats-new-in-gen-35)
+2. [🏛️ System Architecture & 17 Modular Cogs](#-system-architecture--17-modular-cogs)
 3. [🌐 9-Language Support & Smart Date Engine](#-9-language-support--smart-date-engine)
-4. [📖 Slash Command Directory](#-slash-command-directory)
+4. [📖 Complete Slash & Context Menu Command Directory](#-complete-slash--context-menu-command-directory)
+   - [Personal Task Management](#1-personal-task-management-handlers-tasks_cog)
+   - [Safe Recovery & Recycle Bin](#2-safe-recovery--recycle-bin-recovery-cog)
+   - [Eisenhower 4D Matrix & Saved Smart Lists](#3-eisenhower-4d-matrix--saved-smart-lists-organization-cog)
+   - [Audit Trail & Weekly Retrospective](#4-audit-trail--weekly-retrospective-history_reporting-cog)
+   - [Team Collaboration & Shared Projects](#5-team-collaboration--shared-projects-collaboration-cog)
+   - [Multi-Select Bulk Operations](#6-multi-select-bulk-operations-discord_native-bulk_cog)
+   - [Focus & Pomodoro Timer](#7-focus--pomodoro-timer-focus-cog)
+   - [Gamification, Streaks & Leaderboards](#8-gamification-streaks--leaderboards-gamification-cog)
+   - [Templates & Routine Workflows](#9-templates--routine-workflows-routine_workflows-cog)
+   - [Full Text Search & AI-Ready Recommendations](#10-full-text-search--ai-ready-recommendations-search_recommendation-cog)
+   - [File Attachments](#11-file-attachments-storage-cog)
+   - [Private Calendar Feeds](#12-private-calendar-feeds-calendar_feed-cog)
+   - [Task Import](#13-task-import-task_import-cog)
+   - [Productivity Analytics (Supabase Edge)](#14-productivity-analytics-analytics-cog)
+   - [Settings, i18n & Embed Themes](#15-settings-i18n--embed-themes-handlers-settings_cog)
+   - [System Monitoring & Health Telemetry](#16-system-monitoring--health-telemetry-handlers-monitoring_cog)
 5. [🎛️ Interactive UI & Defensive Design](#-interactive-ui--defensive-design)
-6. [⚡ Performance & Caching Architecture](#-performance--caching-architecture)
-7. [🔄 Background Automation & Schedulers](#-background-automation--schedulers)
+6. [⚡ Performance, Caching & Scalability](#-performance-caching--scalability)
+7. [🔄 Background Automation & Schedulers (8 Loops)](#-background-automation--schedulers-8-loops)
 8. [🛡️ Security & Row Level Security (RLS)](#-security--row-level-security-rls)
-9. [🌩️ Supabase Realtime & Edge Functions](#-supabase-realtime--edge-functions)
-10. [🚀 Installation & Deployment Guide](#-installation--deployment-guide)
-11. [⚙️ Environment Variables Reference](#-environment-variables-reference)
-12. [🧪 Test Suite & Quality Assurance](#-test-suite--quality-assurance)
+9. [🐘 Database Schema History (Auto-Migrations v1 ➔ v28)](#-database-schema-history-auto-migrations-v1--v28)
+10. [🌩️ Supabase Realtime & Edge Functions](#-supabase-realtime--edge-functions)
+11. [📅 Private Calendar Feeds & Async Webserver](#-private-calendar-feeds--async-webserver)
+12. [🚀 Installation & Deployment Guide](#-installation--deployment-guide)
+13. [⚙️ Environment Variables Reference](#-environment-variables-reference)
+14. [🧪 Test Suite & Quality Assurance (18 Modules)](#-test-suite--quality-assurance-18-modules)
+15. [📂 Project File Structure Tree](#-project-file-structure-tree)
 
 ---
 
-## ✨ What's New in Gen 3.0
+## ✨ What's New in Gen 3.5+
 
-Gen 3.0 is a complete architectural overhaul — not just an update. Every layer of the stack has been upgraded for cloud-native, multi-user, multi-language production use.
+Gen 3.5+ represents a massive leap beyond Gen 3.0, taking the system from a task tracking bot to an **enterprise-grade project collaboration and productivity platform**.
 
-| Feature | Gen 1 | Gen 2 | **Gen 3.0 (Current)** |
+| Feature Area | Gen 1 / 2 | Gen 3.0 | **Gen 3.5+ (Current Production)** |
 |---|---|---|---|
-| **Database** | SQLite (monolithic) | SQLite v7 | **Supabase PostgreSQL** via `asyncpg`, Schema v23 (Priority 0–7, task templates, DoD checklists, routine event rules, Discord-native thread links, task dependencies and role assignments, nullable deadlines, private calendar feed tokens, RLS Policies) |
-| **Architecture** | Monolithic | Modular Cogs | **14 Modular Cogs + BulkWriter + QueryCache + UserCache + StatsCache** |
-| **Languages (i18n)** | 🇹🇭 Thai only | 🇹🇭 TH + 🇬🇧 EN | **9 Languages:** 🇹🇭 TH · 🇬🇧 EN · 🇨🇳 ZH · 🇯🇵 JA · 🇰🇷 KO · 🇪🇸 ES · 🇷🇺 RU · 🇫🇷 FR · 🇩🇪 DE |
-| **Date Parsing** | Standard formats only | Standard + a few Thai | **NLP Date Engine** for all 9 languages (weekdays, Asian kanji/hangul, Thai Buddhist Era, European dots, relative deltas) |
-| **Collaboration** | None | None | **Shared Projects** (`/project`), Kanban Board, Member Roles (Lead/Member/Viewer), Activity Log, **Project & Task Priority (0–7: ⬜ to 🆘)**, **Advance Progress & Manual %**, **Complete Project Dialog** |
-| **Search** | Basic text match | Basic text match | **PostgreSQL Full-Text Search** (`search_vector` GIN index, `ts_rank_cd`, multi-column weighted ranking) |
-| **AI Prioritization** | None | None | **`/recommend`** — Composite Scoring (Urgency + Priority + Staleness), 3 Strategy Presets |
-| **File Attachments** | None | None | **Supabase Storage** (`/attach`, `/attachments`), image preview, per-task file management |
-| **Task Collaboration** | None | None | **Per-task comments** for personal/shared tasks and a **0–100% progress bar** on task embeds |
-| **Realtime Sync** | None | None | **Supabase Realtime CDC** (Phoenix WebSocket), live Discord embed updates with 1.5s debounce |
-| **Analytics** | None | None | **`/task-stats`** Productivity Dashboard + **Deno Edge Function** weekly visual reports via QuickChart API |
-| **Gamification** | None | None | **`/streak`, `/habits`, `/leaderboard`** — timezone-aware streaks, four task achievements, evening DM reminders, and guild-scoped shared-task rankings |
-| **Monitoring** | None | None | **Health Monitor**, Error Tracker, Commands Audit, Discord Alert Dispatcher |
-| **Automated Testing** | None | Not documented | **271 Unit & Integration Tests, 100% passing** |
-| **Event Loop** | Default | Default | **uvloop** (Linux/macOS) for 2–4× faster I/O throughput |
+| **Database & Schema** | SQLite monolithic (v1–v7) | Supabase PostgreSQL Schema v23 | **Supabase PostgreSQL Schema v28** (28 Auto-Migrations, 24 tables, Partial Indexes for zero-lag background queries) |
+| **Cog Architecture** | Monolithic / 6 Cogs | 14 Modular Cogs | **17 Modular Cogs** (+ `recovery`, `organization`, `history_reporting`) |
+| **Accidental Deletion & Recovery** | Permanent deletion immediately | Permanent deletion immediately | **Recycle Bin & Safe Soft Delete** (`/trash`, `/restore`, 30-day retention, cascading subtask restoration, focus session auto-halt) |
+| **Task Prioritization Framework** | Single Priority number | Priority 0–7 | **Eisenhower 4D Matrix** (`/matrix` Q1–Q4 Drill-down) + **Saved Smart Filters** (`/filter save\|list\|use\|delete` with JSONB criteria) |
+| **Audit Trail & History** | None | Raw `audit_log` table | **Task Audit Trail** (`/history` activity timeline + snooze counts) + **Weekly Retrospective** (`/retrospective` self-digest & coaching tips) |
+| **Data Export** | Basic CSV export | CSV export | **Interactive Offline HTML Dashboard** (`/export format:html` with live search, dark/light mode, and real-time checkbox progress) + CSV |
+| **Project Permissions (RBAC)** | None | Fixed Roles (Lead/Member/Viewer) | **Granular Role Permissions** (`/project permissions` setting matrix per role) + **Confidential Tasks** (`/project set-private` & `is_private` flag) |
+| **Discord Native Integration** | Slash commands only | Slash commands only | **Right-Click Message Context Menu (`Add to To-Do`)** with Jump Link, **Discussion Threads (`🌐 Public` / `🔒 Private`)**, and **Multi-Select Bulk Actions** (`/bulk`) |
+| **Calendar Sync** | None | In-progress | **Private iCalendar Feed Subscriptions** (`/calendar link\|rotate\|revoke` syncing with Google Calendar, Apple Calendar, and Outlook) |
+| **Embed Personalization** | Static Blurple embed | Static Blurple embed | **10 Curated Color Themes** (`/theme`, `/settings theme`) with gradient progress bars and instant live previews |
+| **Caching Engine** | FIFO Cache | Basic in-memory cache | **True LRU Eviction (`OrderedDict.move_to_end`)** across `UserCache`, `StatsCache`, and `QueryCache` with Table-Scoped Invalidation across all 24 tables |
+| **Background Write Safety** | Direct writes | Basic BulkWriter | **Bounded `BulkWriter`** (10,000 capacity limit, Chunked transactions of 50 items, per-item fallback, and retry caps) |
+| **Languages (i18n)** | Thai / English | 9 Languages | **9 Languages with Discord Locale Auto-Detection** (TH, EN, ZH, JA, KO, ES, RU, FR, DE) |
+| **Automated Testing** | Minimal | ~264 unit tests | **18 Comprehensive Test Suites** covering Performance, RLS, Recurrence, Realtime WS, Workflows, and Discord Native integration |
 
 ---
 
-## 🏛️ System Architecture
+### 🌟 Key Feature Highlights in Gen 3.5+
 
-```mermaid
-graph TD
-    subgraph Discord["🎮 Discord Client Layer"]
-        SC[Slash Commands]
-        VM[Interactive Views / Modals]
-        DM[Direct Messages]
-        PC[Project Channels]
-    end
-
-    subgraph Bot["🐍 Bot Application Core — Python 3.10+"]
-        subgraph Cogs["14 Modular Cogs"]
-            C1[tasks_cog]
-            C2[settings_cog]
-            C3[reminders_cog]
-            C4[monitoring_cog]
-            C5[collaboration.cog]
-            C6[storage.cog]
-            C7[search_recommendation.cog]
-            C8[analytics.cog]
-            C9[focus.cog]
-            C10[gamification.cog]
-            C11[discord_native.bulk_cog]
-            C12[calendar_feed.cog]
-            C13[task_import.cog]
-            C14[routine_workflows.cog]
-        end
-        subgraph Perf["⚡ High-Performance Layer"]
-            AP[asyncpg Pool max_size=10]
-            QC[QueryCache L1 Blake2b TTL]
-            BW[BulkWriter 500ms flush]
-            UC[UserCache TTL 300s max 5000]
-            SC2[StatsCache TTL 60s]
-        end
-        subgraph BG["🔄 Background Subsystems"]
-            RT[Phoenix WebSocket Realtime CDC]
-            WS[aiohttp Keep-Alive Server]
-            HM[Health Monitor 5-min interval]
-            RL[5 Reminder Loops]
-        end
-    end
-
-    subgraph Supabase["☁️ Supabase Cloud Infrastructure"]
-        PG[(PostgreSQL 15+ Schema v19 GIN Search Vectors RLS)]
-        ST[Storage task-attachments bucket]
-        RTDB[Realtime Publication]
-        EF[Edge Functions Deno TypeScript weekly-analytics]
-        QCH[QuickChart API Chart Generation]
-    end
-
-    Discord <--> Cogs
-    Cogs <--> Perf
-    Perf <--> PG
-    BG --> RT --> RTDB
-    BG --> WS
-    C6 --> ST
-    C8 --> EF --> QCH
-    EF --> DM
-    RTDB --> RT --> VM
+```text
+ 🗑️ Recycle Bin & Soft Delete    🧭 Eisenhower 4D Matrix         📜 Task Audit Trail & Retrospectives
+ ┌──────────────────────────┐    ┌──────────────────────────┐    ┌──────────────────────────────────┐
+ │ • 30-Day Retention       │    │ • Q1: Urgent & Important │    │ • Full timeline of edits/status  │
+ │ • Cascading Restoration  │    │ • Q2: Schedule Deep Work │    │ • Snooze bottleneck analysis     │
+ │ • Halts Active Focus     │    │ • Q3: Delegate / Roles   │    │ • Weekly completion % coaching   │
+ │ • /trash & /restore      │    │ • Q4: Eliminate Backlog  │    │ • Standalone Offline HTML Export │
+ └──────────────────────────┘    └──────────────────────────┘    └──────────────────────────────────┘
+ 🔐 Granular Role Permissions    🎨 10 Curated Embed Themes      📅 Private iCal Subscriptions
+ ┌──────────────────────────┐    ┌──────────────────────────┐    ┌──────────────────────────────────┐
+ │ • Custom Member/Viewer   │    │ • Cyberpunk, Emerald,    │    │ • Google, Apple, Outlook Sync    │
+ │ • Confidential Tasks     │    │   Sunset, Midnight, Gold │    │ • Rotating Token Security        │
+ │ • Blocker Dependencies   │    │ • Dynamic Progress Bars  │    │ • Async keep-alive TCPSite       │
+ │ • Discord Role Routing   │    │ • Live Preview Modals    │    │ • Zero extra cloud fees          │
+ └──────────────────────────┘    └──────────────────────────┘    └──────────────────────────────────┘
 ```
 
-### Module Map
+---
 
-| Module | File(s) | Responsibility |
+## 🏛️ System Architecture & 17 Modular Cogs
+
+The application is built on an asynchronous, decoupled event-driven architecture powered by Python 3.11+, `discord.py` 2.4+, and `asyncpg`.
+
+```mermaid
+flowchart TD
+    subgraph Discord_Gateway ["🌐 Discord Gateway & API"]
+        DISCORD["Discord Client / Interaction"]
+        CTX_MENU["🖱️ Message Context Menu\n'Add to To-Do'"]
+        THREADS["🧵 Task Discussion Threads\nPublic & Private"]
+    end
+
+    subgraph Bot_Core ["🤖 Bot Core Layer (main.py)"]
+        LOADER["🧩 Extension Loader\n17 Modular Cogs"]
+        DISPATCHER["🛡️ Security & Rate Limiting\ncore/security.py"]
+        THEME["🎨 Theme Engine\ncore/theme.py (10 Themes)"]
+        WEBSERVER["🌐 Async aiohttp Webserver\n/metrics · /ready · /calendar.ics"]
+    end
+
+    subgraph Feature_Cogs ["📦 17 Modular Feature Cogs"]
+        direction TB
+        COG_TASKS["handlers.tasks_cog\nPersonal Tasks, Stats, Export"]
+        COG_COLLAB["collaboration.cog\nProjects, RBAC, Private Tasks"]
+        COG_RECOVERY["recovery.cog\nRecycle Bin & Soft Delete"]
+        COG_ORG["organization.cog\nEisenhower Matrix & Filters"]
+        COG_HIST["history_reporting.cog\nAudit Trail & Retrospective"]
+        COG_ROUTINE["routine_workflows.cog\nTemplates & Auto-Routines"]
+        COG_BULK["discord_native.bulk_cog\nBulk Multi-Select Actions"]
+        COG_FOCUS["focus.cog\nPOD / Pomodoro Focus Mode"]
+        COG_GAME["gamification.cog\nStreaks, Badges, Leaderboard"]
+        COG_SEARCH["search_recommendation.cog\nPostgreSQL FTS & AI Scoring"]
+        COG_STORAGE["storage.cog\nSupabase File Attachments"]
+        COG_CAL["calendar_feed.cog\niCal Subscription Tokens"]
+        COG_IMPORT["task_import.cog\nCSV / JSON Batch Import"]
+        COG_ANALYTICS["analytics.cog\nEdge Function Dispatcher"]
+        COG_REMINDERS["handlers.reminders_cog\n8 Background Schedulers"]
+        COG_SETTINGS["handlers.settings_cog\ni18n, Categories, Themes"]
+        COG_MONITOR["handlers.monitoring_cog\nHealth, Errors, Telemetry"]
+    end
+
+    subgraph Data_Layer ["⚡ Data & Persistence Layer"]
+        DB_MGR["core/database.py\nSchema v28 Engine"]
+        LRU_CACHE["🧠 True LRU Caches (OrderedDict)\nUserCache · StatsCache · QueryCache"]
+        BULK_WRITER["📝 Bounded BulkWriter\n10,000 Cap · Chunked 50-Item Batches"]
+        RLS["🔒 Row Level Security\nsecurity_rls (SET LOCAL user_id)"]
+        REALTIME["⚡ Supabase Realtime\nPhoenix WS & Debounced Tracker"]
+        PG[("🐘 Supabase PostgreSQL\n24 Tables · Partial Indexes\nAuto-Migrations v1–v28")]
+    end
+
+    DISCORD --> DISPATCHER
+    CTX_MENU --> DISPATCHER
+    THREADS --> DISPATCHER
+    DISPATCHER --> LOADER
+    LOADER --> Feature_Cogs
+    Feature_Cogs --> DB_MGR
+    Feature_Cogs --> THEME
+    Feature_Cogs --> WEBSERVER
+    DB_MGR --> LRU_CACHE
+    DB_MGR --> BULK_WRITER
+    DB_MGR --> RLS
+    DB_MGR --> PG
+    REALTIME -. CDC Push .-> Feature_Cogs
+```
+
+### 🗂️ Module Architecture Map
+
+| Module / Directory | Responsibility | Primary Classes / Services |
 |---|---|---|
-| `core/config.py` | `config.py` | Centralised env validation, frozen dataclasses for all subsystems |
-| `core/database.py` | `database.py` | asyncpg pool, migrations (Schema v22), QueryCache, BulkWriter, UserCache, StatsCache |
-| `core/security.py` | `security.py` | InputValidator, Token-bucket rate limiter, `@rate_limit_check` decorator |
-| `handlers/tasks_cog.py` | `tasks_cog.py` | All personal task slash commands |
-| `discord_native/` | `bulk_cog.py` | `/bulk done`, `/bulk snooze`, `/bulk delete`; paginated multi-select UI and delete confirmation |
-| `focus/` | `cog.py` | `/focus start`, `/focus stop`, `/focus status`; persistent 25/5 Pomodoro timer |
-| `recurrence/` | `rules.py` | Validation and next-deadline calculation for advanced recurring rules |
-| `handlers/task_views.py` | `task_views.py` | TaskActionView, TaskListView, AddTaskModal, DeleteConfirmView, SnoozePresetView, persistent view registration |
-| `handlers/tasks_cog.py` | `tasks_cog.py` | Message context menu **Add to To-Do** stores the source Jump Link on created tasks |
-| `task_features/` | `service.py`, `views.py` | Task discussion threads, permission-checked comments, and task progress controls |
-| `handlers/settings_cog.py` | `settings_cog.py` | `/setup`, `/lang`, `/category`, `/help` |
-| `handlers/reminders_cog.py` | `reminders_cog.py` | 5 background loops (reminder, recurring, daily digest, DM alarm, cleanup) |
-| `handlers/monitoring_cog.py` | `monitoring_cog.py` | Admin `/health`, `/errors`, `/cmdstats`, `/monitoring` |
-| `collaboration/` | `cog.py`, `models.py`, `service.py`, `views.py` | Shared Projects, Kanban Board, Member Roles, Activity Log, Project Priority 0–7, Advance & Complete Project controls |
-| `storage/` | `cog.py`, `client.py`, `models.py`, `service.py`, `views.py` | Supabase Storage integration, `/attach`, `/attachments`, MIME type guards, presigned public URLs |
-| `search_recommendation/` | `cog.py`, `fts_engine.py`, `models.py`, `protocols.py`, `query_builder.py`, `recommendation.py`, `service.py`, `views.py` | PostgreSQL FTS `/search` (tsvector GIN), Composite AI Scoring `/recommend` (Urgency + Priority + Staleness) |
-| `analytics/` | `cog.py`, `client.py`, `models.py` | `/task-stats` productivity dashboard, `/analytics` weekly & on-demand Edge Function reports |
-| `gamification/` | `cog.py`, `service.py` | Local-date streaks, task achievement awards, evening reminders, and guild-scoped leaderboards |
-| `realtime/` | `client.py`, `dashboard_tracker.py`, `dispatcher.py`, `notifications.py`, `service.py` | Phoenix WebSocket CDC client, CDC event dispatcher, debounced embed updater, live dashboard rehydrator |
-| `monitoring/` | `alert_dispatcher.py`, `commands_log.py`, `error_tracker.py`, `health_monitor.py`, `logger_setup.py` | Health monitor, error tracker, structured JSON logging, Discord alert dispatcher |
-| `security_rls/` | `sql/*.sql`, `client.py`, `context.py`, `migration_runner.py` | PostgreSQL Row Level Security policies, scoped context managers, migration runner CLI (`--dry-run`/`--apply`/`--rollback`) |
-| `locales/` | `th.py en.py zh.py ja.py ko.py es.py ru.py fr.py de.py` | 9-language string tables |
-| `locales/i18n.py` | `i18n.py` | `t()` translation engine with `_SafeDict`, `DISCORD_LOCALE_MAP` |
-| `utils/helpers.py` | `helpers.py` | `parse_deadline()` NLP engine, embed builders, `time_left_str()`, CSV export |
-| `utils/conflict_resolver.py` | `conflict_resolver.py` | `validate_deadline_defensive()`, `DeadlineValidationError`, optimistic concurrency lock |
-| `supabase/functions/weekly-analytics/` | `index.ts`, `chart_builder.ts`, `discord_delivery.ts`, `types.ts`, `deno.json` | Deno TypeScript Edge Function, QuickChart API chart generation, Discord DM delivery |
+| [`main.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/main.py) | Application entrypoint, Cog registration, lifecycle hooks, graceful shutdown | `TodoBot`, `on_ready`, `setup_hook`, `close` |
+| [`core/database.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/core/database.py) | **Schema v28** engine, connection pooling, True LRU caches, bounded `BulkWriter` | `DatabaseManager`, `QueryCache`, `BulkWriter`, `UserCache` |
+| [`core/security.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/core/security.py) | SQL/Script injection protection, thread-safe rate limiting, sanitization | `RateLimiter`, `InputValidator`, `@rate_limit_check` |
+| [`core/theme.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/core/theme.py) | 10 curated color palettes, dynamic progress bar rendering, embed theming | `Theme`, `THEMES`, `get_theme`, `render_themed_progress_bar` |
+| [`recovery/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/recovery/cog.py) | Recycle Bin, 30-day soft deletion, subtask cascade restoration | `RecoveryCog`, `RecoveryService`, `TrashPaginationView` |
+| [`organization/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/organization/cog.py) | Eisenhower 4D Matrix (Q1–Q4) and Custom Saved Filters / Smart Lists | `OrganizationCog`, `OrganizationService`, `EisenhowerMatrixView` |
+| [`history_reporting/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/history_reporting/cog.py) | Audit trail timeline, weekly retrospective digest, offline HTML dashboard export | `HistoryReportingCog`, `HistoryService`, `WeeklyRetrospectiveView` |
+| [`collaboration/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/collaboration/cog.py) | Shared projects, Kanban boards, granular RBAC, private tasks, dependencies | `CollaborationCog`, `CollaborationService`, `ProjectPermissionsView` |
+| [`routine_workflows/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/routine_workflows/cog.py) | Task templates, Definition of Done checklists, role/member join auto-routines | `RoutineWorkflowsCog`, `RoutineService`, `TemplateCreateModal` |
+| [`discord_native/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/discord_native/bulk_cog.py) | Multi-select bulk personal task operations (done, snooze, delete) | `BulkActionsCog`, `BulkTaskView`, `BulkTaskSelect` |
+| [`realtime/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/realtime/dashboard_tracker.py) | Phoenix WebSocket client, CDC Postgres change router, debounced dashboard updater | `PhoenixWSClient`, `RealtimeDispatcher`, `DashboardTracker` |
+| [`security_rls/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/security_rls/client.py) | PostgreSQL Row Level Security (RLS) client and migration CLI runner | `RLSClient`, `scoped_user_context`, `migration_runner.py` |
+| [`recurrence/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/recurrence/rules.py) | Extended recurrence engine (weekdays, intervals, monthly dates with month-end clamp) | `validate_rule`, `decode_rule`, `next_deadline` |
+| [`task_features/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/task_features/service.py) | Task comments, progress % tracking, and Definition of Done checklists | `TaskFeaturesService`, `TaskCommentModal`, `TaskProgressModal` |
+| [`utils/webserver.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/utils/webserver.py) | Pure async keep-alive aiohttp server (`/`, `/health`, `/ready`, `/metrics`, `/calendar/{token}.ics`) | `start_async`, `_calendar_feed`, `_metrics` |
+| [`handlers/`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/tasks_cog.py) | Tasks, Reminders, Settings, and Monitoring slash command handlers | `TasksCog`, `RemindersCog`, `SettingsCog`, `MonitoringCog` |
 
 ---
 
 ## 🌐 9-Language Support & Smart Date Engine
 
-### Supported Languages
+The bot features a comprehensive internationalization engine supporting **9 languages** with per-user language preference and Discord Locale auto-detection:
 
-| Flag | Language | Code | Auto-detected from Discord locale |
-|---|---|---|---|
-| 🇹🇭 | Thai | `th` | `th` |
-| 🇬🇧 | English | `en` | `en-US`, `en-GB` |
-| 🇨🇳 | Chinese (Simplified) | `zh` | `zh-CN`, `zh-TW` |
-| 🇯🇵 | Japanese | `ja` | `ja` |
-| 🇰🇷 | Korean | `ko` | `ko` |
-| 🇪🇸 | Spanish | `es` | `es-ES`, `es-419` |
-| 🇷🇺 | Russian | `ru` | `ru` |
-| 🇫🇷 | French | `fr` | `fr` |
-| 🇩🇪 | German | `de` | `de` |
+| Code | Language | Native Name | Flag | Date Parser Capabilities |
+|:---:|---|---|:---:|---|
+| `th` | Thai | ไทย | 🇹🇭 | พ.ศ. (Buddhist Era -543 offset), วันพรุ่งนี้, มกราคม–ธันวาคม, บ่าย/เย็น |
+| `en` | English | English | 🇬🇧 | Natural relative (+2h, +3d), tomorrow at 5pm, next Friday, ISO 8601 |
+| `zh` | Chinese | 中文 | 🇨🇳 | 明天, 后天, 下周五, 18点30分, 年/月/日 format |
+| `ja` | Japanese | 日本語 | 🇯🇵 | 明日, 明後日, 来週金曜日, 18時30分, 年月日 format |
+| `ko` | Korean | 한국어 | 🇰🇷 | 내일, 모레, 다음주 금요일, 18시 30분, 년월일 format |
+| `es` | Spanish | Español | 🇪🇸 | mañana, pasado mañana, próximo viernes, a las 18:30 |
+| `ru` | Russian | Русский | 🇷🇺 | завтра, послезавтра, в следующую пятницу, в 18:30 |
+| `fr` | French | Français | 🇫🇷 | demain, après-demain, vendredi prochain, à 18h30 |
+| `de` | German | Deutsch | 🇩🇪 | morgen, übermorgen, nächsten Freitag, um 18:30 Uhr |
 
-Users can manually override via `/lang` at any time. The bot auto-detects from the Discord client locale on first interaction (`DISCORD_LOCALE_MAP` in `locales/i18n.py`).
-
-### Smart Date Parser (`utils/helpers.py` → `parse_deadline()`)
-
-The date parsing engine understands natural language in all 9 languages. Every input is normalised, validated, and converted to a timezone-aware UTC datetime.
-
-**1. Relative Deltas** (language-agnostic)
-
-```
-+30m  →  30 minutes from now
-+2h   →  2 hours from now
-+3d   →  3 days from now
-+1w   →  1 week from now
-```
-
-**2. Natural Language Keywords**
-
-| Language | Keywords |
-|---|---|
-| 🇹🇭 Thai | `วันนี้`, `พรุ่งนี้`, `มะรืนนี้` |
-| 🇬🇧 English | `today`, `tomorrow`, `day after tomorrow` |
-| 🇩🇪 German | `heute`, `morgen`, `übermorgen` |
-| 🇪🇸 Spanish | `hoy`, `mañana`, `pasado mañana` |
-| 🇫🇷 French | `aujourd'hui`, `demain`, `après-demain` |
-| 🇯🇵 Japanese | `今日`, `明日`, `明後日` |
-| 🇰🇷 Korean | `오늘`, `내일`, `모레` |
-| 🇨🇳 Chinese | `今天`, `明天`, `后天` |
-| 🇷🇺 Russian | `сегодня`, `завтра`, `послезавтра` |
-
-**3. Weekday Names (All 9 Languages)**
-
-```
-monday / Montag / lundi / lunes / понедельник / 月曜日 / 월요일 / 周一
-→ resolves to the next upcoming occurrence of that weekday
-```
-
-**Common English & Thai phrases**
-
-```
-tomorrow 5pm  →  tomorrow at 17:00 in the user's timezone
-next monday   →  the next Monday, even when today is Monday
-friday noon   →  the next Friday at 12:00
-in 3 days     →  three calendar days from today (end of day)
-อีก 3 วัน      →  Thai equivalent of "in 3 days"
-```
-
-12-hour times support `am`/`pm`, `noon`, and `midnight`. Invalid natural-language times are rejected rather than silently converted to end-of-day.
-
-**4. Asian Date Formats**
-
-```
-2026年9月27日 18:00     →  Japanese Kanji  (year/month/day)
-9月27日 15:30           →  Japanese short  (current year assumed)
-2026년 9월 27일 18:00   →  Korean Hangul
-9월 27일                →  Korean short
-2026年9月27日           →  Chinese Hanzi
-```
-
-**5. Thai Buddhist Era (พ.ศ.)**
-
-```
-25/12/2569 18.00น.   →  auto-converted  (2569 − 543 = 2026 CE)
-25/12/2569           →  date only, defaults to end of day
-18.00น.              →  Thai time notation (period separator + น.)
-```
-
-**6. European Dot Dates**
-
-```
-27.09.2026 18:00
-27.09.26   18:00
-27.09            →  current year assumed
-```
-
-**7. Standard & Shorthand**
-
-```
-25/12/2026 18:00   →  DD/MM/YYYY HH:MM
-25/12 18:00        →  DD/MM (current year assumed)
-today 18:00        →  keyword + time
-tomorrow 09:30
-```
-
-> **Note:** All deadlines are parsed relative to the **user's individual timezone** (set via `/setup`). A user in `Asia/Tokyo` and a user in `America/New_York` entering `tomorrow 09:00` will each receive the correct local time.
+Users can freely switch language at any time via `/lang` or let the bot auto-detect their Discord client language upon their first interaction.
 
 ---
 
-## 📖 Slash Command Directory
+## 📖 Complete Slash & Context Menu Command Directory
 
-### 📝 Personal Task Management
+### 1. Personal Task Management ([`handlers/tasks_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/tasks_cog.py))
 
-| Command | Parameters | Description |
+| Command / Context Action | Description | Parameters & Options |
 |---|---|---|
-| `/add` | `[task]` `[deadline]` `[priority]` | Add a new task. Omit all params to open the full **AddTaskModal** (name, deadline, priority 0–7, description, tags). Quick-add: provide `task` inline. |
-| `/list` | — | Paginated task list with filter dropdown (Pending, In\_Progress, Completed, Overdue, Cancelled, All, Today, Pinned). |
-| `/today` | — | Tasks due today, sorted by deadline, with interactive **TodayView** buttons. |
-| `/overdue` | — | All overdue tasks with **OverdueView** quick-action buttons. |
-| `/task` | `task_id` | Full task detail embed with **TaskActionView** control panel. |
-| `/done` | `task_id` | Mark task as Completed. Logs action to audit trail. |
-| `/delete` | `task_id` | Delete task (with **DeleteConfirmView** confirmation dialog). |
-| `/pin` | `task_id` | Pin task to top of list. |
-| `/unpin` | `task_id` | Remove pin from task. |
-| `/focus start` | `task_id` | Start a persistent 25-minute work interval followed by a 5-minute break; completed work time is added to `actual_hours`. |
-| `/focus stop` | — | Stop the active timer and record any elapsed work in the current interval. |
-| `/focus status` | — | Show the current task, timer phase, and end time in your timezone. |
-| `/recurring` | `task_id` `interval` `[every]` `[days_of_month]` | Set `daily`, `weekly`, `monthly`, `weekdays`, every N days/weeks, or a comma-separated monthly date list (e.g. `1,16`); `none` removes the rule. |
-| `/stats` | — | Task summary with colour-coded progress bars (Pending / In\_Progress / Completed / Cancelled / Overdue). |
-| `/task-stats` | — | Deep Productivity Dashboard: on-time rate, average turnaround days, lead/lag margin, completion velocity (tasks/week), productivity score 0–100. |
-| `/digest` | — | On-demand daily digest: today's tasks, upcoming deadlines, overdue count. |
-| `/export` | — | Export all tasks to a UTF-8 BOM CSV file (Excel-compatible). Rate-limited: 5/day. |
-| `/import` | `file` `missing_deadline` | Import up to 500 tasks from UTF-8 CSV or JSON (1 MB max); choose +1 day or no deadline for missing dates. Supports task, status, priority, deadline, recurring, tags, description, and pinned fields. All rows are validated before an atomic insert; imported Completed tasks do not backfill achievements. |
-| `/calendar link` | — | Create a private iCalendar subscription feed for tasks with deadlines. Requires `CALENDAR_PUBLIC_URL` with HTTPS. |
-| `/calendar rotate` | — | Replace the subscription token; the previous URL stops working immediately. |
-| `/calendar revoke` | — | Disable the active subscription URL. |
-| Message context menu → **Add to To-Do** | Select a message | Create a personal task from its text, with the source message Jump Link stored on the task. |
-| `/bulk done` | — | Select multiple open tasks and complete them through the normal completion/gamification flow. |
-| `/bulk snooze` | — | Select multiple open tasks and move each deadline by one day. |
-| `/bulk delete` | — | Select multiple open tasks; requires a second confirmation before permanent deletion. |
-
-### 📋 Task Templates & Routine Workflows (Category 7)
-
-| Command | Parameters | Description |
-|---|---|---|
-| `/template use` | `name` | Apply a pre-built or custom template: generates the parent task, subtasks with relative deadlines (+1d, +3d, etc.), and Definition of Done checklists in one click. Autocomplete enabled. |
-| `/template create` | — | Open interactive modal to create a custom template with relative offsets, subtasks, and DoD checklist items. |
-| `/template from-task` | `task_id` `name` | Convert any existing task, its subtasks, and checklists into a reusable template. |
-| `/template list` | — | View all accessible templates (Built-in standard templates, Personal templates, and Guild-shared templates). |
-| `/template view` | `name` | Inspect a template's workflow structure, relative deadlines, and DoD requirements. |
-| `/template delete` | `name` | Delete a custom task template (creator or server admin). |
-| `/routine rule-add` | `event` `template` `[role]` | Create an event-driven automation rule (`role_added` or `member_join`). Automatically creates tasks and sends an onboarding DM to the member. |
-| `/routine rule-list` | — | List all active automated routine rules in the current server. |
-| `/routine rule-remove` | `rule_id` | Delete an automated routine rule. |
-
-> **✅ Definition of Done (DoD) Quality Guard:**
-> Tasks can have sub-checklists (e.g. Proofread, Attach files, Notify lead). Users can view and toggle items via the **`☑️ Checklist`** button on **TaskActionView**. When marking a task as Done (`/done` or button), if uncompleted checklist items remain, the bot intercepts the action with a confirmation dialog offering **`⚡ Force Complete`** or **`❌ Cancel`**.
-
-### 🔥 Gamification & Habits
-
-| Command | Parameters | Description |
-|---|---|---|
-| `/streak` | — | View your active consecutive task-completion days. |
-| `/habits` | — | Summarize today's completions and earned Early Bird, Speed Demon, P7 Slayer, and Inbox Zero badges. |
-| `/leaderboard` | `period: week \| month` | Guild-only ranking from that server's shared-project task completions; no personal tasks are included. |
-
-Streaks use each member's configured timezone. A reminder is sent by DM at 20:00 local time if they have not completed a task that day. Leaderboard productivity score is scoped to shared-task events in that guild: 40% on-time rate, 30% completion volume (capped at six tasks), 20% active days (capped at five), and 10% P7 completions.
-
-> **Priority Scale (0–7):**
-> `0` ⬜ Normal / ปกติ · `1` 🟦 Low / ต่ำ · `2` 🟩 Medium / ปานกลาง · `3` 🟨 High / สูง · `4` 🟧 Urgent / ด่วน · `5` 🟥 Immediate / ด่วนมาก · `6` 🔴 Critical / วิกฤต · `7` 🆘 Emergency / ฉุกเฉิน
+| **`Add to To-Do`** *(Context Menu)* | Right-click any Discord message to convert it into a Task immediately | Target message (adds clickable jump link in embed) |
+| `/add` | Create a new task (opens modal or accepts arguments) | `[task]` `[deadline]` `[priority: 0-7]` `[category]` `[tags]` |
+| `/list` | View personal tasks with pagination & status filters | `[status: all\|pending\|completed]` `[category]` `[priority]` |
+| `/today` | View all tasks due today in your local timezone | — |
+| `/overdue` | View all past-due tasks requiring immediate attention | — |
+| `/task` | Inspect a task in detail (subtasks, checklist, files, comments) | `task_id` *(with autocomplete)* |
+| `/done` | Mark a task as completed | `task_id` `[force: True/False]` *(bypasses incomplete checklist)* |
+| `/delete` | Safely move a task to the Recycle Bin (soft delete) | `task_id` *(with autocomplete)* |
+| `/pin` / `/unpin` | Pin or unpin a task to keep it at the top of lists | `task_id` *(with autocomplete)* |
+| `/recurring` | Configure recurring recurrence rules | `task_id` `[rule: daily\|weekdays\|weekly\|monthly\|JSON]` |
+| `/snooze` | Postpone a task's deadline | `task_id` `[hours: default 24]` |
+| `/stats` | View personal productivity overview stats | — |
+| `/task-stats` | Interactive Productivity Dashboard with tab switching | Interactive: Overview, Speed & Timeliness, Refresh |
+| `/digest` | On-demand Daily Digest showing your schedule right now | — |
+| `/export` | Export tasks as Interactive Offline HTML Dashboard or CSV | `[format: html (default) \| csv]` |
 
 ---
 
-### 🤝 Shared Projects & Collaboration
+### 2. Safe Recovery & Recycle Bin ([`recovery/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/recovery/cog.py))
 
-All project commands are under the `/project` group and operate within the **current guild (server)** with full guild-tenancy isolation.
-
-| Command | Parameters | Description |
+| Command | Description | Notes |
 |---|---|---|
-| `/project create` | `[priority]` | Create a new shared project in the current server. Opens modal for name, description, emoji, color, and priority (0–7). |
-| `/project list` | `[status]` | List server projects filtered by `Active` / `Completed` / `Archived` / `All`. Sorted by Priority (DESC) and recent activity. |
-| `/project view` | `project_id` | Interactive **Project Dashboard** with metrics, member count, progress bar, navigation tabs, and action controls. |
-| `/project board` | `project_id` | Interactive **Kanban Board** with column navigation buttons (Pending → In\_Progress → Completed). |
-| `/project add-task` | `project_id` `[priority]` | Add a new task to the project with priority level 0–7, deadline, and tags. |
-| `/project set-priority` | `project_id` `priority` | Update project priority (0–7: ⬜ Normal to 🆘 Emergency) on the fly (Lead or server Admin). |
-| `/project complete-task` | `project_id` `task_id` | Mark a specific project task as Completed with a celebratory announcement embed. |
-| `/project my-tasks` | — | All tasks across server projects assigned to the caller. |
-| `/project dependency-add` | `project_id` `task_id` `blocked_by_task_id` | Add a blocker; rejects cross-project links, self-links, and dependency cycles. |
-| `/project dependency-remove` | `project_id` `task_id` `blocked_by_task_id` | Remove a task blocker. Incomplete blockers prevent tasks being claimed, started, or completed. |
-| `/project assign-role` | `project_id` `task_id` `role` | Assign a task to a Discord role. Any project member may use this; role holders receive individual DMs without a role mention. |
-| `/project workload` | `project_id` | Summarize active task counts for project members and assigned Discord roles, including unassigned tasks. |
-| `/project members` | `project_id` | View and manage project members. Leads can assign roles: `lead`, `member`, `viewer`. |
-| `/project add-member` | `project_id` `user` `[role]` | Add member (`member` or `lead`) to the project and automatically send a private Discord DM invite card. |
-| `/project activity` | `project_id` | Paginated activity log for the project (task changes, member joins, status updates). |
-| `/project archive` | `project_id` `[action]` | Archive project (`archived`) or conclude project (`completed`) (Lead or server Admin only). |
-| `/project set-channel` | `project_id` `channel` | Set dedicated Discord channel for Realtime announcements and completion broadcasts (Lead or Admin). |
+| `/trash` | Open the interactive Recycle Bin browser | Shows all soft-deleted tasks with creation & deletion timestamps. Includes **Restore** and **Purge Permanently** buttons. |
+| `/restore` | Restore a deleted task by ID | Restores the task, all child subtasks, and relinks parent hierarchy. |
 
-The Project Board's **Task Thread** button creates one discussion thread per active task. Members can choose a public thread visible to channel members or a private thread that the bot invites project members to. The thread uses the project's configured channel first, then its notification channel, and finally the channel where the board was opened.
-
-Project boards show role assignees and active blockers. `/project my-tasks` includes tasks assigned to any Discord role held by the caller. Workload deduplicates a task when the same person is assigned both directly and through a role; role-member counts use the bot's cached guild membership.
-
-**Member Roles:**
-
-- 👑 **Lead** — Full control: edit project, set priority/channel, manage members, archive/complete.
-- 👤 **Member** — Create and manage tasks within the project.
-- 👁️ **Viewer** — Read-only: view board, files, and activity.
+> [!NOTE]
+> Soft-deleted tasks are retained for **30 days**. Active Pomodoro focus sessions on deleted tasks are automatically stopped. Expired trash is purged automatically during the daily `cleanup_loop`.
 
 ---
 
-### 🔍 Full-Text Search & AI-Ready Recommendations
+### 3. Eisenhower 4D Matrix & Saved Smart Lists ([`organization/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/organization/cog.py))
 
-| Command | Parameters | Description |
+| Command | Description | Details |
 |---|---|---|
-| `/search` | `query` `[status]` `[priority]` `[sort]` `[scope]` `[page_size]` | Full-text search powered by PostgreSQL `search_vector` (GIN index) and `ts_rank_cd`. Supports personal or guild-wide scope. Filterable and sortable. |
-| `/recommend` | `[limit]` `[scope]` `[preset]` | Smart task prioritisation using a composite scoring formula. Returns ranked list of tasks to focus on next. |
-
-**`/search` options:**
-- `scope`: `personal` (default) | `guild`
-- `sort`: `relevance` | `deadline` | `priority` | `created`
-
-**`/recommend` scoring presets:**
-- `balanced` (default) — equal weight on urgency, priority, staleness
-- `urgency` — deadline proximity dominates
-- `priority` — user-set priority dominates
+| `/matrix` | Open interactive Eisenhower 4-Quadrant Matrix | Divides tasks into **Q1: Do First** (P4–P7 & urgent), **Q2: Schedule** (P4–P7 & planned), **Q3: Delegate** (P0–P3 & urgent), and **Q4: Eliminate** (P0–P3 & planned). |
+| `/filter save` | Save a custom filter criteria as a Smart List | Set criteria: `name`, `tags`, `min_priority`, `max_priority`, `status`, `project_id`, `due_within_days`, `sort_by`. (Max 25 filters/user). |
+| `/filter list` | View all your saved Smart Lists | Displays summary of criteria and task counts for each saved list. |
+| `/filter use` | Execute and view tasks from a saved Smart List | Fast autocomplete selector; renders paginated filtered embed. |
+| `/filter delete` | Delete a saved Smart List | Autocomplete selector; safely deletes filter criteria. |
 
 ---
 
-### 📎 Task Attachments & Storage
+### 4. Audit Trail & Weekly Retrospective ([`history_reporting/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/history_reporting/cog.py))
 
-| Command | Parameters | Description |
+| Command | Description | Details |
 |---|---|---|
-| `/attach` | `task_id` `file` | Upload a file to the task. Stored in Supabase Storage (`task-attachments` bucket). Images show inline preview. Notifies project channel if task belongs to a project. |
-| `/attachments` | `task_id` | List all attachments for a task with download links and metadata. Option to delete individual files. |
-
-**Supported file types:** `png`, `jpg`, `jpeg`, `gif`, `webp`, `pdf`, `docx`, `xlsx`, `pptx`, `txt`, `csv`, `md`, `zip`
-
-**Max file size:** configurable via `MAX_ATTACHMENT_SIZE_MB` (default: 15 MB)
+| `/history` | View complete task audit history & activity trail | Shows chronological log of creation, edits, priority updates, status transitions, and snooze counter. |
+| `/retrospective` | View weekly retrospective self-digest on-demand | Calculates weekly completion rate %, snooze bottleneck tasks (top postponed tasks), overdue carryovers, and coaching tips. |
 
 ---
 
-### 📊 Analytics & Visual Reports
+### 5. Team Collaboration & Shared Projects ([`collaboration/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/collaboration/cog.py))
 
-| Command | Parameters | Description |
+The Collaboration Cog provides **19 comprehensive commands** for team execution:
+
+| Command | Description | Roles Allowed |
 |---|---|---|
-| `/analytics snapshot` | — | Trigger an on-demand weekly productivity report. Calls the **Supabase Edge Function** which computes metrics and generates charts via QuickChart API. Report delivered to your DM. |
-| `/analytics weekly` | `enabled` | Toggle automatic weekly DM report on/off (`true` / `false`). |
-| `/task-stats` | — | In-Discord productivity dashboard (no DM required). |
+| `/project create` | Create a new shared server project | Server Members |
+| `/project list` | List all projects in this server (active/completed/archived) | Server Members |
+| `/project view` | Open interactive project dashboard with live stats | Project Members |
+| `/project board` | Open interactive Kanban board (`Pending`, `In Progress`, `Done`) | Project Members |
+| `/project add-task` | Add a task with optional priority and `is_private` flag | Project Members (Subject to RBAC) |
+| `/project set-priority` | Update project priority level (P0 to P7) | Leads / Admins |
+| `/project complete-task` | Mark a project task as completed (triggers CDC broadcast) | Assignees / Leads / Admins |
+| `/project my-tasks` | View all tasks assigned to you across server projects | Server Members |
+| `/project dependency-add`| Make a task wait for another task (with cycle protection) | Project Members |
+| `/project dependency-remove` | Remove a dependency blocker between tasks | Project Members |
+| `/project assign-role` | Assign a task to a Discord Role (sends DMs to role members) | Project Members |
+| `/project workload` | Visual workload breakdown by member and Discord role | Project Members |
+| `/project members` | View and manage project members and their roles | Project Members |
+| `/project add-member` | Add a user as `member` or `lead` (sends invite DM) | Leads / Admins |
+| `/project activity` | View recent project activity feed | Project Members |
+| `/project archive` | Archive or mark project as completed | Leads / Admins |
+| `/project set-channel` | Set dedicated channel for real-time task completion broadcasts | Leads / Admins |
+| `/project permissions`| **Configure granular RBAC permissions matrix** per role | Leads / Owner / Admins |
+| `/project set-private`| **Toggle confidential task privacy** (visible only to creator & leads) | Creator / Leads / Admins |
 
 ---
 
-### ⚙️ Settings & Configuration
+### 6. Multi-Select Bulk Operations ([`discord_native/bulk_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/discord_native/bulk_cog.py))
 
-| Command | Parameters | Description |
+| Command | Description | Behavior |
 |---|---|---|
-| `/setup` | `timezone` `[channel]` | Set your personal timezone (IANA format, e.g. `Asia/Bangkok`) and notification channel. |
-| `/lang` | — | Switch language via interactive 9-button menu. Change takes effect immediately. |
-| `/category list` | — | List all available task categories (system + personal). |
-| `/category add` | `name` `emoji` | Create a personal task category with a custom emoji. |
-| `/category remove` | `name` | Delete a personal category. |
-| `/help` | — | Full command reference card in your current language. |
+| `/bulk done` | Complete multiple tasks simultaneously | Opens paginated multi-select dropdown; awards gamification XP. |
+| `/bulk snooze` | Snooze multiple tasks by 24 hours | Defensively extends deadline while preserving time component. |
+| `/bulk delete` | Move multiple tasks to the Recycle Bin | Double-confirmation warning to prevent accidental mass deletion. |
 
 ---
 
-### 🏥 Monitoring, Diagnostics & Administration
+### 7. Focus & Pomodoro Timer ([`focus/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/focus/cog.py))
 
-> Commands in this group are restricted to bot owners (`BOT_OWNER_IDS`) or server admins.
-
-| Command | Access | Description |
+| Command | Description | Behavior |
 |---|---|---|
-| `/health` | Admin | System health dashboard: DB ping latency, memory RSS/%, event loop lag, Discord API latency, uptime. |
-| `/errors` | Admin | Last 24-hour error summary grouped by error type and frequency. |
-| `/cmdstats` | Admin | Command call statistics — total invocations, error rate, top commands. |
-| `/monitoring setup` | Admin | Configure server-specific error alert channel and enable/disable monitoring. |
-| `/monitoring status` | Admin | Current monitoring configuration for this server. |
-| `/admin stats` | Owner | Global bot statistics: total users, tasks, guilds, DB pool state. |
-| `/admin cache_purge` | Owner | Force-purge all expired QueryCache and UserCache entries. |
+| `/focus start` | Start a 25-minute Pomodoro session on a task | Persisted to PostgreSQL (`focus_sessions`). Survives bot restarts. |
+| `/focus stop` | Stop timer and record actual focused hours | Adds exact elapsed time to task's `actual_hours`. |
+| `/focus status` | Check remaining work/break time on active session | Displays end time in user's configured timezone. |
+
+---
+
+### 8. Gamification, Streaks & Leaderboards ([`gamification/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/gamification/cog.py))
+
+| Command | Description | Details |
+|---|---|---|
+| `/streak` | Check your consecutive task completion streak | Updated daily upon task completion in user's local timezone. |
+| `/habits` | View productivity summary and unlocked Badges | Tracks First Step, Consistency Champion, Speed Demon, Night Owl. |
+| `/leaderboard` | View server leaderboard (shared tasks completed) | Filterable by `week` (last 7 days) or `month` (last 30 days). |
+
+---
+
+### 9. Templates & Routine Workflows ([`routine_workflows/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/routine_workflows/cog.py))
+
+| Command | Description | Details |
+|---|---|---|
+| `/template create` | Create a reusable task template with subtasks & DoD checklist | Interactive modal with JSON/text checklist items. |
+| `/template use` | Instantiate parent task, subtasks, and checklists in 1 click | Autocomplete template picker; calculates relative deadlines. |
+| `/template list` | View available templates (Built-in, Server, Personal) | Shows built-in standard agile, bugfix, and onboarding templates. |
+| `/template view` | Inspect template structure, subtasks, and checklist items | Displays relative day offsets and priority presets. |
+| `/template delete` | Delete a custom task template | Custom templates only; built-ins are protected. |
+| `/routine rule-add` | Set an auto-task assignment rule for Discord events | Trigger on `member_join` or `role_added`. |
+| `/routine rule-list`| List active automated routine rules in this server | Shows trigger event, target role, and assigned template. |
+| `/routine rule-remove`| Delete an automated routine rule | Requires server `manage_guild` permission. |
+
+---
+
+### 10. Full Text Search & AI-Ready Recommendations ([`search_recommendation/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/search_recommendation/cog.py))
+
+| Command | Description | Options |
+|---|---|---|
+| `/search` | Advanced FTS search across titles, tags, and notes | `query`, `status`, `priority`, `sort`, `scope (personal/guild)` |
+| `/recommend` | Multi-factor weighted prioritization ranking | `limit (1-10)`, `scope`, `preset (balanced/urgency/priority)` |
+
+---
+
+### 11. File Attachments ([`storage/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/storage/cog.py))
+
+| Command | Description | Limits |
+|---|---|---|
+| `/attach` | Upload a file attachment to a task | Max 15 MB. Supported: images, PDF, Office docs, text, ZIP. |
+| `/attachments` | Browse, download, or delete attachments on a task | Interactive gallery view with signed Supabase CDN URLs. |
+
+---
+
+### 12. Private Calendar Feeds ([`calendar_feed/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/calendar_feed/cog.py))
+
+| Command | Description | Security |
+|---|---|---|
+| `/calendar link` | Generate private iCalendar (`.ics`) subscription URL | SHA-256 hashed secret token; HTTPS required. |
+| `/calendar rotate` | Revoke compromised calendar link and generate new one | Instantly invalidates previous token. |
+| `/calendar revoke` | Disable calendar subscription entirely | Deletes token record from database. |
+
+---
+
+### 13. Task Import ([`task_import/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/task_import/cog.py))
+
+| Command | Description | Options |
+|---|---|---|
+| `/import` | Batch import tasks from UTF-8 CSV or JSON file | `file` (attachment), `missing_deadline (default_1_day / no_deadline)` |
+
+---
+
+### 14. Productivity Analytics ([`analytics/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/analytics/cog.py))
+
+| Command | Description | Engine |
+|---|---|---|
+| `/analytics snapshot` | Trigger on-demand visual productivity report to DM | Supabase Deno Edge Function + QuickChart graphic renderer |
+| `/analytics weekly` | Toggle weekly automated DM report delivery | Edge Function cron job trigger |
+
+---
+
+### 15. Settings, i18n & Embed Themes ([`handlers/settings_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/settings_cog.py))
+
+| Command | Description | Options |
+|---|---|---|
+| `/setup` | Configure personal timezone and alert channel | `timezone` (e.g. `Asia/Bangkok`, `UTC`, `America/New_York`) |
+| `/lang` | Interactive language selector (9 languages) | Visual flag picker modal |
+| `/theme` / `/settings theme` | **Personalize Discord embed color theme** | Select from 10 themes with live preview and custom gradient bars |
+| `/category list\|add\|remove` | Manage custom task categories | Custom name and emoji selector |
+| `/admin stats` | Bot-wide system telemetry (owner only) | Total users, tasks, cache metrics, rate limiter counters |
+| `/admin cache_purge` | Manually purge expired cache entries (owner only) | Cleans LRU cache entries immediately |
+
+---
+
+### 16. System Monitoring & Health Telemetry ([`handlers/monitoring_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/monitoring_cog.py))
+
+| Command | Description | Permission |
+|---|---|---|
+| `/health` | Check live database ping, latency, memory usage, uptime | Administrator |
+| `/errors` | View top aggregated errors in the last 24 hours | Administrator |
+| `/cmdstats` | View command execution volume since last restart | Administrator |
+| `/monitoring setup` | Configure server admin alert channel and health check intervals | Administrator (Interactive Modal) |
+| `/monitoring status` | Display current monitoring settings for this server | Administrator |
 
 ---
 
 ## 🎛️ Interactive UI & Defensive Design
 
-### 📝 Personal Task Panel (`TaskActionView`)
+### 5-Row Personal Task Action Panel (`TaskActionView`)
 
-Every personal task embed comes with a persistent 5-row button panel:
+Every personal task embed features an interactive, defensive control panel:
 
-| Row | Components |
-|---|---|
-| 1 | ✅ Done · 📝 Edit · 📌 Pin/Unpin |
-| 2 | 🗑️ Delete · ⏰ Snooze (preset picker) |
-| 3 | ➕ Add Subtask |
-| 4 | 🏷️ Category dropdown (loaded dynamically) |
-| 5 | ⚡ Priority dropdown (0–7: ⬜ Normal to 🆘 Emergency) |
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│  🔴 #108 Deploy Production Microservices                               │
+│  📅 Tomorrow at 18:30 (Asia/Bangkok) · ⏱️ in 22 hours                   │
+│  📁 Category: DevOps · ⚡ Priority: P6 Critical · 📈 Progress: [████░░] 60%│
+├────────────────────────────────────────────────────────────────────────┤
+│  Row 0:  [ ✅ Mark Done ]   [ ✏️ Edit ]      [ 📍 Pin/Unpin ]  [ ➕ Subtask ] │
+│  Row 1:  [ 🗑️ Delete ]      [ ⏰ Snooze ]    [ 📎 Files ]                    │
+│  Row 2:  [ 🏷️ Select Category Dropdown (Work, Study, Health...)      ▼ ]│
+│  Row 3:  [ ⚡ Select Priority Dropdown (P0 Normal ➔ P7 Emergency)    ▼ ]│
+│  Row 4:  [ 📈 Progress ]   [ 💬 Comments ]  [ ☑️ Checklist ] [ 📜 History ] │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
-### 🤝 Project Dashboard Panel (`ProjectDashboardView`)
-
-Project dashboards (`/project view`) feature a dual-row interactive control panel adhering to Discord's 5-button-per-row layout rules:
-
-| Row | Type | Components & Capabilities |
-|---|---|---|
-| **Row 0** | **Navigation Tabs** | 📊 **Dashboard** (metrics & summary) · 📋 **Board** (interactive Kanban) · 👥 **Members** (roster & roles) · 📜 **Activity** (audit feed) · 📁 **Files** (attachments) |
-| **Row 1** | **Action Controls** | ➕ **Add Task** (`AddProjectTaskModal` with priority 0–7)<br>📈 **Advance Progress** (`AdvanceProgressSelectView` / `ManualProgressView`)<br>🏁 **Complete Project** (`ProjectCompleteConfirmView`)<br>🎯 **Priority** (`ProjectPrioritySelectView` 0–7 dropdown) |
-
-#### Interactive Progress & Completion Controls
-
-- **📈 Advance Progress**:
-  - If the project has active tasks: opens `AdvanceProgressSelectView` with an interactive select menu listing remaining tasks. Selecting a task marks it Completed and automatically updates progress metrics. Also includes a button to switch to manual % adjustment.
-  - If no tasks exist or manual mode is selected: opens `ManualProgressView` with quick preset buttons (`+10%`, `+25%`, `+50%`, `100%`) and a modal button for custom percentage values (0–100%).
-- **🏁 Complete Project**:
-  - Opens `ProjectCompleteConfirmView` with dual completion options:
-    1. **Mark Project & All Tasks Completed**: Automatically sets status of all remaining project tasks to `Completed`.
-    2. **Complete Project Only**: Concludes project status while keeping task states intact.
-  - Enforces role protection: only Project Owner, Lead, or Server Admin can perform completion.
-- **🎯 Project Priority Selector**:
-  - `ProjectPrioritySelectView` provides an interactive select menu displaying all 8 priority levels (⬜ 0 to 🆘 7). Updates project priority and sorts server project lists accordingly.
-
-### Persistent View Registration
-
-On bot startup, `register_all_persistent_views()` rehydrates all active TaskActionViews:
-
-- Queries tasks within `PERSISTENT_VIEWS_MAX_DAYS` days (default: 30) with a single `IN (...)` batch query — **zero N+1 queries**
-- Capped at `PERSISTENT_VIEWS_LIMIT` (default: 500) views to protect memory
-- Category dropdowns are pre-loaded in bulk per restored view
-
-### Interaction Safety
-
-| Pattern | Implementation |
-|---|---|
-| **Defer & Followup** | All commands call `response.defer()` before any async DB work to stay within Discord's 3-second timeout |
-| **on_error handler** | Every Cog has `cog_app_command_error` that catches and responds gracefully — no silent failures |
-| **TaskConflictView** | Optimistic concurrency check via `validate_deadline_defensive()` — if another user modifies a task between the user opening and submitting the edit modal, a conflict is detected and the user is warned |
-| **DeleteConfirmView** | Two-step confirmation before any irreversible delete |
-| **SnoozePresetView** | Ephemeral snooze picker with preset options so users don't need to type a new deadline |
+### Defensive Architecture Principles
+1. **User Identity Isolation**: Every button, modal, and select checks `str(interaction.user.id) == view.uid`. Other users attempting to click buttons receive an ephemeral permission denial.
+2. **Persistent View Hydration**: In `setup_hook()`, `register_all_persistent_views()` automatically binds active task IDs into memory. Buttons on historical messages continue working even after bot restarts.
+3. **Optimistic Locking & Race Protection**: Status changes utilize SQL atomic queries (`UPDATE ... WHERE status='Pending' RETURNING task_id`) to prevent duplicate completions under concurrent clicks.
+4. **DoD Checklist Guard**: Marking a task done via `/done` or the `✅ Mark Done` button warns the user if Definition of Done items remain unchecked, requiring an explicit bypass (`force: True`).
 
 ---
 
-## ⚡ Performance & Caching Architecture
+## ⚡ Performance, Caching & Scalability
 
-### asyncpg Connection Pool
+### 1. True LRU Caching Engine (`core/database.py`)
+All cache stores (`UserCache`, `StatsCache`, and `QueryCache`) utilize `collections.OrderedDict.move_to_end()` to provide O(1) **True Least-Recently-Used (LRU)** eviction:
+* **Table-Scoped Invalidation**: Cache entries are tagged with table dependencies. A write to `tasks` invalidates only queries referencing `tasks`, while keeping cached user settings and categories intact across all **24 known tables** (`_KNOWN_TABLES`).
+* **The 24 Tracked Tables**: `tasks`, `users`, `categories`, `projects`, `project_members`, `project_activity_log`, `task_attachments`, `task_assignments`, `guild_settings`, `audit_log`, `schema_version`, `task_completion_events`, `user_achievements`, `project_task_threads`, `project_task_dependencies`, `project_task_role_assignments`, `task_templates`, `task_checklists`, `routine_event_rules`, `project_role_permissions`, `saved_filters`, `focus_sessions`, `calendar_feed_tokens`, `task_comments`.
+* **Minute-Quantized SQL Autocomplete**: Autocomplete queries truncate the current timestamp to minute boundaries, achieving >85% L1 cache hit rate while typing without sacrificing accuracy.
+* **Tuple Hashing with JSON Fallback**: Cache keys utilize fast hashable parameter tuples with recursive JSON serialization for complex nested filters.
 
+### 2. High-Throughput Bounded `BulkWriter`
+Audit logging and metric writes are decoupled from the request cycle:
+* **Bounded Queue**: Capped at `max_queue_size = 10,000` items with drop warnings to guarantee unbounded memory leaks never crash the bot under DDoS.
+* **Chunked Transactions**: Flushes in batches of 50 items inside a single PostgreSQL transaction.
+* **Per-Item Fallback & Retry Cap**: If a batch transaction fails, it gracefully falls back to single-row inserts and discards corrupted items exceeding `_MAX_ITEM_RETRIES = 5`.
+
+### 3. Database Partial Indexes (Schema v27 & v28)
+Background loops never scan full tables thanks to highly targeted partial indexes:
+```sql
+-- High-frequency scheduler indexes
+CREATE INDEX idx_tasks_recurring_due ON tasks(deadline ASC)
+    WHERE status='Pending' AND is_deleted=FALSE AND (recurring IS NOT NULL OR recurrence_rule IS NOT NULL);
+
+CREATE INDEX idx_tasks_deadline_dm_pending ON tasks(deadline ASC, dm_reminded)
+    WHERE status='Pending' AND is_deleted=FALSE;
+
+CREATE INDEX idx_users_daily_digest ON users(daily_digest, notify_enabled)
+    WHERE daily_digest = 1 AND notify_enabled = 1 AND channel_id IS NOT NULL;
+
+CREATE INDEX idx_tasks_trash ON tasks(owner_id, deleted_at)
+    WHERE is_deleted = TRUE;
 ```
-max_size              = DB_POOL_SIZE  (default: 10)
-command_timeout       = DB_TIMEOUT    (default: 30s)
-max_inactive_lifetime = 300s          ← auto-recycles connections Supabase/pgBouncer silently closes
-server_settings       = {timezone: UTC, application_name: "todo-bot"}
-statement_cache_size  = 0             ← disabled for pgBouncer session-mode compatibility
-```
-
-All queries use PostgreSQL `$N`-style positional placeholders. A jittered exponential-backoff retry (up to 3 attempts) covers transient `asyncpg.TooManyConnectionsError` and `asyncpg.InterfaceError`.
-
-### Multi-Level Caching
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  L0  Discord Interaction Response Cache  (discord.py)        │
-├──────────────────────────────────────────────────────────────┤
-│  L1  QueryCache — Blake2b(SQL + params) keyed TTL store      │
-│       TTL:          DB_QUERY_CACHE_TTL  (default: 30.0s)     │
-│       Invalidation: table-scoped  (tasks, users, projects)   │
-├──────────────────────────────────────────────────────────────┤
-│  L2  UserCache — per-user lang / timezone / channel / role   │
-│       TTL:  300s  |  Max: 5,000 users  (FIFO eviction)       │
-├──────────────────────────────────────────────────────────────┤
-│  L3  StatsCache — per-user task count snapshot               │
-│       TTL:  60s   |  Invalidated on task create / update     │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### BulkWriter (Write-Batching Queue)
-
-Instead of hitting the database for every audit log INSERT, the BulkWriter accumulates items in a `deque` and flushes them atomically in a single `executemany` transaction every `DB_BULK_WRITE_INTERVAL_MS` (default: 500ms).
-
-- **Poison-item protection:** failed items that cannot be re-parsed are discarded with a warning rather than blocking the queue
-- **Re-queue on failure:** transient DB failures re-enqueue items for the next flush cycle
-- **Graceful shutdown:** the BulkWriter is explicitly flushed during bot shutdown (before `db.close()`) to prevent data loss
-
-### uvloop Guard
-
-```python
-# main.py — transparent uvloop opt-in
-try:
-    import uvloop
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-except ImportError:
-    pass   # Windows or package missing — silently falls back to default
-```
-
-On Linux/macOS, this provides **2–4× faster** async I/O throughput.
 
 ---
 
-## 🔄 Background Automation & Schedulers
+## 🔄 Background Automation & Schedulers (8 Loops)
 
-Reminder and recurring loops run in `handlers/reminders_cog.py`; the persistent focus timer runs in `focus/cog.py`. They start automatically after `setup_hook()` completes.
+The bot operates **8 background loops** and continuous workers on the event loop:
 
-| Loop | Interval | Function |
-|---|---|---|
-| `reminder_loop` | `REMINDER_INTERVAL_MIN` (default 30 min) | Scans for tasks due within 1 hour or already overdue. Sends channel reminders with a 0.3s throttle between messages to avoid Discord rate-limiting. Re-alerts overdue tasks every `OVERDUE_REMIND_HOURS` hours. |
-| `recurring_loop` | `RECURRING_INTERVAL_MIN` (default 60 min) | Renews due tasks using legacy daily/weekly/monthly rules or advanced weekdays, interval, and monthly-date rules. Row locks prevent duplicate instances. |
-| `focus.session_loop` | Every 15 seconds | Advances persisted work/break phases, sends Discord DM notifications, and records completed focus time in `actual_hours`. |
-| `daily_digest_loop` | Every 1 minute (checks per user timezone) | Sends each user their personalised daily digest at their configured local time (default 08:00). Includes today's tasks, tomorrow's preview, and overdue count. |
-| `deadline_dm_loop` | `DM_REMINDER_INTERVAL_MIN` (default 15 min) | Sends a private DM at **24h**, **3h**, and **1h** before deadline. Uses a `dm_reminded` integer bitmask (bit 0=24h, 1=3h, 2=1h) to deduplicate — each DM fires exactly once per deadline. |
-| `cleanup_loop` | Every 10 minutes | Purges expired `UserCache`, `StatsCache`, `QueryCache` entries, and expired token-bucket rate-limit windows. |
+| Loop / Worker | Frequency | Primary Responsibility | Defensive Guards |
+|---|:---:|---|---|
+| `reminder_loop` | 1 min | Send channel deadline warnings for approaching tasks | `last_reminder` debounce timestamp |
+| `recurring_loop` | 1 min | Compute next deadline and renew recurring tasks | Partial index `idx_tasks_recurring_due` |
+| `deadline_dm_loop` | 1 min | Dispatch private DMs at 24h, 3h, and 1h thresholds | Bitmask field `dm_reminded` (1, 2, 4) |
+| `daily_digest_loop` | 1 min | Dispatch 8:00 AM Daily Digest in user's local timezone | `last_digest_date` guard persists across restarts |
+| `weekly_retrospective_loop` | 1 min | Dispatch Sunday 20:00 Weekly Retrospective digest | Weekend UTC guard + `last_retrospective_date` |
+| `cleanup_loop` | 24 hours | Purge audit logs >30d and **permanently purge trash >30d** | `recovery_service.purge_expired_trash(30)` |
+| `session_loop` *(Focus)* | 15 sec | Progress work/break Pomodoro timers and alert user | Auto-stops if task completed or soft-deleted |
+| `streak_reminder_loop` *(Gamification)* | 1 min | Send evening streak preservation reminders at 20:00 | Checks if tasks completed today in user TZ |
+| `BulkWriter Worker` | 2.0 sec / 50 items | Flushes pending audit log batches to PostgreSQL | Bounded queue with retry exhaustion drop |
+| `DashboardTracker Worker` | 1.5 sec | Debounces rapid task changes into a single embed edit | Cancel and reschedule debounce timer |
 
 ---
 
 ## 🛡️ Security & Row Level Security (RLS)
 
-### Input Validation
+### 1. SQL & Script Injection Defense (`core/security.py`)
+Incoming user input is filtered through `_SUSPICIOUS_RE`:
+* Detects SQL injection chains (`; DROP`, `; SELECT`, `UNION SELECT`, `--`, `/*`) and cross-site scripting attacks (`<script`, `javascript:`, `onerror=`).
+* Uses boundary-aware token matching to avoid false positives on legitimate task titles such as *"Select team lead"*, *"Drop off package"*, or *"Update documentation"*.
 
-All user text inputs pass through `core/security.py` → `InputValidator`:
+### 2. Thread-Safe Rate Limiter
+In-memory sliding window rate limiter protects Discord API limits:
+* `command`: 30 req/min
+* `task_create`: 100 req/hour
+* `search`: 10 req/min
+* `export`: 5 req/day
 
-- Max length enforcement (`MAX_TASK_NAME_LENGTH`, `MAX_DESCRIPTION_LENGTH`, `MAX_INPUT_LENGTH`)
-- Pattern detection for common SQL injection probes (e.g. `; DROP`, `UNION SELECT`)
-- HTML/script tag stripping and null-byte removal
+### 3. PostgreSQL Row Level Security (RLS) Client
+The `security_rls/` module enforces engine-level data privacy:
+* All operations wrapped in `scoped_user_context(conn, user_id)` execute `SELECT set_config('app.current_user_id', $1, true)`.
+* PostgreSQL engine evaluates `current_app_user() == owner_id`, guaranteeing cross-tenant data leakage is impossible even if application queries have bugs.
+* Migration CLI runner:
+  ```bash
+  python -m security_rls.migration_runner --dry-run
+  python -m security_rls.migration_runner --apply
+  python -m security_rls.migration_runner --export
+  python -m security_rls.migration_runner --rollback
+  ```
 
-### Rate Limiting
+---
 
-A **token-bucket multi-bucket rate limiter** operates per-user:
+## 🐘 Database Schema History (Auto-Migrations v1 ➔ v28)
 
-| Bucket | Default Limit | Block Duration |
-|---|---|---|
-| Commands | 30 per minute | `RATE_BLOCK_SECONDS` (default 300s) |
-| Task creation | 100 per hour | `RATE_BLOCK_SECONDS` |
-| Searches | 10 per minute | `RATE_BLOCK_SECONDS` |
-| CSV exports | 5 per day | `RATE_BLOCK_SECONDS` |
+The bot contains a built-in automated migration runner that verifies and migrates the PostgreSQL database sequentially on startup:
 
-Rate-limited responses include the **exact seconds remaining** until unblock, in the user's language.
-
-### PostgreSQL Row Level Security (RLS)
-
-RLS policies are managed as versioned SQL migrations in `security_rls/`:
-
-| File | Scope |
-|---|---|
-| `01_rls_functions.sql` | Helper functions: `current_app_user()`, `is_project_member()`, `is_project_lead()` |
-| `02_rls_tasks.sql` | Task isolation: owners see only their own tasks; project members see project tasks |
-| `03_rls_projects_and_members.sql` | Project and membership visibility |
-| `04_rls_categories_attachments.sql` | Category ownership, attachment access control |
-
-**Runtime enforcement:** The bot sets `SET LOCAL app.current_user_id = $uid` at the start of every transaction. The RLS `current_app_user()` function reads this value to enforce isolation. No user can read or modify another user's data, even with a direct DB connection using the same credentials.
-
-**Migration Runner CLI:**
-
-```bash
-# Preview SQL that will be applied (safe, no DB changes)
-python -m security_rls.migration_runner --dry-run
-
-# Apply all RLS policies to Supabase
-python -m security_rls.migration_runner --apply
-
-# Export combined SQL for Supabase SQL Editor
-python -m security_rls.migration_runner --export
-
-# Rollback — remove all RLS policies
-python -m security_rls.migration_runner --rollback
-```
+| Version | Scope & Added Tables / Columns | Purpose |
+|:---:|---|---|
+| **v1** | Core schema: `users`, `categories`, `tasks`, `audit_log`, `schema_version` | Foundational task management tables |
+| **v2** | `tasks.parent_task_id`, `tasks.category_id` | Subtasks and categorization support |
+| **v3** | `tasks.is_pinned`, `tasks.description` | Task pinning and extended descriptions |
+| **v4** | `tasks.recurring`, `users.channel_id` | Recurrence strings and alert channel routing |
+| **v5** | `tasks.tags`, `users.notify_enabled` | Tagging support and notification master toggle |
+| **v6** | `task_comments`, `user_achievements`, `users.last_active` | Discussion comments, badges, and user telemetry |
+| **v7** | `tasks.dm_reminded` | Bitmask tracking for 24h, 3h, and 1h DM notifications |
+| **v8** | `users_lang_check` constraint | Expanded to 6 languages (`th`, `en`, `zh`, `ja`, `ko`, `es`) |
+| **v9** | `users_lang_check` constraint | Expanded to 9 languages (`+ ru`, `fr`, `de`) |
+| **v10** | `guild_settings` | Per-guild configuration overrides in database |
+| **v11** | Composite PK fix on `guild_settings` | Multi-tenant guild settings stability |
+| **v12** | `users.last_digest_date`, `users.digest_hour`, `tasks.completed_at` | Daily digest restart guard and productivity tracking |
+| **v13** | `projects`, `project_members`, `project_activity_log`, `tasks.project_id`, `tasks.guild_id` | Team collaboration, shared projects, and multi-tenant scoping |
+| **v14** | `task_attachments`, Supabase Realtime CDC publication (`supabase_realtime`) | File attachments and WebSocket live updates |
+| **v15** | `tasks.search_vector` generated tsvector column + GIN index | PostgreSQL Full-Text Search (FTS) with weighted A/B/C/D ranking |
+| **v16** | `users.weekly_digest`, `projects.lang` | Weekly summary toggles and project locale localization |
+| **v17** | `projects.priority` (0–7), `projects.manual_progress` (0–100) | Project priority rankings and manual progress overrides |
+| **v18** | `focus_sessions` table, `tasks.recurrence_rule` JSONB | Durable Pomodoro focus timers and advanced recurrence engine |
+| **v19** | `task_completion_events`, `users.streak_last_completion`, `users.streak_reminder_date` | Timezone-aware streak tracking and audit completion events |
+| **v20** | `tasks.source_message_url`, `project_task_threads` | Discord message context menus and discussion thread binding |
+| **v21** | `project_task_dependencies`, `project_task_role_assignments` | Task dependency blocking and Discord role assignment |
+| **v22** | `tasks.deadline` (DROP NOT NULL), `calendar_feed_tokens` table | Optional deadlines and private iCalendar feed subscriptions |
+| **v23** | `task_templates`, `task_checklists`, `routine_event_rules` | Templates, Definition of Done checklists, and event-driven routines |
+| **v24** | `tasks.is_deleted`, `tasks.deleted_at`, `tasks.is_private`, `project_role_permissions` | **Recycle Bin soft delete**, confidential tasks, and granular RBAC |
+| **v25** | `saved_filters` table with JSONB criteria | **Eisenhower Matrix & Saved Smart Filters** (Smart Lists) |
+| **v26** | `idx_audit_target_created`, `users.weekly_retrospective`, `users.last_retrospective_date` | Task Audit Trail speedups and Weekly Retrospective scheduler settings |
+| **v27** | Partial indexes: `idx_tasks_recurring_due`, `idx_tasks_deadline_dm_pending`, `idx_tasks_pending_reminders`, `idx_focus_sessions_active_lookup` | **Performance & Stability Phase 1**: Zero-lag background schedulers |
+| **v28** | Partial indexes: `idx_users_daily_digest`, `idx_users_weekly_retrospective`, `idx_users_streak_reminder`, `idx_tasks_user_active_root` | **Performance & Stability Phase 2**: Zero-lag user scans and active task queries |
 
 ---
 
 ## 🌩️ Supabase Realtime & Edge Functions
 
-### Supabase Realtime (Phoenix WebSocket CDC)
+### 1. Supabase Realtime CDC (Change Data Capture)
+* **Phoenix WebSocket Protocol**: Subscribes directly to PostgreSQL Write-Ahead Logs (WAL) via `realtime:public:tasks`.
+* **Zero-Spam Debounce**: When multiple collaborators check off tasks rapidly, `DashboardTracker` coalesces changes within 1.5 seconds, executing a single Discord embed edit.
+* **Auto-Reconnect**: Exponential backoff with jitter handles network interruptions gracefully.
 
-The `realtime/` module maintains a persistent WebSocket connection to Supabase's Realtime server using the **Phoenix protocol**.
+### 2. Supabase Deno Edge Functions
+* **Weekly Analytics Engine** (`supabase/functions/weekly-analytics/`):
+  * Written in TypeScript for the Deno runtime.
+  * Triggered on-demand via `/analytics snapshot` or weekly cron (`0 8 * * 1`).
+  * Computes complex completion rates, generates visual PNG charts via QuickChart, and delivers rich embeds directly to user DMs.
 
+---
+
+## 📅 Private Calendar Feeds & Async Webserver
+
+The bot runs a non-blocking `aiohttp` web server on the main event loop (`utils/webserver.py`):
+
+```text
+GET /                       -> 200 JSON {"status": "online", "uptime_s": 1420.5}
+GET /health                 -> 200 JSON {"status": "ok"}
+GET /ready                  -> 200/503 Readiness probe (checks live PostgreSQL pool connection)
+GET /metrics                -> 200 JSON Internal telemetry (DB pool, cache sizes, BulkWriter stats)
+GET /calendar/{token}.ics   -> 200 text/calendar (Live private iCalendar feed for external calendars)
 ```
-Bot startup
-  └─ RealtimeClient.connect()
-       └─ Subscribes to:
-            • postgres_changes on table "tasks"                → task INSERT/UPDATE/DELETE
-            • postgres_changes on table "project_activity_log" → activity INSERT
-  └─ On CDC event received:
-       └─ RealtimeDispatcher.dispatch()
-            └─ Debounce 1.5s  (SUPABASE_REALTIME_DEBOUNCE_SEC)
-            └─ Fetches updated row from DB
-            └─ Re-renders Discord embed
-            └─ discord.Message.edit()  ← live update, no new message sent
-```
 
-| Config Variable | Default | Purpose |
-|---|---|---|
-| `SUPABASE_REALTIME_ENABLED` | `true` | Master on/off switch |
-| `SUPABASE_REALTIME_HEARTBEAT_SEC` | `30` | WebSocket keepalive ping interval |
-| `SUPABASE_REALTIME_DEBOUNCE_SEC` | `1.5` | Collapse rapid changes before re-rendering |
-| `SUPABASE_REALTIME_RECONNECT_BASE_SEC` | `1.0` | Exponential backoff base on disconnect |
-| `SUPABASE_REALTIME_MAX_RECONNECT` | `0` | Max reconnect attempts (0 = infinite) |
-
-### Supabase Edge Function (`weekly-analytics`)
-
-Located in `supabase/functions/weekly-analytics/index.ts` — a **Deno TypeScript** serverless function.
-
-**What it does:**
-1. Reads `DISCORD_BOT_TOKEN` from Supabase Secrets (not `.env` — never exposed in source)
-2. Queries productivity metrics for the requesting user over the past 7 days
-3. Calls **QuickChart API** to render a bar/line chart as a PNG image
-4. Sends a rich embed with the chart image directly to the user's Discord DM
-
-**Trigger modes:**
-- **On-demand:** `/analytics snapshot` → Bot makes an authenticated HTTP call to the Edge Function URL
-- **Scheduled (Cron):** runs automatically every Monday at 08:00 UTC for users with weekly reports enabled
-
-**Deploy commands:**
-
-```bash
-# Deploy to Supabase
-supabase functions deploy weekly-analytics
-
-# Schedule the weekly cron trigger
-supabase functions schedule weekly-analytics --cron "0 8 * * 1"
-
-# Test locally with Supabase CLI
-supabase functions serve weekly-analytics
-
-# Set the Discord token as a Supabase Secret (required — never put in .env)
-supabase secrets set DISCORD_BOT_TOKEN=<your-token>
-```
+### Calendar Sync Setup
+1. Run `/calendar link` in Discord to receive your unique feed URL.
+2. In **Google Calendar**, select **Other calendars (+)** ➔ **From URL** ➔ Paste the link.
+3. In **Apple Calendar / Outlook**, select **File** ➔ **New Calendar Subscription**.
+4. Deadlines, priority tags, and task names sync automatically.
 
 ---
 
 ## 🚀 Installation & Deployment Guide
 
 ### Prerequisites
+* Python 3.11+
+* A Supabase project (Free or Pro tier) with PostgreSQL
+* A Discord Bot Application with `applications.commands` and `bot` scopes (Intents: Server Members, Message Content)
 
-- **Python 3.10+** (3.14 recommended)
-- **Supabase account** (free tier sufficient) — [supabase.com](https://supabase.com)
-- **Discord application** with a bot token — [discord.com/developers](https://discord.com/developers/applications)
-- *(Optional)* **Supabase CLI** for Edge Functions and RLS migrations
-
-### Local Setup
-
+### 1. Clone & Dependencies
 ```bash
-# 1. Clone the repository
 git clone https://github.com/Punk1107/todo-list-bot-gen2.git
-cd "todo-list-bot-gen2"
+cd todo-list-bot-gen2
 
-# 2. Create and activate a virtual environment
 python -m venv venv
-
-# Windows
+# Windows:
 venv\Scripts\activate
-# Linux / macOS
+# Linux/macOS:
 source venv/bin/activate
 
-# 3. Install dependencies
 pip install -r requirements.txt
-
-# 4. Configure environment
-copy .env.example .env      # Windows
-cp .env.example .env        # Linux / macOS
-
-# 5. Edit .env — fill in DISCORD_TOKEN and SUPABASE_* credentials
-python main.py
 ```
 
-### Discord Bot Configuration
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your credentials (see section below)
+```
 
-In the [Discord Developer Portal](https://discord.com/developers/applications):
+### 3. Initialize Database & RLS
+The database schema automatically runs all **28 migrations** on first startup! To apply PostgreSQL Row Level Security policies:
+```bash
+python -m security_rls.migration_runner --apply
+```
 
-1. **Bot → Privileged Gateway Intents:** enable `Server Members Intent` and `Message Content Intent`
-2. **OAuth2 → URL Generator:** scopes `bot` + `applications.commands`, permissions: `Send Messages`, `Embed Links`, `Attach Files`, `Read Message History`, `Use Slash Commands`
-3. Copy the generated URL and invite the bot to your server
+### 4. Deploy Deno Edge Function (Optional)
+```bash
+cd supabase
+supabase secrets set DISCORD_BOT_TOKEN="your_discord_bot_token"
+supabase functions deploy weekly-analytics
+```
 
-### Supabase Setup
-
-1. Create a new Supabase project
-2. From **Project Settings → Database → Connection string (Direct connection)**, copy `SUPABASE_HOST`, `SUPABASE_USER`, `SUPABASE_PASSWORD`, `SUPABASE_DB`
-3. From **Project Settings → API**, copy **Project URL** → `SUPABASE_URL` and **service\_role key** → `SUPABASE_KEY`
-4. The database schema (all 17 migration versions) runs **automatically** on first `python main.py`
-5. *(Optional)* Apply RLS policies: `python -m security_rls.migration_runner --apply`
-
-### Cloud Deployment (Render / Railway / Heroku)
-
-The bot includes a built-in **aiohttp async keep-alive web server** for uptime monitoring platforms:
-
-| Endpoint | Response |
-|---|---|
-| `GET /` | `{"status": "ok", "bot": "running"}` |
-| `GET /health` | Full health JSON (DB latency, memory, loop lag) |
-| `GET /ready` | `{"ready": true}` once bot is fully initialised |
-| `GET /metrics` | Runtime metrics for Prometheus/Grafana scraping |
-| `GET /calendar/{token}.ics` | Private RFC 5545 feed for active tasks with deadlines |
-
-Set the `PORT` environment variable (Render/Railway auto-inject this) — the server reads `PORT` first, then falls back to `WEBSERVER_PORT`.
-Set `CALENDAR_PUBLIC_URL` to the externally reachable HTTPS origin (for example `https://todo.example.com`) before creating a feed. Treat its URL as a password; rotate or revoke it if exposed. Imported dates are interpreted in the importing user's timezone.
+### 5. Launch the Bot
+```bash
+python main.py
+```
 
 ---
 
 ## ⚙️ Environment Variables Reference
 
-Copy `.env.example` to `.env` and fill in the required values.
-
-### Required
-
-| Variable | Description |
-|---|---|
-| `DISCORD_TOKEN` | Your Discord bot token (from Developer Portal) |
-| `SUPABASE_HOST` | PostgreSQL host from Supabase connection string |
-| `SUPABASE_USER` | PostgreSQL username |
-| `SUPABASE_PASSWORD` | PostgreSQL password |
-
-### Bot Settings
-
-| Variable | Default | Description |
-|---|---|---|
-| `DEFAULT_TIMEZONE` | `Asia/Bangkok` | Default timezone for new users (IANA format) |
-| `DEFAULT_LANG` | `th` | Default language: `th` `en` `zh` `ja` `ko` `es` `ru` `fr` `de` |
-| `BOT_OWNER_IDS` | _(empty)_ | Comma-separated Discord user IDs with owner-level admin access |
-| `PERSISTENT_VIEWS_MAX_DAYS` | `30` | Restore task action buttons for tasks created within this many days |
-| `PERSISTENT_VIEWS_LIMIT` | `500` | Max number of persistent views to restore on startup |
-
-### Database
-
-| Variable | Default | Description |
-|---|---|---|
-| `SUPABASE_DB` | `postgres` | Database name |
-| `SUPABASE_PORT` | `5432` | Database port |
-| `DB_POOL_SIZE` | `10` | asyncpg connection pool max size |
-| `DB_TIMEOUT` | `30` | Query timeout in seconds |
-| `DB_QUERY_CACHE_TTL` | `30.0` | L1 QueryCache TTL in seconds (0 = disable) |
-| `DB_BULK_WRITE_INTERVAL_MS` | `500` | BulkWriter flush interval in milliseconds |
-
-### Rate Limiting
-
-| Variable | Default | Description |
-|---|---|---|
-| `RATE_COMMANDS_PER_MIN` | `30` | Max commands per minute per user |
-| `RATE_TASKS_PER_HOUR` | `100` | Max task creations per hour per user |
-| `RATE_SEARCHES_PER_MIN` | `10` | Max `/search` calls per minute per user |
-| `RATE_EXPORTS_PER_DAY` | `5` | Max CSV exports per day per user |
-| `RATE_BLOCK_SECONDS` | `300` | Block duration (seconds) after limit exceeded |
-| `MAX_TASK_NAME_LENGTH` | `200` | Maximum task name character length |
-| `MAX_DESCRIPTION_LENGTH` | `1000` | Maximum task description character length |
-
-### Notifications
-
-| Variable | Default | Description |
-|---|---|---|
-| `REMINDER_INTERVAL_MIN` | `30` | How often (minutes) to check and send deadline reminders |
-| `RECURRING_INTERVAL_MIN` | `60` | How often (minutes) to renew recurring tasks |
-| `OVERDUE_REMIND_HOURS` | `6` | Hours between re-notifications for overdue tasks |
-| `DAILY_SUMMARY_ENABLED` | `true` | Enable/disable daily digest |
-| `DAILY_SUMMARY_HOUR` | `8` | Local hour (0–23) to send daily digest |
-| `DM_REMINDER_INTERVAL_MIN` | `15` | How often (minutes) to check for DM deadline alarms |
-
-### Keep-Alive Web Server
-
-| Variable | Default | Description |
-|---|---|---|
-| `WEBSERVER_ENABLED` | `true` | Enable the aiohttp keep-alive server |
-| `WEBSERVER_HOST` | `0.0.0.0` | Bind address |
-| `WEBSERVER_PORT` | `8080` | Port (overridden by `PORT` env var on cloud platforms) |
-| `CALENDAR_PUBLIC_URL` | _(empty)_ | Public HTTPS origin used in private calendar subscription URLs |
-
-### Monitoring & Logging
-
-| Variable | Default | Description |
-|---|---|---|
-| `MONITORING_ENABLED` | `true` | Master switch for health monitoring |
-| `ADMIN_LOG_CHANNEL_ID` | _(empty)_ | Discord channel ID for error/health alerts |
-| `HEALTH_CHECK_INTERVAL_MIN` | `5` | Health check frequency in minutes |
-| `ALERT_RATE_LIMIT_SEC` | `300` | Minimum seconds between repeated alerts for the same error type |
-
-Log files are created automatically in `logs/`:
-- `logs/bot.log` — INFO+ (rotating 5 MB × 5 backups)
-- `logs/errors.log` — WARNING+ with guild/user/command context (2 MB × 10 backups)
-- `logs/commands.log` — JSON audit trail of every command invocation (10 MB × 7 backups)
-
-### Supabase Realtime & Storage
-
-| Variable | Default | Description |
-|---|---|---|
-| `SUPABASE_URL` | _(required)_ | Project REST URL: `https://<ref>.supabase.co` |
-| `SUPABASE_KEY` | _(required)_ | `service_role` key. **Keep secret — never expose publicly.** |
-| `SUPABASE_REALTIME_ENABLED` | `true` | Enable/disable Realtime WebSocket CDC |
-| `SUPABASE_REALTIME_HEARTBEAT_SEC` | `30` | WebSocket ping interval |
-| `SUPABASE_REALTIME_DEBOUNCE_SEC` | `1.5` | Debounce delay before re-rendering embed |
-| `SUPABASE_REALTIME_RECONNECT_BASE_SEC` | `1.0` | Exponential backoff base on disconnect |
-| `SUPABASE_REALTIME_MAX_RECONNECT` | `0` | Max reconnect attempts (0 = infinite) |
-| `SUPABASE_STORAGE_ENABLED` | `true` | Enable/disable file attachment feature |
-| `SUPABASE_STORAGE_BUCKET` | `task-attachments` | Storage bucket name |
-| `MAX_ATTACHMENT_SIZE_MB` | `15` | Max file size in MB per attachment |
-| `SUPABASE_STORAGE_ALLOWED_EXT` | `png,jpg,jpeg,gif,webp,pdf,docx,xlsx,pptx,txt,csv,md,zip` | Comma-separated allowed file extensions |
+| Variable | Required | Default | Description |
+|---|:---:|:---:|---|
+| `DISCORD_TOKEN` | **Yes** | — | Discord Bot Token from Developer Portal |
+| `DATABASE_PATH` | **Yes** | — | PostgreSQL connection URI (`postgresql://postgres:...@...:5432/postgres`) |
+| `DB_POOL_SIZE` | No | `5` | Asyncpg connection pool size |
+| `DB_QUERY_CACHE_TTL` | No | `30.0` | L1 QueryCache expiration time (seconds) |
+| `DB_BULK_WRITE_INTERVAL_MS`| No | `500` | BulkWriter flush interval |
+| `SUPABASE_URL` | **Yes** | — | Supabase REST URL (`https://xyz.supabase.co`) |
+| `SUPABASE_KEY` | **Yes** | — | Supabase `service_role` secret key |
+| `SUPABASE_REALTIME_ENABLED`| No | `true` | Enable Supabase Realtime WebSocket listener |
+| `SUPABASE_STORAGE_ENABLED` | No | `true` | Enable task file attachments feature |
+| `SUPABASE_STORAGE_BUCKET`  | No | `task-attachments`| Supabase Storage bucket name |
+| `MAX_ATTACHMENT_SIZE_MB`   | No | `15` | Maximum allowed attachment size |
+| `WEBSERVER_ENABLED` | No | `true` | Enable aiohttp async web server |
+| `WEBSERVER_HOST` | No | `0.0.0.0` | Web server bind address |
+| `WEBSERVER_PORT` | No | `8080` | Web server listening port |
+| `CALENDAR_PUBLIC_URL` | No | — | Public HTTPS base URL for iCal feeds (`https://todo.example.com`) |
+| `MONITORING_ENABLED` | No | `true` | Master toggle for health & error telemetry |
+| `ADMIN_LOG_CHANNEL_ID` | No | — | Discord Channel ID for critical admin alerts |
+| `DEFAULT_TIMEZONE` | No | `Asia/Bangkok` | Default timezone for new users |
+| `DEFAULT_LANG` | No | `th` | Fallback language (`th`, `en`, `zh`, `ja`, etc.) |
 
 ---
 
-## 🧪 Test Suite & Quality Assurance
+## 🧪 Test Suite & Quality Assurance (18 Modules)
 
-The project has **271 automated tests** covering all major subsystems, all passing at 100%.
+The test suite consists of **18 test modules** guaranteeing zero regressions across all features:
 
 ```bash
-# Run the full test suite
-pytest
-
-# With verbose output
-pytest -v
-
-# Run a specific module
-pytest tests/test_collaboration_scope.py -v
+pytest tests/ -v
 ```
 
-### Test Coverage by Module
-
-| Test File | Tests | Coverage Area |
-|---|---|---|
-| `test_analytics.py` | 23 | Productivity metrics calculation, turnaround formulas, scoring models, Edge Function client |
-| `test_collaboration_scope.py` | 51 | Project CRUD, member roles, task blockers/cycle prevention, Discord role assignment, workload, activity, priority, and completion |
-| `test_conflict_resolution.py` | 25 | Defensive deadline validation, duplicate task suggestions, defensive snoozing |
-| `test_date_parser_i18n.py` | 12 | 9-language date parsing, English/Thai relative phrases, 12-hour times, and invalid-time rejection |
-| `test_focus_mode.py` | 2 | Pomodoro interval defaults and bounded elapsed-work calculations |
-| `test_gamification.py` | 7 | Local-date streak rules, achievement criteria, leaderboard scoring/scope, reminder deduplication, schema v19 |
-| `test_discord_native.py` | 9 | Context-menu registration, task links, paginated bulk selection, public/private thread controls, migration and reservation behavior |
-| `test_locales.py` | 9 | Complete 1:1 translation key parity across all 9 supported languages |
-| `test_realtime.py` | 15 | Phoenix WebSocket CDC client, heartbeat, debounced embed updater, reconnection |
-| `test_reminders.py` | 1 | Background reminder loop query parameter types and timezone compatibility |
-| `test_rls_policies.py` | 11 | PostgreSQL RLS policy parsing, session user context isolation, migration runner |
-| `test_search_recommendation.py` | 51 | PostgreSQL Full-Text Search (`tsvector`, `ts_rank_cd`) & AI recommendation scoring presets |
-| `test_recurrence_rules.py` | 5 | Advanced recurrence validation, intervals, weekdays, month dates, and legacy compatibility |
-| `test_sql_split.py` | 7 | SQL parser tokenizer and schema v19/v20 migration shape |
-| `test_storage.py` | 22 | Supabase Storage client, file size & MIME validation, object storage paths |
-| `test_ux_improvements.py` | 26 | Persistent view rehydration, modal components, task autocomplete, subtask rendering |
-| **Total** | **281** | **100% Passing Test Suite** |
-
-> **Note on `test_locales.py`:** This test is the primary guard against cross-language regressions. When a new string key is added to the English/Thai locale, the test immediately fails for any of the other locale files missing that key — preventing the "feature works in Thai but crashes in German" class of bug.
+| Test Suite Module | Coverage Area |
+|---|---|
+| [`tests/test_perf_stability_2.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_perf_stability_2.py) | True LRU cache eviction, SQL split parsing, autocomplete minute-quantization, BulkWriter retry exhaustion, recurrence DST, Recycle Bin soft delete/restore, Saved Filters, Eisenhower Matrix, Retrospective data, and HTML export. |
+| [`tests/test_rls_policies.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_rls_policies.py) | Row Level Security SQL script parsing, scoped session contextvars, and cross-user tenant isolation. |
+| [`tests/test_search_recommendation.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_search_recommendation.py) | Full-Text Search tsvector rank calculations, sanitize query filters, and composite priority recommendation scoring. |
+| [`tests/test_discord_native.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_discord_native.py) | Message context menu registration (`Add to To-Do`), source message jump links, task thread creation, and bulk views. |
+| [`tests/test_routine_workflows.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_routine_workflows.py) | Template creation, relative deadline instantiation, Definition of Done checklists, and role assignment routine rules. |
+| [`tests/test_collaboration_scope.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_collaboration_scope.py) | Project RBAC permissions, personal vs project data boundaries, role assignments, and private task filtering. |
+| [`tests/test_conflict_resolution.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_conflict_resolution.py) | Defensive deadline validation, concurrent status change optimistic locking, and circular dependency detection. |
+| [`tests/test_recurrence_rules.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_recurrence_rules.py) | Weekdays rules, day/week interval rules, monthly dates with short month clamping (Feb 28/29), and JSONB decoding. |
+| [`tests/test_realtime.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_realtime.py) | Phoenix WebSocket protocol client, CDC event dispatching, and DashboardTracker debounce timing. |
+| [`tests/test_storage.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_storage.py) | File size limits, extension whitelisting, upload path hashing, and TaskAttachment models. |
+| [`tests/test_focus_mode.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_focus_mode.py) | Pomodoro timer intervals (25/5 min), elapsed time capping, session state transitions, and auto-halt on task deletion. |
+| [`tests/test_gamification.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_gamification.py) | Timezone-aware streak updates, badge awards, evening reminder claim locks, and guild leaderboards. |
+| [`tests/test_analytics.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_analytics.py) | Edge Function HTTP caller, productivity score formula, and QuickChart URL construction. |
+| [`tests/test_date_parser_i18n.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_date_parser_i18n.py) | Natural language date parsing across all 9 languages (BE dates, Kanji/Hangul formats, relative deltas). |
+| [`tests/test_locales.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_locales.py) | Key completeness across all JSON translation files and parameter interpolation integrity. |
+| [`tests/test_reminders.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_reminders.py) | PostgreSQL parameter typing and asyncpg codec compatibility across reminder loops. |
+| [`tests/test_sql_split.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_sql_split.py) | SQL migration statement tokenizer handling quoted strings and dollar-quoted blocks (`DO $$ ... $$`). |
+| [`tests/test_ux_improvements.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/tests/test_ux_improvements.py) | Visual checklist rendering, relative parser shortcuts (`+2h`, `+3d`), and dropdown select components. |
 
 ---
 
-## 📁 Project Structure
+## 📂 Project File Structure Tree
 
-```
-.
-├── main.py                         # Bot entry point, Cog loader, graceful shutdown
-├── requirements.txt                # Python dependencies
-├── .env.example                    # Full environment variable template
+```text
+to do list bot gen 2/
+├── main.py                         # App entrypoint, TodoBot class, Cog loading, lifecycle hooks
+├── requirements.txt                # Production dependencies
+├── .env.example                    # Template environment variables
+├── README.md                       # Comprehensive documentation
 │
-├── core/
-│   ├── config.py                   # Centralised env validation (frozen dataclasses)
-│   ├── database.py                 # asyncpg pool, migrations (v1-v19), QueryCache, BulkWriter
-│   └── security.py                 # InputValidator, token-bucket rate limiter
+├── core/                           # Foundation Layer
+│   ├── config.py                   # Dataclass settings loaded from environment
+│   ├── database.py                 # Schema v28 engine, True LRU Caches, Bounded BulkWriter
+│   ├── security.py                 # RateLimiter, InputValidator, SQL/XSS regex filter
+│   └── theme.py                    # 10 Curated Embed Color Themes & Progress Bar generator
 │
-├── handlers/
-│   ├── tasks_cog.py                # Personal task slash commands
-│   ├── task_views.py               # Discord UI (TaskActionView, Modals, persistent registration)
-│   ├── settings_cog.py             # /setup /lang /category /help
-│   ├── reminders_cog.py            # 5 background automation loops
-│   └── monitoring_cog.py           # Admin /health /errors /cmdstats /monitoring
+├── handlers/                       # Core Command Cogs & UI Handlers
+│   ├── tasks_cog.py                # Personal tasks, FTS, /task-stats, /digest, /export, Context Menu
+│   ├── task_views.py               # TaskActionView 5-row layout, Modals, Category & Priority dropdowns
+│   ├── reminders_cog.py            # 6 Background loops: reminders, recurring, digest, retrospectives
+│   ├── settings_cog.py             # /setup, /lang, /theme, /category, /admin stats & cache_purge
+│   └── monitoring_cog.py           # /health, /errors, /cmdstats, /monitoring setup & status
 │
-├── locales/
-│   ├── i18n.py                     # t() engine, _SafeDict, DISCORD_LOCALE_MAP
-│   ├── th.py                       # Thai (Reference table)
-│   ├── en.py                       # English
-│   ├── zh.py                       # Chinese
-│   ├── ja.py                       # Japanese
-│   ├── ko.py                       # Korean
-│   ├── es.py                       # Spanish
-│   ├── ru.py                       # Russian
-│   ├── fr.py                       # French
-│   └── de.py                       # German
+├── recovery/                       # Safe Recovery & Recycle Bin (Cog #15)
+│   ├── cog.py                      # /trash, /restore slash commands
+│   ├── models.py                   # DeletedTask, TrashQuery models
+│   ├── service.py                  # Soft delete, cascading recovery, 30-day purge logic
+│   └── views.py                    # TrashPaginationView with restore/permanent delete controls
 │
-├── collaboration/
-│   ├── cog.py                      # /project command group (13 slash commands)
-│   ├── models.py                   # Project, ProjectMember, ProjectTask, BoardData models
-│   ├── service.py                  # Project CRUD, priority, advance progress, completion service
-│   └── views.py                    # ProjectDashboardView, Kanban, Modals, Priority & Progress controls
+├── organization/                   # Eisenhower Matrix & Smart Lists (Cog #16)
+│   ├── cog.py                      # /matrix, /filter save|list|use|delete slash commands
+│   ├── models.py                   # SavedFilter, EisenhowerQuadrant, MatrixData models
+│   ├── service.py                  # Quadrant evaluation engine & JSONB filter query builder
+│   └── views.py                    # EisenhowerMatrixView with quadrant drill-down quick actions
 │
-├── search_recommendation/
-│   ├── cog.py                      # /search (FTS) + /recommend (AI scoring)
-│   ├── fts_engine.py               # PostgreSQL ts_rank_cd full-text engine
-│   ├── query_builder.py            # Sanitised SQL builder for FTS & filter search
-│   ├── recommendation.py           # Composite multi-rule scoring engine
-│   ├── models.py                   # Search query, filter, and score breakdown models
-│   ├── protocols.py                # Protocols and interfaces
-│   ├── service.py                  # Search and recommendation business logic
-│   └── views.py                    # Paginated search results and recommendation views
+├── history_reporting/              # Audit Trail & Weekly Retrospective (Cog #17)
+│   ├── cog.py                      # /history, /retrospective slash commands
+│   ├── models.py                   # TaskHistoryRecord, WeeklyRetrospectiveData models
+│   ├── service.py                  # Audit timeline parser, retrospective metrics, HTML exporter
+│   └── views.py                    # TaskHistoryView, WeeklyRetrospectiveView
 │
-├── storage/
-│   ├── cog.py                      # /attach /attachments (Supabase Storage)
-│   ├── client.py                   # Supabase Storage HTTP client
-│   ├── models.py                   # TaskAttachment model
-│   ├── service.py                  # File upload, size/extension validation, path builder
-│   └── views.py                    # Attachment browser and management views
+├── collaboration/                  # Team Shared Projects (Cog #6)
+│   ├── cog.py                      # /project command group (19 slash commands)
+│   ├── models.py                   # Project, ProjectMember, ProjectTask, RolePermissions models
+│   ├── service.py                  # RBAC engine, dependencies, private tasks, activity log
+│   └── views.py                    # ProjectPermissionsView, Kanban boards, ProjectDashboardView
 │
-├── analytics/
-│   ├── cog.py                      # /task-stats /analytics (Edge Function caller)
-│   ├── client.py                   # Supabase Edge Function HTTP caller
-│   └── models.py                   # Productivity analytics data models
-├── gamification/
-│   ├── cog.py                      # /streak /habits /leaderboard and evening reminders
-│   └── service.py                  # Completion events, streaks, badges, and scoped scoring
-├── focus/
-│   └── cog.py                      # Persistent Pomodoro timer and /focus commands
-├── recurrence/
-│   └── rules.py                    # Advanced recurrence rule validation/calculation
+├── routine_workflows/              # Task Templates & Auto-Routines (Cog #14)
+│   ├── cog.py                      # /template and /routine slash command groups, Discord event listeners
+│   ├── models.py                   # TaskTemplate, RoutineRule models
+│   ├── service.py                  # Template instantiation & event-driven rule matching
+│   └── views.py                    # TemplateCreateModal, RoutineRuleView
 │
-├── realtime/
-│   ├── client.py                   # Phoenix WebSocket client
-│   ├── dispatcher.py               # CDC postgres_changes event dispatcher
-│   ├── dashboard_tracker.py        # Active dashboard message tracker
-│   ├── notifications.py            # Channel notification helpers
-│   └── service.py                  # Realtime lifecycle manager
+├── discord_native/                 # Native Discord Interactions (Cog #11)
+│   └── bulk_cog.py                 # /bulk done|snooze|delete multi-select actions & BulkTaskView
 │
-├── monitoring/
-│   ├── health_monitor.py           # Heartbeat and resource telemetry
-│   ├── error_tracker.py            # 24-hour error aggregator
-│   ├── alert_dispatcher.py         # Rate-limited Discord alert webhook/channel dispatcher
-│   ├── commands_log.py             # Structured JSON command audit logger
-│   └── logger_setup.py             # Multi-handler logging configurator
+├── focus/                          # Pomodoro Timer (Cog #2)
+│   └── cog.py                      # /focus start|stop|status and 15s session_loop scheduler
 │
-├── security_rls/
-│   ├── sql/                        # 4 versioned RLS SQL migration files
-│   ├── client.py                   # Scoped RLS database client
-│   ├── context.py                  # ContextVar scoped user session manager
-│   └── migration_runner.py         # CLI tool for RLS migrations (--dry-run/apply/rollback)
+├── gamification/                   # Streaks & Achievements (Cog #10)
+│   ├── cog.py                      # /streak, /habits, /leaderboard and streak_reminder_loop
+│   └── service.py                  # Streak calculations, badge rules, and guild rankings
 │
-├── utils/
-│   ├── helpers.py                  # parse_deadline() 9-lang NLP engine, embed builders, CSV export
-│   ├── conflict_resolver.py        # validate_deadline_defensive(), concurrency lock
-│   └── webserver.py                # aiohttp async keep-alive health/metrics server
+├── search_recommendation/          # FTS Search & AI Prioritization (Cog #8)
+│   ├── cog.py                      # /search and /recommend commands
+│   ├── service.py                  # Composite scoring engine (Urgency + Priority + Age)
+│   └── views.py                    # SearchResultsView, RecommendationView
 │
-├── supabase/
-│   └── functions/
-│       └── weekly-analytics/
-│           ├── index.ts            # Deno TypeScript Edge Function entrypoint
-│           ├── chart_builder.ts    # QuickChart API visual chart builder
-│           ├── discord_delivery.ts # Direct Message delivery engine
-│           ├── types.ts            # TypeScript interfaces
-│           └── deno.json           # Deno configuration & import map
+├── storage/                        # Supabase File Attachments (Cog #7)
+│   ├── cog.py                      # /attach and /attachments commands
+│   ├── service.py                  # Storage validation (15MB cap, allowed extensions)
+│   └── views.py                    # TaskAttachmentsView gallery
 │
-├── tests/                          # 264 automated tests (pytest)
-├── logs/                           # Auto-created: bot.log, errors.log, commands.log
-└── data/                           # Reserved directory (schema auto-migrates on startup)
+├── calendar_feed/                  # iCalendar Subscription Sync (Cog #12)
+│   ├── cog.py                      # /calendar link|rotate|revoke commands
+│   └── service.py                  # SHA-256 token hashing & .ics VCALENDAR generation
+│
+├── task_import/                    # CSV/JSON Batch Import (Cog #13)
+│   ├── cog.py                      # /import command
+│   └── service.py                  # Multi-format task parser & batch validation
+│
+├── analytics/                      # Supabase Deno Edge Caller (Cog #9)
+│   ├── cog.py                      # /analytics snapshot & /analytics weekly
+│   └── client.py                   # Async HTTP client for Supabase Edge Functions
+│
+├── task_features/                  # Task Subsystems (Comments, Progress %, DoD)
+│   ├── models.py                   # TaskComment, TaskProgress, ChecklistItem models
+│   ├── service.py                  # Access validation & checklist state transitions
+│   └── views.py                    # Modals and interactive checklist toggles
+│
+├── recurrence/                     # Extended Recurrence Engine
+│   └── rules.py                    # Weekdays, intervals, monthly dates calculation & JSONB decoding
+│
+├── realtime/                       # Supabase Realtime CDC Listener
+│   ├── client.py                   # Phoenix WebSocket client over aiohttp
+│   ├── dispatcher.py               # CDC postgres_changes event router
+│   └── dashboard_tracker.py        # Live dashboard message updater with 1.5s debounce
+│
+├── security_rls/                   # PostgreSQL Row Level Security
+│   ├── client.py                   # RLS-enforced database client adapter
+│   ├── context.py                  # Scoped user session context manager
+│   ├── migration_runner.py         # CLI tool for RLS migrations (--dry-run/apply/rollback)
+│   └── sql/                        # Versioned RLS policy SQL files
+│
+├── monitoring/                     # Admin Health & Telemetry Subsystem
+│   ├── health_monitor.py           # Periodic resource checks (DB ping, memory, lag)
+│   ├── error_tracker.py            # 24-hour error frequency aggregator
+│   └── alert_dispatcher.py         # Rate-limited admin alert channel dispatcher
+│
+├── utils/                          # Shared Utility Helpers
+│   ├── helpers.py                  # parse_deadline() 9-language NLP engine, embed builders
+│   ├── date_parser.py              # Multilingual date normalization
+│   ├── conflict_resolver.py        # Concurrency safety & deadline defensive checks
+│   └── webserver.py                # Async keep-alive server (/metrics, /ready, /calendar.ics)
+│
+├── locales/                        # Internationalization (i18n)
+│   ├── i18n.py                     # Translation loader & fallback manager
+│   ├── th.json                     # Thai translations
+│   ├── en.json                     # English translations
+│   ├── zh.json                     # Chinese translations
+│   ├── ja.json                     # Japanese translations
+│   ├── ko.json                     # Korean translations
+│   ├── es.json                     # Spanish translations
+│   ├── ru.json                     # Russian translations
+│   ├── fr.json                     # French translations
+│   └── de.json                     # German translations
+│
+├── supabase/                       # Supabase Edge Functions
+│   └── functions/weekly-analytics/ # Deno TypeScript Edge Function with QuickChart
+│
+└── tests/                          # 18 Automated Test Modules (pytest)
+    ├── test_analytics.py           # Deno Edge Function client & scoring
+    ├── test_collaboration_scope.py # Project permissions, RBAC & private tasks
+    ├── test_conflict_resolution.py # Optimistic locking & cyclic dependency checks
+    ├── test_date_parser_i18n.py    # 9-language NLP date engine (BE, Kanji, deltas)
+    ├── test_discord_native.py      # Context menus, threads & bulk actions
+    ├── test_focus_mode.py          # Pomodoro timers & auto-halt on delete
+    ├── test_gamification.py        # Streaks, badges & guild leaderboards
+    ├── test_locales.py             # Translation key completeness (9 languages)
+    ├── test_perf_stability_2.py    # LRU caches, SQL splits, Recycle Bin, Filters, HTML export
+    ├── test_realtime.py            # Phoenix WS Realtime & debounced updates
+    ├── test_recurrence_rules.py    # Weekdays, intervals, monthly clamping & JSONB
+    ├── test_reminders.py           # Reminder query typing & asyncpg codecs
+    ├── test_rls_policies.py        # Row Level Security isolation policies
+    ├── test_routine_workflows.py   # Templates, DoD checklists & routine automations
+    ├── test_search_recommendation.py # PostgreSQL FTS tsvector & AI scoring
+    ├── test_sql_split.py           # SQL tokenizer for multi-statement migrations
+    ├── test_storage.py             # File size limits & attachment models
+    └── test_ux_improvements.py     # Checklists, dropdowns & relative syntax
 ```
 
 ---
@@ -988,9 +849,9 @@ This project is licensed under the **MIT License**.
 
 <div align="center">
 
-**📝 To-Do List Bot Gen 3.0**
+**📝 To-Do List Discord Bot Gen 3.5+**
 
-*Built for teams who take productivity seriously.*
+*Engineered for teams who take productivity, reliability, and speed seriously.*
 
 [Report a Bug](https://github.com/Punk1107/todo-list-bot-gen2/issues) · [Request a Feature](https://github.com/Punk1107/todo-list-bot-gen2/issues)
 
