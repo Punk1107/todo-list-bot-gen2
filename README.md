@@ -1,4 +1,4 @@
-# 📝 To-Do List Discord Bot Gen 3.5+
+# 📝 To-Do List Discord Bot Gen 4.0
 
 ### Enterprise-Grade Discord Productivity, Collaboration & Project Management System
 
@@ -19,26 +19,26 @@
 
 ## 📑 Table of Contents
 
-1. [✨ What's New in Gen 3.5+](#-whats-new-in-gen-35)
+1. [✨ What's New in Gen 4.0](#-whats-new-in-gen-40)
 2. [🏛️ System Architecture & 17 Modular Cogs](#-system-architecture--17-modular-cogs)
 3. [🌐 9-Language Support & Smart Date Engine](#-9-language-support--smart-date-engine)
 4. [📖 Complete Slash & Context Menu Command Directory](#-complete-slash--context-menu-command-directory)
-   - [Personal Task Management](#1-personal-task-management-handlers-tasks_cog)
-   - [Safe Recovery & Recycle Bin](#2-safe-recovery--recycle-bin-recovery-cog)
-   - [Eisenhower 4D Matrix & Saved Smart Lists](#3-eisenhower-4d-matrix--saved-smart-lists-organization-cog)
-   - [Audit Trail & Weekly Retrospective](#4-audit-trail--weekly-retrospective-history_reporting-cog)
-   - [Team Collaboration & Shared Projects](#5-team-collaboration--shared-projects-collaboration-cog)
-   - [Multi-Select Bulk Operations](#6-multi-select-bulk-operations-discord_native-bulk_cog)
-   - [Focus & Pomodoro Timer](#7-focus--pomodoro-timer-focus-cog)
-   - [Gamification, Streaks & Leaderboards](#8-gamification-streaks--leaderboards-gamification-cog)
-   - [Templates & Routine Workflows](#9-templates--routine-workflows-routine_workflows-cog)
-   - [Full Text Search & AI-Ready Recommendations](#10-full-text-search--ai-ready-recommendations-search_recommendation-cog)
-   - [File Attachments](#11-file-attachments-storage-cog)
-   - [Private Calendar Feeds](#12-private-calendar-feeds-calendar_feed-cog)
-   - [Task Import](#13-task-import-task_import-cog)
-   - [Productivity Analytics (Supabase Edge)](#14-productivity-analytics-analytics-cog)
-   - [Settings, i18n & Embed Themes](#15-settings-i18n--embed-themes-handlers-settings_cog)
-   - [System Monitoring & Health Telemetry](#16-system-monitoring--health-telemetry-handlers-monitoring_cog)
+   - [1. Personal Task Management](#1-personal-task-management)
+   - [2. Safe Recovery & Recycle Bin](#2-safe-recovery--recycle-bin)
+   - [3. Eisenhower 4D Matrix & Saved Smart Lists](#3-eisenhower-4d-matrix--saved-smart-lists)
+   - [4. Audit Trail & Weekly Retrospective](#4-audit-trail--weekly-retrospective)
+   - [5. Team Collaboration & Shared Projects](#5-team-collaboration--shared-projects)
+   - [6. Multi-Select Bulk Operations](#6-multi-select-bulk-operations)
+   - [7. Focus & Pomodoro Timer](#7-focus--pomodoro-timer)
+   - [8. Gamification, Streaks & Leaderboards](#8-gamification-streaks--leaderboards)
+   - [9. Templates & Routine Workflows](#9-templates--routine-workflows)
+   - [10. Full Text Search & AI-Ready Recommendations](#10-full-text-search--ai-ready-recommendations)
+   - [11. File Attachments](#11-file-attachments)
+   - [12. Private Calendar Feeds](#12-private-calendar-feeds)
+   - [13. Task Import](#13-task-import)
+   - [14. Productivity Analytics (Supabase Edge)](#14-productivity-analytics-supabase-edge)
+   - [15. Settings, i18n & Embed Themes](#15-settings-i18n--embed-themes)
+   - [16. System Monitoring & Health Telemetry](#16-system-monitoring--health-telemetry)
 5. [🎛️ Interactive UI & Defensive Design](#-interactive-ui--defensive-design)
 6. [⚡ Performance, Caching & Scalability](#-performance-caching--scalability)
 7. [🔄 Background Automation & Schedulers (8 Loops)](#-background-automation--schedulers-8-loops)
@@ -53,11 +53,11 @@
 
 ---
 
-## ✨ What's New in Gen 3.5+
+## ✨ What's New in Gen 4.0
 
-Gen 3.5+ represents a massive leap beyond Gen 3.0, taking the system from a task tracking bot to an **enterprise-grade project collaboration and productivity platform**.
+Gen 4.0 represents a massive leap beyond Gen 3.0, taking the system from a task tracking bot to an **enterprise-grade project collaboration and productivity platform**.
 
-| Feature Area | Gen 1 / 2 | Gen 3.0 | **Gen 3.5+ (Current Production)** |
+| Feature Area | Gen 1 / 2 | Gen 3.0 | **Gen 4.0 (Current Production)** |
 |---|---|---|---|
 | **Database & Schema** | SQLite monolithic (v1–v7) | Supabase PostgreSQL Schema v23 | **Supabase PostgreSQL Schema v28** (28 Auto-Migrations, 24 tables, Partial Indexes for zero-lag background queries) |
 | **Cog Architecture** | Monolithic / 6 Cogs | 14 Modular Cogs | **17 Modular Cogs** (+ `recovery`, `organization`, `history_reporting`) |
@@ -76,7 +76,7 @@ Gen 3.5+ represents a massive leap beyond Gen 3.0, taking the system from a task
 
 ---
 
-### 🌟 Key Feature Highlights in Gen 3.5+
+### 🌟 Key Feature Highlights in Gen 4.0
 
 ```text
  🗑️ Recycle Bin & Soft Delete    🧭 Eisenhower 4D Matrix         📜 Task Audit Trail & Retrospectives
@@ -206,7 +206,8 @@ Users can freely switch language at any time via `/lang` or let the bot auto-det
 
 ## 📖 Complete Slash & Context Menu Command Directory
 
-### 1. Personal Task Management ([`handlers/tasks_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/tasks_cog.py))
+### 1. Personal Task Management
+> 📂 Cog Module: [`handlers/tasks_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/tasks_cog.py)
 
 | Command / Context Action | Description | Parameters & Options |
 |---|---|---|
@@ -228,7 +229,8 @@ Users can freely switch language at any time via `/lang` or let the bot auto-det
 
 ---
 
-### 2. Safe Recovery & Recycle Bin ([`recovery/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/recovery/cog.py))
+### 2. Safe Recovery & Recycle Bin
+> 📂 Cog Module: [`recovery/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/recovery/cog.py)
 
 | Command | Description | Notes |
 |---|---|---|
@@ -240,7 +242,8 @@ Users can freely switch language at any time via `/lang` or let the bot auto-det
 
 ---
 
-### 3. Eisenhower 4D Matrix & Saved Smart Lists ([`organization/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/organization/cog.py))
+### 3. Eisenhower 4D Matrix & Saved Smart Lists
+> 📂 Cog Module: [`organization/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/organization/cog.py)
 
 | Command | Description | Details |
 |---|---|---|
@@ -252,7 +255,8 @@ Users can freely switch language at any time via `/lang` or let the bot auto-det
 
 ---
 
-### 4. Audit Trail & Weekly Retrospective ([`history_reporting/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/history_reporting/cog.py))
+### 4. Audit Trail & Weekly Retrospective
+> 📂 Cog Module: [`history_reporting/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/history_reporting/cog.py)
 
 | Command | Description | Details |
 |---|---|---|
@@ -261,7 +265,8 @@ Users can freely switch language at any time via `/lang` or let the bot auto-det
 
 ---
 
-### 5. Team Collaboration & Shared Projects ([`collaboration/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/collaboration/cog.py))
+### 5. Team Collaboration & Shared Projects
+> 📂 Cog Module: [`collaboration/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/collaboration/cog.py)
 
 The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
@@ -289,7 +294,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 6. Multi-Select Bulk Operations ([`discord_native/bulk_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/discord_native/bulk_cog.py))
+### 6. Multi-Select Bulk Operations
+> 📂 Cog Module: [`discord_native/bulk_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/discord_native/bulk_cog.py)
 
 | Command | Description | Behavior |
 |---|---|---|
@@ -299,7 +305,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 7. Focus & Pomodoro Timer ([`focus/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/focus/cog.py))
+### 7. Focus & Pomodoro Timer
+> 📂 Cog Module: [`focus/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/focus/cog.py)
 
 | Command | Description | Behavior |
 |---|---|---|
@@ -309,7 +316,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 8. Gamification, Streaks & Leaderboards ([`gamification/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/gamification/cog.py))
+### 8. Gamification, Streaks & Leaderboards
+> 📂 Cog Module: [`gamification/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/gamification/cog.py)
 
 | Command | Description | Details |
 |---|---|---|
@@ -319,7 +327,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 9. Templates & Routine Workflows ([`routine_workflows/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/routine_workflows/cog.py))
+### 9. Templates & Routine Workflows
+> 📂 Cog Module: [`routine_workflows/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/routine_workflows/cog.py)
 
 | Command | Description | Details |
 |---|---|---|
@@ -334,7 +343,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 10. Full Text Search & AI-Ready Recommendations ([`search_recommendation/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/search_recommendation/cog.py))
+### 10. Full Text Search & AI-Ready Recommendations
+> 📂 Cog Module: [`search_recommendation/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/search_recommendation/cog.py)
 
 | Command | Description | Options |
 |---|---|---|
@@ -343,7 +353,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 11. File Attachments ([`storage/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/storage/cog.py))
+### 11. File Attachments
+> 📂 Cog Module: [`storage/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/storage/cog.py)
 
 | Command | Description | Limits |
 |---|---|---|
@@ -352,7 +363,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 12. Private Calendar Feeds ([`calendar_feed/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/calendar_feed/cog.py))
+### 12. Private Calendar Feeds
+> 📂 Cog Module: [`calendar_feed/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/calendar_feed/cog.py)
 
 | Command | Description | Security |
 |---|---|---|
@@ -362,7 +374,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 13. Task Import ([`task_import/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/task_import/cog.py))
+### 13. Task Import
+> 📂 Cog Module: [`task_import/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/task_import/cog.py)
 
 | Command | Description | Options |
 |---|---|---|
@@ -370,7 +383,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 14. Productivity Analytics ([`analytics/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/analytics/cog.py))
+### 14. Productivity Analytics (Supabase Edge)
+> 📂 Cog Module: [`analytics/cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/analytics/cog.py)
 
 | Command | Description | Engine |
 |---|---|---|
@@ -379,7 +393,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 15. Settings, i18n & Embed Themes ([`handlers/settings_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/settings_cog.py))
+### 15. Settings, i18n & Embed Themes
+> 📂 Cog Module: [`handlers/settings_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/settings_cog.py)
 
 | Command | Description | Options |
 |---|---|---|
@@ -392,7 +407,8 @@ The Collaboration Cog provides **19 comprehensive commands** for team execution:
 
 ---
 
-### 16. System Monitoring & Health Telemetry ([`handlers/monitoring_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/monitoring_cog.py))
+### 16. System Monitoring & Health Telemetry
+> 📂 Cog Module: [`handlers/monitoring_cog.py`](file:///c:/Users/User/Documents/to%20do%20list%20bot%20gen%202/handlers/monitoring_cog.py)
 
 | Command | Description | Permission |
 |---|---|---|
@@ -639,20 +655,36 @@ python main.py
 | `DISCORD_TOKEN` | **Yes** | — | Discord Bot Token from Developer Portal |
 | `DATABASE_PATH` | **Yes** | — | PostgreSQL connection URI (`postgresql://postgres:...@...:5432/postgres`) |
 | `DB_POOL_SIZE` | No | `5` | Asyncpg connection pool size |
-| `DB_QUERY_CACHE_TTL` | No | `30.0` | L1 QueryCache expiration time (seconds) |
-| `DB_BULK_WRITE_INTERVAL_MS`| No | `500` | BulkWriter flush interval |
+| `DB_TIMEOUT` | No | `30` | Query timeout in seconds |
+| `DB_QUERY_CACHE_TTL` | No | `30.0` | L1 QueryCache expiration time in seconds (0 = disabled) |
+| `DB_BULK_WRITE_INTERVAL_MS`| No | `500` | BulkWriter flush interval in milliseconds |
+| `BOT_OWNER_IDS` | No | — | Comma-separated Discord user IDs with bot owner access |
+| `RATE_COMMANDS_PER_MIN` | No | `30` | Max commands per minute per user before rate limiting |
+| `RATE_TASKS_PER_HOUR` | No | `100` | Max tasks created per hour per user |
+| `RATE_SEARCHES_PER_MIN` | No | `10` | Max searches per minute per user |
+| `RATE_EXPORTS_PER_DAY` | No | `5` | Max task exports per day per user |
+| `RATE_BLOCK_SECONDS` | No | `300` | Duration (seconds) a user is temporarily blocked upon abuse |
+| `REMINDER_INTERVAL_MIN` | No | `30` | Interval (minutes) for deadline approaching checks |
+| `RECURRING_INTERVAL_MIN`| No | `60` | Interval (minutes) for renewing recurring tasks |
+| `OVERDUE_REMIND_HOURS` | No | `6` | Frequency (hours) to re-notify about overdue tasks |
+| `DM_REMINDER_INTERVAL_MIN`| No | `15` | Interval (minutes) for 24h, 3h, and 1h deadline DM checks |
 | `SUPABASE_URL` | **Yes** | — | Supabase REST URL (`https://xyz.supabase.co`) |
 | `SUPABASE_KEY` | **Yes** | — | Supabase `service_role` secret key |
 | `SUPABASE_REALTIME_ENABLED`| No | `true` | Enable Supabase Realtime WebSocket listener |
+| `SUPABASE_REALTIME_HEARTBEAT_SEC`| No | `30` | Realtime Phoenix WebSocket heartbeat frequency |
+| `SUPABASE_REALTIME_DEBOUNCE_SEC`| No | `1.5` | Dashboard update debounce delay in seconds |
 | `SUPABASE_STORAGE_ENABLED` | No | `true` | Enable task file attachments feature |
 | `SUPABASE_STORAGE_BUCKET`  | No | `task-attachments`| Supabase Storage bucket name |
-| `MAX_ATTACHMENT_SIZE_MB`   | No | `15` | Maximum allowed attachment size |
-| `WEBSERVER_ENABLED` | No | `true` | Enable aiohttp async web server |
-| `WEBSERVER_HOST` | No | `0.0.0.0` | Web server bind address |
+| `MAX_ATTACHMENT_SIZE_MB`   | No | `15` | Maximum allowed attachment size in megabytes |
+| `SUPABASE_STORAGE_ALLOWED_EXT`| No | `png,jpg,pdf...` | Comma-separated list of allowed file extensions |
+| `WEBSERVER_ENABLED` | No | `true` | Enable aiohttp async keep-alive web server |
+| `WEBSERVER_HOST` | No | `0.0.0.0` | Web server bind IP |
 | `WEBSERVER_PORT` | No | `8080` | Web server listening port |
 | `CALENDAR_PUBLIC_URL` | No | — | Public HTTPS base URL for iCal feeds (`https://todo.example.com`) |
 | `MONITORING_ENABLED` | No | `true` | Master toggle for health & error telemetry |
 | `ADMIN_LOG_CHANNEL_ID` | No | — | Discord Channel ID for critical admin alerts |
+| `HEALTH_CHECK_INTERVAL_MIN`| No | `5` | Interval (minutes) for automated health checks |
+| `ALERT_RATE_LIMIT_SEC` | No | `300` | Rate limit cooldown (seconds) between repeated error alerts |
 | `DEFAULT_TIMEZONE` | No | `Asia/Bangkok` | Default timezone for new users |
 | `DEFAULT_LANG` | No | `th` | Fallback language (`th`, `en`, `zh`, `ja`, etc.) |
 
@@ -849,7 +881,7 @@ This project is licensed under the **MIT License**.
 
 <div align="center">
 
-**📝 To-Do List Discord Bot Gen 3.5+**
+**📝 To-Do List Discord Bot Gen 4.0**
 
 *Engineered for teams who take productivity, reliability, and speed seriously.*
 
