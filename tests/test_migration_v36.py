@@ -37,11 +37,12 @@ def test_migrations_continuity_v1_to_v36():
 
 
 def test_known_tables_contains_all_gen5_tables():
-    """Verify that _KNOWN_TABLES contains 37 tables including all 13 new Gen 5.0 tables."""
-    assert len(_KNOWN_TABLES) == 37
+    """Verify that _KNOWN_TABLES contains 38 tables including all 14 new Gen 5.0 tables."""
+    assert len(_KNOWN_TABLES) == 38
 
     gen5_tables = {
         "sprints",
+        "epics",
         "task_time_logs",
         "automation_rules",
         "user_rpg_profiles",
@@ -116,6 +117,8 @@ def test_gen5_schema_elements_presence():
     all_gen5_sql = " ".join(s for v, s in MIGRATIONS if 29 <= v <= 36)
     expected_elements = [
         "CREATE TABLE IF NOT EXISTS sprints",
+        "CREATE TABLE IF NOT EXISTS epics",
+        "epic_id INTEGER",
         "story_points INTEGER CHECK (story_points IN (1,2,3,5,8,13,21))",
         "CREATE TABLE IF NOT EXISTS task_time_logs",
         "estimated_hours NUMERIC(6, 2)",

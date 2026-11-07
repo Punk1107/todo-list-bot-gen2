@@ -147,8 +147,8 @@ def build_project_dashboard_embed(stats: ProjectStats, lang: str) -> discord.Emb
     return embed
 
 
-def build_board_embed(board: BoardData, lang: str, column: str = "pending") -> discord.Embed:
-    """Build Kanban board embed for a specific column."""
+def build_board_embed(board: BoardData, lang: str, column: str = "pending", swimlane: Optional[str] = None) -> discord.Embed:
+    """Build Kanban board embed for a specific column, with WIP limit and optional swimlanes."""
     p = board.project
     color = int(p.color.lstrip("#"), 16) if p.color.startswith("#") else 0x5865F2
 
@@ -160,8 +160,18 @@ def build_board_embed(board: BoardData, lang: str, column: str = "pending") -> d
     }
     tasks, col_emoji, col_name = column_map.get(column, column_map["pending"])
 
+    if column == "in_progress" and getattr(board, "wip_limit", 0) > 0:
+        limit = board.wip_limit
+        cnt = len(board.in_progress)
+        if cnt >= limit:
+            col_emoji = "⚠️"
+            col_name = f"{col_name} [WIP: {cnt}/{limit} Maxed]"
+        else:
+            col_name = f"{col_name} [WIP: {cnt}/{limit}]"
+
+    title_suffix = f" (Swimlane: {swimlane.title()})" if swimlane else ""
     embed = discord.Embed(
-        title=f"{p.emoji} {p.name} — {col_emoji} {col_name}",
+        title=f"{p.emoji} {p.name} — {col_emoji} {col_name}{title_suffix}",
         color=color,
     )
     embed.description = (
@@ -172,30 +182,48 @@ def build_board_embed(board: BoardData, lang: str, column: str = "pending") -> d
     if not tasks:
         embed.add_field(name="\u200b", value=f"> *{t('proj_board_empty_col', lang, column=col_name)}*", inline=False)
     else:
-        for task in tasks[:8]:  # Discord embed limit: show up to 8 per column
-            assignee_str = ""
-            if task.assignees:
-                assignee_str = "  👤 " + ", ".join(f"<@{u}>" for u in task.assignees[:3])
-            if task.assigned_roles:
-                role_mentions = ", ".join(f"<@&{role_id}>" for role_id in task.assigned_roles[:3])
-                assignee_str += f"  🏷️ {role_mentions}"
-            active_blockers = [
-                f"#{blocker_id} {title[:35]}"
-                for blocker_id, title, status in task.blocked_by
-                if status != "Completed"
-            ]
-            blocker_str = f"\n⛔ Blocked by: {', '.join(active_blockers[:3])}" if active_blockers else ""
-            deadline_str = format_deadline(task.deadline, "UTC") if task.deadline else "—"
-            priv_badge = "🔒 " if task.is_private else ""
-            embed.add_field(
-                name=f"{priv_badge}{task.priority_emoji} `#{task.task_id}` {task.task[:55]}",
-                value=(
-                    f"📅 `{deadline_str}` · ⏱️ `{time_left_str(task.deadline)}`{assignee_str}{blocker_str}"
-                ),
-                inline=False,
-            )
-        if len(tasks) > 8:
-            embed.set_footer(text=t("proj_board_more", lang, count=len(tasks) - 8))
+        # If swimlane grouping is requested:
+        if swimlane == "assignee":
+            groups: dict[str, list] = {}
+            for t_item in tasks:
+                key = f"<@{t_item.assignees[0]}>" if t_item.assignees else "👤 *Unassigned*"
+                groups.setdefault(key, []).append(t_item)
+            for group_name, group_tasks in groups.items():
+                items_str = "\n".join(f"• `{t_item.task_id}` {t_item.task[:45]} ({t_item.priority_emoji})" for t_item in group_tasks[:5])
+                embed.add_field(name=f"🏊 {group_name} ({len(group_tasks)})", value=items_str or "—", inline=False)
+        elif swimlane == "priority":
+            groups = {}
+            for t_item in tasks:
+                key = f"{t_item.priority_emoji} Priority {t_item.priority}"
+                groups.setdefault(key, []).append(t_item)
+            for group_name, group_tasks in sorted(groups.items(), reverse=True):
+                items_str = "\n".join(f"• `{t_item.task_id}` {t_item.task[:45]}" for t_item in group_tasks[:5])
+                embed.add_field(name=f"🏊 {group_name} ({len(group_tasks)})", value=items_str or "—", inline=False)
+        else:
+            for task in tasks[:8]:  # Discord embed limit: show up to 8 per column
+                assignee_str = ""
+                if task.assignees:
+                    assignee_str = "  👤 " + ", ".join(f"<@{u}>" for u in task.assignees[:3])
+                if task.assigned_roles:
+                    role_mentions = ", ".join(f"<@&{role_id}>" for role_id in task.assigned_roles[:3])
+                    assignee_str += f"  🏷️ {role_mentions}"
+                active_blockers = [
+                    f"#{blocker_id} {title[:35]}"
+                    for blocker_id, title, status in task.blocked_by
+                    if status != "Completed"
+                ]
+                blocker_str = f"\n⛔ Blocked by: {', '.join(active_blockers[:3])}" if active_blockers else ""
+                deadline_str = format_deadline(task.deadline, "UTC") if task.deadline else "—"
+                priv_badge = "🔒 " if task.is_private else ""
+                embed.add_field(
+                    name=f"{priv_badge}{task.priority_emoji} `#{task.task_id}` {task.task[:55]}",
+                    value=(
+                        f"📅 `{deadline_str}` · ⏱️ `{time_left_str(task.deadline)}`{assignee_str}{blocker_str}"
+                    ),
+                    inline=False,
+                )
+            if len(tasks) > 8:
+                embed.set_footer(text=t("proj_board_more", lang, count=len(tasks) - 8))
 
     return embed
 
@@ -526,6 +554,12 @@ class AdvanceProgressSelect(ui.Select):
             blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
             await interaction.followup.send(
                 t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
+            return
+        except service.WipLimitExceeded as exc:
+            await interaction.followup.send(
+                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                ephemeral=True,
             )
             return
         except Exception as exc:
@@ -1505,6 +1539,12 @@ class ClaimTaskSelect(ui.Select):
                 t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
             )
             return
+        except service.WipLimitExceeded as exc:
+            await interaction.followup.send(
+                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                ephemeral=True,
+            )
+            return
         except Exception as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
@@ -1571,6 +1611,12 @@ class CompleteTaskSelect(ui.Select):
             blockers = ", ".join(f"#{blocker_id} {name}" for blocker_id, name in exc.blockers)
             await interaction.followup.send(
                 t("proj_task_blocked", lang, blockers=blockers), ephemeral=True
+            )
+            return
+        except service.WipLimitExceeded as exc:
+            await interaction.followup.send(
+                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                ephemeral=True,
             )
             return
         except Exception as exc:

@@ -78,6 +78,15 @@ class AlreadyClaimed(Exception):
     """Raised when a user tries to claim an already-assigned task."""
 
 
+class WipLimitExceeded(Exception):
+    """Raised when the In_Progress column has reached its configured WIP limit."""
+
+    def __init__(self, current: int, limit: int) -> None:
+        self.current = current
+        self.limit   = limit
+        super().__init__(f"WIP Limit Exceeded: In_Progress column already has {current} tasks (limit is {limit}).")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Permission Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +237,34 @@ async def set_project_role_permission(
         project_id, guild_id, actor_id, "permission_updated",
         f"{role}.{permission} = {'allowed' if is_allowed else 'denied'}"
     )
+
+
+async def get_project_wip_limit(project_id: int, guild_id: str) -> Optional[int]:
+    """Retrieve the Work-In-Progress (WIP) limit for In_Progress tasks in a project."""
+    val = await db.get_guild_setting(guild_id, f"proj_wip_{project_id}")
+    if val and val.isdigit():
+        return int(val)
+    return None
+
+
+async def set_project_wip_limit(
+    project_id: int,
+    guild_id: str,
+    limit: int,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> int:
+    """Configure the Work-In-Progress (WIP) limit for In_Progress tasks. Requires Lead or Admin."""
+    project = await get_project(project_id, guild_id)
+    await require_role(project, actor_id, "lead", is_guild_admin)
+
+    val = max(0, int(limit))
+    await db.set_guild_setting(guild_id, f"proj_wip_{project_id}", str(val))
+    await log_activity(
+        project_id, guild_id, actor_id, "wip_limit_updated",
+        f"In_Progress WIP limit set to {val}"
+    )
+    return val
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1064,6 +1101,15 @@ async def claim_task(
     )
     # Move to In_Progress if still Pending
     if task.status == "Pending":
+        wip_limit = await get_project_wip_limit(project_id, guild_id)
+        if wip_limit > 0:
+            row = await db.fetch_one(
+                "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
+                (project_id, guild_id),
+            )
+            current_wip = row["cnt"] if row else 0
+            if current_wip >= wip_limit:
+                raise WipLimitExceeded(current_wip, wip_limit)
         await db.execute(
             "UPDATE tasks SET status='In_Progress', updated_at=NOW()"
             " WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
@@ -1110,6 +1156,15 @@ async def assign_task(
         (task_id, assignee_id),
     )
     if task.status == "Pending":
+        wip_limit = await get_project_wip_limit(project_id, guild_id)
+        if wip_limit > 0:
+            row = await db.fetch_one(
+                "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
+                (project_id, guild_id),
+            )
+            current_wip = row["cnt"] if row else 0
+            if current_wip >= wip_limit:
+                raise WipLimitExceeded(current_wip, wip_limit)
         await db.execute(
             "UPDATE tasks SET status='In_Progress', updated_at=NOW()"
             " WHERE task_id=$1 AND project_id=$2 AND guild_id=$3",
@@ -1166,6 +1221,17 @@ async def update_task_status(
         blockers = await _get_incomplete_task_blockers(task_id, project_id, guild_id)
         if blockers:
             raise TaskBlocked(blockers)
+
+    if new_status == "In_Progress" and task.status != "In_Progress":
+        wip_limit = await get_project_wip_limit(project_id, guild_id)
+        if wip_limit and wip_limit > 0 and not is_guild_admin:
+            row = await db.fetchone(
+                "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
+                (project_id, guild_id),
+            )
+            cnt = int(row["cnt"]) if row else 0
+            if cnt >= wip_limit:
+                raise WipLimitExceeded(cnt, wip_limit)
 
     if new_status == "Completed":
         if task.status != "Completed":
@@ -1298,12 +1364,15 @@ async def get_project_board(
              )
              for r in (rows or [])]
 
+    wip_limit = await get_project_wip_limit(project_id, guild_id)
+
     return BoardData(
         project     = project,
         pending     = [t for t in tasks if t.status == "Pending"],
         in_progress = [t for t in tasks if t.status == "In_Progress"],
         completed   = [t for t in tasks if t.status == "Completed"],
         cancelled   = [t for t in tasks if t.status == "Cancelled"],
+        wip_limit   = wip_limit,
     )
 
 
