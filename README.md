@@ -2,13 +2,13 @@
 
 ### Enterprise-Grade Discord Productivity, Collaboration & Project Management System
 
-> Powered by **Supabase PostgreSQL (Schema v28)**, **Realtime CDC**, **17 Modular Cogs**, **9-Language NLP Date Engine**, **True LRU Caching**, **Row Level Security (RLS)**, and **Deno Edge Analytics** — engineered for agile teams and power users who demand zero-lag responsiveness, transparency, and data integrity.
+> Powered by **Supabase PostgreSQL (Schema v36)**, **Realtime CDC**, **17 Modular Cogs**, **9-Language NLP Date Engine**, **True LRU Caching**, **Row Level Security (RLS)**, and **Deno Edge Analytics** — engineered for agile teams and power users who demand zero-lag responsiveness, transparency, and data integrity.
 
 ---
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)
 ![discord.py](https://img.shields.io/badge/discord.py-2.4%2B-5865F2?logo=discord&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20v28-3ECF8E?logo=supabase&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20v36-3ECF8E?logo=supabase&logoColor=white)
 ![Modular Cogs](https://img.shields.io/badge/Modular%20Cogs-17%20Loaded-purple)
 ![Languages](https://img.shields.io/badge/Languages-9%20Supported-orange)
 ![Themes](https://img.shields.io/badge/Themes-10%20Curated-pink)
@@ -43,7 +43,7 @@
 6. [⚡ Performance, Caching & Scalability](#-performance-caching--scalability)
 7. [🔄 Background Automation & Schedulers (8 Loops)](#-background-automation--schedulers-8-loops)
 8. [🛡️ Security & Row Level Security (RLS)](#-security--row-level-security-rls)
-9. [🐘 Database Schema History (Auto-Migrations v1 ➔ v28)](#-database-schema-history-auto-migrations-v1--v28)
+9. [🐘 Database Schema History (Auto-Migrations v1 ➔ v36)](#-database-schema-history-auto-migrations-v1--v36)
 10. [🌩️ Supabase Realtime & Edge Functions](#-supabase-realtime--edge-functions)
 11. [📅 Private Calendar Feeds & Async Webserver](#-private-calendar-feeds--async-webserver)
 12. [🚀 Installation & Deployment Guide](#-installation--deployment-guide)
@@ -529,7 +529,7 @@ The `security_rls/` module enforces engine-level data privacy:
 
 ---
 
-## 🐘 Database Schema History (Auto-Migrations v1 ➔ v28)
+## 🐘 Database Schema History (Auto-Migrations v1 ➔ v36)
 
 The bot contains a built-in automated migration runner that verifies and migrates the PostgreSQL database sequentially on startup:
 
@@ -563,6 +563,14 @@ The bot contains a built-in automated migration runner that verifies and migrate
 | **v26** | `idx_audit_target_created`, `users.weekly_retrospective`, `users.last_retrospective_date` | Task Audit Trail speedups and Weekly Retrospective scheduler settings |
 | **v27** | Partial indexes: `idx_tasks_recurring_due`, `idx_tasks_deadline_dm_pending`, `idx_tasks_pending_reminders`, `idx_focus_sessions_active_lookup` | **Performance & Stability Phase 1**: Zero-lag background schedulers |
 | **v28** | Partial indexes: `idx_users_daily_digest`, `idx_users_weekly_retrospective`, `idx_users_streak_reminder`, `idx_tasks_user_active_root` | **Performance & Stability Phase 2**: Zero-lag user scans and active task queries |
+| **v29** | `sprints` table, `tasks.sprint_id`, `tasks.story_points` | **Agile & Scrum Sprints**: Iteration lifecycles, Fibonacci story point sizing |
+| **v30** | `task_time_logs` table, `tasks.estimated_hours` | **Time Tracking & Capacity**: Granular hours logging, billable tracking, workload estimation |
+| **v31** | `automation_rules` table with JSONB conditions & actions | **No-Code Automation Engine**: Event-Condition-Action (ECA) workflow builder |
+| **v32** | `user_rpg_profiles`, `coop_quests` tables | **Gamification 2.0**: Leveling RPG, EXP points, streak freeze tokens, server co-op quests |
+| **v33** | `project_documents`, `task_revisions` tables | **Knowledge Base & Version Control**: Multi-page Markdown wiki docs and description snapshot diff rollback |
+| **v34** | `checklist_templates` table, `tasks.custom_fields` JSONB + GIN index | **Definition of Done Templates & Custom Dynamic Meta-Fields**: Reusable checklists and JSONB EAV attributes |
+| **v35** | `project_federation_guilds`, `task_assignees` tables | **Multi-Server Federation & Multi-Assignees**: Cross-guild shared projects and role-based assignments |
+| **v36** | `project_milestones`, `sprint_retros`, `tasks_archive` tables | **Strategic Roadmap & Janitor Retention**: Milestone health tracking, Sprint retrospectives, and background archiving |
 
 ---
 
