@@ -163,13 +163,20 @@ class GanttSwitchView(ui.View):
     @ui.button(label="🖼️ High-Res PNG Chart", style=discord.ButtonStyle.primary, row=0)
     async def btn_png(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer(ephemeral=True)
-        buf = gantt_renderer.render_png_gantt(self.cpm_result, self.project_name)
-        file = discord.File(fp=buf, filename=f"gantt_proj_{self.cpm_result.project_id}.png")
-        await interaction.followup.send(
-            content=f"📊 **High-Res Gantt Chart for {self.project_name}** (100% In-Memory Pure Pillow Render):",
-            file=file,
-            ephemeral=True,
-        )
+        try:
+            buf = gantt_renderer.render_png_gantt(self.cpm_result, self.project_name)
+            file = discord.File(fp=buf, filename=f"gantt_proj_{self.cpm_result.project_id}.png")
+            await interaction.followup.send(
+                content=f"📊 **High-Res Gantt Chart for {self.project_name}** (100% In-Memory Pure Pillow Render):",
+                file=file,
+                ephemeral=True,
+            )
+        except Exception as exc:
+            log.warning("Gantt PNG render failed: %s", exc)
+            await interaction.followup.send(
+                f"⚠️ ไม่สามารถเรนเดอร์รูปภาพ Gantt ได้: {exc}",
+                ephemeral=True,
+            )
 
     @ui.button(label="🕸️ View Critical Path", style=discord.ButtonStyle.secondary, row=0)
     async def btn_cpm(self, interaction: discord.Interaction, button: ui.Button) -> None:

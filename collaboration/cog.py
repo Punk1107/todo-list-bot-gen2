@@ -1109,12 +1109,23 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         p_name = f"{project.emoji} {project.name}"
 
         if view_mode == "image":
-            buf = gantt_renderer.render_png_gantt(cpm_result, project_name=p_name)
-            file = discord.File(fp=buf, filename=f"gantt_{project_id}.png")
-            await interaction.followup.send(
-                content=f"📊 **แผนผัง Gantt Chart สำหรับ {p_name}** (Pure Pillow High-Res Render):",
-                file=file,
-            )
+            try:
+                buf = gantt_renderer.render_png_gantt(cpm_result, project_name=p_name)
+                file = discord.File(fp=buf, filename=f"gantt_{project_id}.png")
+                await interaction.followup.send(
+                    content=f"📊 **แผนผัง Gantt Chart สำหรับ {p_name}** (Pure Pillow High-Res Render):",
+                    file=file,
+                )
+            except Exception as exc:
+                log.warning("Gantt image render error: %s", exc)
+                ascii_text = gantt_renderer.render_ascii_gantt(cpm_result)
+                embed = build_gantt_embed(ascii_text, project_name=p_name, lang=lang)
+                view = GanttSwitchView(cpm_result, project_name=p_name)
+                await interaction.followup.send(
+                    content=f"⚠️ ไม่สามารถเรนเดอร์รูปภาพได้: {exc}\nแสดงผลในรูปแบบข้อความแทน:",
+                    embed=embed,
+                    view=view,
+                )
         else:
             ascii_text = gantt_renderer.render_ascii_gantt(cpm_result)
             embed = build_gantt_embed(ascii_text, project_name=p_name, lang=lang)

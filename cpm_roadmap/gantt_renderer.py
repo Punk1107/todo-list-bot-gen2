@@ -9,12 +9,21 @@ Provides 2 rendering modes:
 from __future__ import annotations
 
 import io
-import math
-from typing import List, Optional
+import logging
+from typing import List
 
-from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont  # type: ignore
+    HAS_PILLOW = True
+except ImportError:  # pragma: no cover
+    Image = None  # type: ignore[assignment,no-redef]
+    ImageDraw = None  # type: ignore[assignment,no-redef]
+    ImageFont = None  # type: ignore[assignment,no-redef]
+    HAS_PILLOW = False
 
-from cpm_roadmap.models import CPMGraphResult, CPMNode, GanttTask
+from cpm_roadmap.models import CPMGraphResult
+
+log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -34,7 +43,6 @@ def render_ascii_gantt(cpm_result: CPMGraphResult, max_days: int = 24) -> str:
 
     lines: List[str] = []
     # Timeline header
-    header_days = [f"D{int(i * scale) + 1}" for i in range(min(max_days, int(total_days)) + 1)]
     lines.append(f"{'Task Name':<20} | Timeline (1 block ≈ {scale:.1f}d) | Status")
     lines.append("-" * 65)
 
@@ -78,6 +86,9 @@ def render_png_gantt(
     Draw a high-resolution Gantt chart with dependency lines and critical path
     highlighting using Pure Python Pillow (PIL). Outputs to in-memory BytesIO buffer.
     """
+    if not HAS_PILLOW or Image is None or ImageDraw is None or ImageFont is None:
+        raise RuntimeError("Pillow is not installed in the environment. Please install Pillow (pip install Pillow).")
+
     nodes = list(cpm_result.nodes.values())
     node_count = max(1, len(nodes))
     total_days = max(1.0, cpm_result.total_duration_days)
@@ -117,7 +128,6 @@ def render_png_gantt(
     draw.text((40, 58), crit_info, fill=critical_color if crit_count > 0 else text_secondary, font=font)
 
     # Chart Layout Grid
-    label_width = 240
     chart_start_x = 260
     chart_end_x = width - 40
     chart_width = chart_end_x - chart_start_x
