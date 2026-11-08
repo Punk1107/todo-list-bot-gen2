@@ -281,6 +281,7 @@ class BoardData:
     in_progress: list[ProjectTask]
     completed:   list[ProjectTask]
     cancelled:   list[ProjectTask]
+    wip_limit:   int = 0
 
     @property
     def total(self) -> int:

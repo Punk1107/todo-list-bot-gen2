@@ -185,7 +185,7 @@ _KNOWN_TABLES = {
     "routine_event_rules", "project_role_permissions", "saved_filters",
     "focus_sessions", "calendar_feed_tokens", "task_comments",
     # Gen 5.0 (Schema v29-v36)
-    "sprints", "task_time_logs", "automation_rules", "user_rpg_profiles",
+    "sprints", "epics", "task_time_logs", "automation_rules", "user_rpg_profiles",
     "coop_quests", "project_documents", "task_revisions", "checklist_templates",
     "project_federation_guilds", "task_assignees", "project_milestones",
     "sprint_retros", "tasks_archive",
@@ -1111,7 +1111,7 @@ MIGRATIONS: list[tuple[int, str]] = [
     INSERT INTO schema_version VALUES (28) ON CONFLICT (version) DO UPDATE SET version=28;
     """),
     (29, """
-    -- Migration 29: Sprints & Agile Story Points
+    -- Migration 29: Sprints, Epics & Agile Story Points
     CREATE TABLE IF NOT EXISTS sprints (
         sprint_id SERIAL PRIMARY KEY,
         project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
@@ -1124,9 +1124,22 @@ MIGRATIONS: list[tuple[int, str]] = [
     );
     CREATE INDEX IF NOT EXISTS idx_sprints_project_status ON sprints(project_id, status);
 
+    CREATE TABLE IF NOT EXISTS epics (
+        epic_id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT NOT NULL DEFAULT '#5865F2',
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','completed','cancelled')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_epics_project_status ON epics(project_id, status);
+
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id INTEGER REFERENCES sprints(sprint_id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS epic_id INTEGER REFERENCES epics(epic_id) ON DELETE SET NULL;
     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS story_points INTEGER CHECK (story_points IN (1,2,3,5,8,13,21));
     CREATE INDEX IF NOT EXISTS idx_tasks_sprint_id ON tasks(sprint_id) WHERE sprint_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id) WHERE epic_id IS NOT NULL;
 
     INSERT INTO schema_version VALUES (29) ON CONFLICT (version) DO UPDATE SET version=29;
     """),

@@ -71,6 +71,7 @@ COGS = [
     "recovery.cog",                         # /trash & /restore — Recycle Bin safe recovery
     "organization.cog",                     # /matrix & /filter — Eisenhower Matrix & Smart Lists
     "history_reporting.cog",                # /history & /retrospective — Audit Trail & Weekly Retrospective
+    "agile.cog",                            # /sprint, /poker, /epic — Agile & Scrum Full Suite (Gen 5.0)
 ]
 
 

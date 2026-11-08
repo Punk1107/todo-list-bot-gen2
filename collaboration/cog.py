@@ -178,9 +178,18 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
     # ─────────────────────────────────────────────────────────────────────────
 
     @project.command(name="board", description="📋 ดูกระดาน Kanban ของโปรเจกต์ / View project kanban board")
-    @app_commands.describe(project_id="Project ID number")
+    @app_commands.describe(
+        project_id="Project ID number",
+        swimlane="แบ่งแนวนอนตาม (Assignee หรือ Priority) / Group horizontally by swimlane",
+    )
+    @app_commands.choices(swimlane=[
+        app_commands.Choice(name="👤 Assignee", value="assignee"),
+        app_commands.Choice(name="🎯 Priority", value="priority"),
+    ])
     @rate_limit_check("command")
-    async def project_board(self, interaction: discord.Interaction, project_id: int) -> None:
+    async def project_board(
+        self, interaction: discord.Interaction, project_id: int, swimlane: Optional[str] = None
+    ) -> None:
         uid  = str(interaction.user.id)
         lang = await get_user_lang(uid)
         if not await _guild_only(interaction, lang):
@@ -196,7 +205,7 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             )
             return
 
-        embed = build_board_embed(board, lang, "pending")
+        embed = build_board_embed(board, lang, "pending", swimlane=swimlane)
         view  = ProjectBoardView(project_id, guild_id, lang, interaction.user, board)
         await interaction.followup.send(embed=embed, view=view)
         view._message = await interaction.original_response()
@@ -972,6 +981,54 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         await interaction.followup.send(
             f"✅ {t(msg_key, lang, task_id=task.task_id, name=task.task[:50])}", ephemeral=True
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project config-wip
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="config-wip",
+        description="🚧 ตั้งค่า Work-In-Progress (WIP) Limit สำหรับงาน In Progress (0 = ไม่จำกัด)",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        limit="จำนวนงาน In Progress สูงสุดพร้อมกัน (0 = ไม่จำกัด)",
+    )
+    @rate_limit_check("command")
+    async def project_config_wip(
+        self, interaction: discord.Interaction, project_id: int, limit: int
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        is_admin = _is_admin(interaction)
+
+        if limit < 0:
+            await interaction.followup.send("❌ WIP Limit ต้องมีค่าตั้งแต่ 0 ขึ้นไป (0 = ไม่จำกัด)", ephemeral=True)
+            return
+
+        try:
+            val = await service.set_project_wip_limit(
+                project_id, guild_id, limit, actor_id=uid, is_guild_admin=is_admin
+            )
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        except Exception as exc:
+            log.error("project_config_wip error: %s", exc)
+            await interaction.followup.send(t("err_generic", lang), ephemeral=True)
+            return
+
+        msg = f"✅ ตั้งค่า WIP Limit สำหรับโปรเจกต์ `#{project_id}` สำเร็จ: " + (f"สูงสุด **{val}** งานพร้อมกันในคอลัมน์ In Progress" if val > 0 else "**ไม่จำกัด (Unlimited)**")
+        await interaction.followup.send(msg, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
