@@ -479,6 +479,21 @@ class SettingsCog(commands.Cog, name="Settings"):
         view._message = await interaction.original_response()
 
 
+    # ── /help ─────────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="help", description="📖 ดูวิธีใช้ / View help")
+    @rate_limit_check("command")
+    async def help_cmd(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+
+        view = HelpView(lang)
+        embed = build_help_embed("overview", lang)
+        await interaction.response.send_message(embed=embed, view=view)
+        # Store message so on_timeout can edit it with disabled select
+        view._message = await interaction.original_response()
+
+
     # ── /theme & /settings theme ──────────────────────────────────────────────
 
     settings_group = app_commands.Group(
