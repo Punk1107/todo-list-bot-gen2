@@ -319,6 +319,30 @@ async def set_task_story_points(task_id: int, points: int) -> bool:
     return "UPDATE 1" in res
 
 
+def compute_velocity_stats(
+    project_id: int,
+    closed_sprints: list[tuple[str, int]],
+    backlog_count: int,
+    backlog_points: int,
+) -> VelocityStats:
+    """Pure calculation: compute velocity average and sprint capacity forecasting."""
+    total_pts = sum(pts for _, pts in closed_sprints)
+    avg_velocity = round(total_pts / len(closed_sprints), 1) if closed_sprints else 0.0
+    forecast = (
+        int(math.ceil(backlog_points / avg_velocity))
+        if avg_velocity > 0 and backlog_points > 0
+        else (1 if backlog_count > 0 else 0)
+    )
+    return VelocityStats(
+        project_id=project_id,
+        sprint_history=closed_sprints,
+        average_velocity=avg_velocity,
+        backlog_tasks_count=backlog_count,
+        backlog_points=backlog_points,
+        forecast_sprints=forecast,
+    )
+
+
 async def get_velocity_stats(project_id: int) -> VelocityStats:
     """Compute historical velocity across closed sprints and forecast backlog clearance."""
     # 1. Last 5 closed sprints with completed story points
@@ -337,15 +361,11 @@ async def get_velocity_stats(project_id: int) -> VelocityStats:
         (project_id,),
     )
     history: list[tuple[str, int]] = []
-    total_pts = 0
     if rows:
         for r in reversed(rows):
             name = str(r["name"])
             pts = int(r["completed_points"])
             history.append((name, pts))
-            total_pts += pts
-
-    avg_velocity = round(total_pts / len(rows), 1) if rows else 0.0
 
     # 2. Backlog points
     backlog_row = await db.afetchone(
@@ -361,37 +381,32 @@ async def get_velocity_stats(project_id: int) -> VelocityStats:
     backlog_count = int(backlog_row["backlog_count"]) if backlog_row else 0
     backlog_points = int(backlog_row["backlog_points"]) if backlog_row else 0
 
-    forecast = (
-        int(math.ceil(backlog_points / avg_velocity))
-        if avg_velocity > 0 and backlog_points > 0
-        else (1 if backlog_count > 0 else 0)
-    )
-
-    return VelocityStats(
-        project_id=project_id,
-        sprint_history=history,
-        average_velocity=avg_velocity,
-        backlog_tasks_count=backlog_count,
-        backlog_points=backlog_points,
-        forecast_sprints=forecast,
-    )
+    return compute_velocity_stats(project_id, history, backlog_count, backlog_points)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Planning Poker Service
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def start_poker(task_id: int, host_id: str, guild_id: Optional[str] = None) -> PlanningPokerSession:
+async def start_poker(
+    task_id: int,
+    host_id: str,
+    guild_id: Optional[str] = None,
+    title: Optional[str] = None,
+) -> PlanningPokerSession:
     """Start an interactive planning poker session for a task."""
-    task_row = await db.afetchone(
-        "SELECT task FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
-        (task_id,),
-    )
-    title = str(task_row["task"]) if task_row else f"Task #{task_id}"
+    if not title:
+        task_row = await db.afetchone(
+            "SELECT task FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+            (task_id,),
+        )
+        task_title = str(task_row["task"]) if task_row else f"Task #{task_id}"
+    else:
+        task_title = title
 
     session = PlanningPokerSession(
         task_id=task_id,
-        task_title=title,
+        task_title=task_title,
         host_id=host_id,
         guild_id=guild_id,
     )

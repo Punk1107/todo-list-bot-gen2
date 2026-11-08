@@ -193,8 +193,10 @@ class ProjectTask:
 
     @property
     def priority_emoji(self) -> str:
-        return ["⚪", "🔵", "🟡", "🟠", "🔴", "🔴", "💀", "🚨"].get(self.priority, "⚪") \
-            if isinstance(self.priority, int) and 0 <= self.priority <= 7 else "⚪"
+        emojis = ["⚪", "🔵", "🟡", "🟠", "🔴", "🔴", "💀", "🚨"]
+        if isinstance(self.priority, int) and 0 <= self.priority < len(emojis):
+            return emojis[self.priority]
+        return "⚪"
 
 
 PROJECT_PERMISSIONS = (

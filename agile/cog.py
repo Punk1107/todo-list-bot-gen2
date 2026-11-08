@@ -133,7 +133,7 @@ class AgileCog(commands.Cog, name="Agile"):
             )
             embed = build_sprint_embed(sprint_obj, lang)
             await interaction.followup.send(
-                f"✅ สร้าง Sprint **#{sprint_obj.sprint_id}** สำเร็จ! เริ่มต้นได้ด้วย `/sprint start`",
+                t("sprint_created", lang, sprint_id=sprint_obj.sprint_id),
                 embed=embed,
             )
         except Exception as exc:
@@ -174,13 +174,13 @@ class AgileCog(commands.Cog, name="Agile"):
             sprint_obj = await service.start_sprint(sprint_id, project_id)
             embed = build_sprint_embed(sprint_obj, lang)
             await interaction.followup.send(
-                f"🚀 **Sprint #{sprint_id} ({sprint_obj.name}) ได้เริ่มต้นแล้ว!**",
+                t("sprint_started", lang, sprint_id=sprint_id, name=sprint_obj.name),
                 embed=embed,
             )
         except service.SprintAlreadyActiveError as exc:
-            await interaction.followup.send(f"⚠️ {exc}", ephemeral=True)
+            await interaction.followup.send(t("sprint_already_active", lang, sprint_id=sprint_id), ephemeral=True)
         except service.SprintNotFoundError as exc:
-            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+            await interaction.followup.send(t("sprint_not_found", lang, sprint_id=sprint_id, project_id=project_id), ephemeral=True)
         except Exception as exc:
             log.error("sprint_start error: %s", exc)
             await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {exc}", ephemeral=True)
