@@ -29,7 +29,10 @@ if str(ROOT) not in sys.path:
 # ── uvloop: opt-in faster event loop (Linux/macOS only) ──────────────────────
 try:
     import uvloop  # type: ignore
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    # On Python < 3.12, set event loop policy. On Python 3.12+ (PEP 689), event loop policies
+    # are deprecated and slated for removal in Python 3.16. We create uvloop directly in __main__.
+    if sys.version_info < (3, 12):
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     _UVLOOP = True
 except ImportError:
     _UVLOOP = False   # Windows or package not installed — silently fall back
@@ -408,7 +411,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
+    if _UVLOOP:
+        loop = uvloop.new_event_loop()
+    else:
+        loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     def _shutdown(_signum, _frame):
