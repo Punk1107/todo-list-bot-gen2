@@ -1270,6 +1270,9 @@ MIGRATIONS: list[tuple[int, str]] = [
     );
     CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id, status);
 
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS milestone_id INTEGER REFERENCES project_milestones(milestone_id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_tasks_milestone_id ON tasks(milestone_id) WHERE milestone_id IS NOT NULL;
+
     CREATE TABLE IF NOT EXISTS sprint_retros (
         retro_id SERIAL PRIMARY KEY,
         sprint_id INTEGER REFERENCES sprints(sprint_id) ON DELETE CASCADE,

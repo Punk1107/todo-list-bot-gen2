@@ -1027,8 +1027,99 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             await interaction.followup.send(t("err_generic", lang), ephemeral=True)
             return
 
-        msg = f"✅ ตั้งค่า WIP Limit สำหรับโปรเจกต์ `#{project_id}` สำเร็จ: " + (f"สูงสุด **{val}** งานพร้อมกันในคอลัมน์ In Progress" if val > 0 else "**ไม่จำกัด (Unlimited)**")
+        if val > 0:
+            msg = t("proj_wip_limit_set", lang, project_id=project_id, limit=val)
+        else:
+            msg = t("proj_wip_limit_unlimited", lang, project_id=project_id)
         await interaction.followup.send(msg, ephemeral=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project critical-path
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="critical-path",
+        description="🕸️ วิเคราะห์สายงานวิกฤต (Critical Path Method) ด้วย Pure SQL Graph Engine",
+    )
+    @app_commands.describe(project_id="Project ID number")
+    @rate_limit_check("command")
+    async def project_critical_path(self, interaction: discord.Interaction, project_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer()
+
+        guild_id = str(interaction.guild.id)
+        try:
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        from cpm_roadmap import cpm_engine
+        from cpm_roadmap.views import build_cpm_embed
+
+        cpm_result = await cpm_engine.calculate_project_cpm(project_id)
+        embed = build_cpm_embed(cpm_result, project_name=f"{project.emoji} {project.name}", lang=lang)
+        await interaction.followup.send(embed=embed)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project gantt
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="gantt",
+        description="📊 เรนเดอร์แผนผัง Gantt Chart แสดงช่วงเวลาและความสัมพันธ์ของงานใน Discord",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        view_mode="โหมดการแสดงผล (ASCII Codeblock หรือ High-Res PNG Image)",
+    )
+    @app_commands.choices(view_mode=[
+        app_commands.Choice(name="📝 ASCII Codeblock (Embed View)", value="ascii"),
+        app_commands.Choice(name="🖼️ High-Res PNG (Pillow Image)", value="image"),
+    ])
+    @rate_limit_check("command")
+    async def project_gantt(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        view_mode: Optional[str] = "ascii",
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer()
+
+        guild_id = str(interaction.guild.id)
+        try:
+            project = await service.get_project(project_id, guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        from cpm_roadmap import cpm_engine, gantt_renderer
+        from cpm_roadmap.views import GanttSwitchView, build_gantt_embed
+
+        cpm_result = await cpm_engine.calculate_project_cpm(project_id)
+        p_name = f"{project.emoji} {project.name}"
+
+        if view_mode == "image":
+            buf = gantt_renderer.render_png_gantt(cpm_result, project_name=p_name)
+            file = discord.File(fp=buf, filename=f"gantt_{project_id}.png")
+            await interaction.followup.send(
+                content=f"📊 **แผนผัง Gantt Chart สำหรับ {p_name}** (Pure Pillow High-Res Render):",
+                file=file,
+            )
+        else:
+            ascii_text = gantt_renderer.render_ascii_gantt(cpm_result)
+            embed = build_gantt_embed(ascii_text, project_name=p_name, lang=lang)
+            view = GanttSwitchView(cpm_result, project_name=p_name)
+            await interaction.followup.send(embed=embed, view=view)
 
 
 async def setup(bot: commands.Bot) -> None:

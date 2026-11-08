@@ -558,7 +558,7 @@ class AdvanceProgressSelect(ui.Select):
             return
         except service.WipLimitExceeded as exc:
             await interaction.followup.send(
-                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                t("proj_wip_limit_exceeded", lang, limit=exc.limit),
                 ephemeral=True,
             )
             return
@@ -1541,7 +1541,7 @@ class ClaimTaskSelect(ui.Select):
             return
         except service.WipLimitExceeded as exc:
             await interaction.followup.send(
-                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                t("proj_wip_limit_exceeded", lang, limit=exc.limit),
                 ephemeral=True,
             )
             return
@@ -1615,7 +1615,7 @@ class CompleteTaskSelect(ui.Select):
             return
         except service.WipLimitExceeded as exc:
             await interaction.followup.send(
-                f"⚠️ **WIP Limit Exceeded**: คอลัมน์ In Progress เต็มแล้ว (สูงสุด {exc.limit} งาน) กรุณาเคลียร์งานเดิมให้เสร็จก่อน",
+                t("proj_wip_limit_exceeded", lang, limit=exc.limit),
                 ephemeral=True,
             )
             return

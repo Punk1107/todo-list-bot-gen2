@@ -273,7 +273,7 @@ class PlanningPokerView(ui.View):
                 await interaction.message.edit(embed=new_embed, view=self)
             except Exception:
                 pass
-        await interaction.response.send_message(f"✅ Your secret vote of **{points} points** has been recorded!", ephemeral=True)
+        await interaction.response.send_message(t("poker_voted", self.lang, task_id=self.task_id, points=points), ephemeral=True)
 
     @ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
     async def btn_1(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -342,7 +342,7 @@ class PlanningPokerView(ui.View):
 
         self.stop()
         await interaction.response.send_message(
-            f"✅ **Story points saved!** Task #{self.task_id} has been set to **{final_pts} points**.",
+            t("sprint_points_saved", self.lang, task_id=self.task_id, points=final_pts),
             ephemeral=False,
         )
 
@@ -392,7 +392,7 @@ class RetroAddCardModal(ui.Modal):
 
         try:
             await service.add_retro_card(self.sprint_id, col_raw, content, author_id)
-            await interaction.response.send_message("✅ Your card has been submitted to the Retrospective Board!", ephemeral=True)
+            await interaction.response.send_message(t("retro_card_submitted", self.lang, sprint_id=self.sprint_id), ephemeral=True)
         except Exception as exc:
             await interaction.response.send_message(f"❌ Error submitting card: {exc}", ephemeral=True)
 
@@ -419,13 +419,15 @@ class RetroDotVoteSelect(ui.Select):
         uid = str(interaction.user.id)
         try:
             new_votes = await service.vote_retro_card(retro_id, self.sprint_id, uid)
-            rem = service.get_user_remaining_votes(self.sprint_id, uid)
             await interaction.response.send_message(
-                f"🗳️ Vote recorded! Card #{retro_id} now has **{new_votes} votes**. (Remaining votes: {rem}/3)",
+                t("retro_dot_voted", self.lang, card_id=retro_id, votes=new_votes),
                 ephemeral=True,
             )
-        except service.DotVotesExhaustedError as exc:
-            await interaction.response.send_message(f"⚠️ {exc}", ephemeral=True)
+        except service.DotVotesExhaustedError:
+            await interaction.response.send_message(
+                t("retro_dot_exhausted", self.lang, sprint_id=self.sprint_id),
+                ephemeral=True,
+            )
         except Exception as exc:
             await interaction.response.send_message(f"❌ Error: {exc}", ephemeral=True)
 
@@ -469,7 +471,7 @@ class RetroBoardView(ui.View):
         count = await service.convert_action_items_to_tasks(self.sprint_id, self.project_id, uid)
         if count > 0:
             await interaction.response.send_message(
-                f"🎯 **Success!** Converted **{count} Action Items** into new Backlog tasks for the next sprint.",
+                t("retro_actions_converted", self.lang, count=count),
                 ephemeral=False,
             )
         else:
@@ -493,10 +495,17 @@ class SprintCloseConfirmView(ui.View):
             self.sprint_id, self.project_id, uid, carryover_target="backlog"
         )
         self.stop()
+        summary_msg = t(
+            "sprint_closed_summary",
+            self.lang,
+            sprint_id=self.sprint_id,
+            done_cnt=done_cnt,
+            carried_cnt=carried_cnt,
+            pts=pts,
+        )
         embed = discord.Embed(
-            title=f"🏁 Sprint #{self.sprint_id} Closed",
+            title=summary_msg,
             description=(
-                f"**Completion Summary:**\n"
                 f"• Completed Tasks: `{done_cnt}`\n"
                 f"• Story Points Burnt: `{pts}`\n"
                 f"• Unfinished Tasks Returned to Backlog: `{carried_cnt}`"
