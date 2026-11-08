@@ -279,6 +279,20 @@ class TestCPMRoadmap(unittest.TestCase):
         roadmap_embed = build_roadmap_embed("Auth Project", 1, [ms], {1: health})
         self.assertIn("Strategic Milestone Roadmap", roadmap_embed.title)
 
+    def test_png_gantt_graceful_fallback_without_pillow(self):
+        """Test that render_png_gantt raises RuntimeError when Pillow is missing."""
+        orig_has_pillow = gantt_renderer.HAS_PILLOW
+        orig_img = gantt_renderer.Image
+        try:
+            gantt_renderer.HAS_PILLOW = False
+            gantt_renderer.Image = None
+            res = CPMGraphResult(project_id=1, nodes={}, critical_path=[], total_duration_hours=0.0, total_duration_days=0.0)
+            with self.assertRaises(RuntimeError):
+                gantt_renderer.render_png_gantt(res, "Test Proj")
+        finally:
+            gantt_renderer.HAS_PILLOW = orig_has_pillow
+            gantt_renderer.Image = orig_img
+
 
 if __name__ == "__main__":
     unittest.main()
