@@ -195,7 +195,7 @@ def test_bulk_writer_bounded_queue_overflow_drop():
 
 def test_migration_v28_partial_indexes():
     """Verify Schema version 28 contains partial indexes for 1-minute background loops."""
-    assert SCHEMA_VERSION == 28
+    assert SCHEMA_VERSION >= 28
     v28_sql = next(sql for v, sql in MIGRATIONS if v == 28)
     statements = _split_sql_statements(v28_sql)
 

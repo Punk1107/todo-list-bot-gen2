@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 28   # bump when adding migrations below
+SCHEMA_VERSION = 36   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +184,11 @@ _KNOWN_TABLES = {
     "project_task_role_assignments", "task_templates", "task_checklists",
     "routine_event_rules", "project_role_permissions", "saved_filters",
     "focus_sessions", "calendar_feed_tokens", "task_comments",
+    # Gen 5.0 (Schema v29-v36)
+    "sprints", "task_time_logs", "automation_rules", "user_rpg_profiles",
+    "coop_quests", "project_documents", "task_revisions", "checklist_templates",
+    "project_federation_guilds", "task_assignees", "project_milestones",
+    "sprint_retros", "tasks_archive",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1104,6 +1109,167 @@ MIGRATIONS: list[tuple[int, str]] = [
         WHERE is_deleted = FALSE AND parent_task_id IS NULL;
 
     INSERT INTO schema_version VALUES (28) ON CONFLICT (version) DO UPDATE SET version=28;
+    """),
+    (29, """
+    -- Migration 29: Sprints & Agile Story Points
+    CREATE TABLE IF NOT EXISTS sprints (
+        sprint_id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','active','closed')),
+        goal TEXT,
+        start_date TIMESTAMPTZ,
+        end_date TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_sprints_project_status ON sprints(project_id, status);
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sprint_id INTEGER REFERENCES sprints(sprint_id) ON DELETE SET NULL;
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS story_points INTEGER CHECK (story_points IN (1,2,3,5,8,13,21));
+    CREATE INDEX IF NOT EXISTS idx_tasks_sprint_id ON tasks(sprint_id) WHERE sprint_id IS NOT NULL;
+
+    INSERT INTO schema_version VALUES (29) ON CONFLICT (version) DO UPDATE SET version=29;
+    """),
+    (30, """
+    -- Migration 30: Detailed Time Logs & Workload Estimates
+    CREATE TABLE IF NOT EXISTS task_time_logs (
+        log_id BIGSERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(task_id) ON DELETE CASCADE,
+        user_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+        hours_spent NUMERIC(6, 2) NOT NULL CHECK (hours_spent > 0),
+        is_billable BOOLEAN NOT NULL DEFAULT FALSE,
+        logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_time_logs_task ON task_time_logs(task_id);
+    CREATE INDEX IF NOT EXISTS idx_task_time_logs_user_logged ON task_time_logs(user_id, logged_at DESC);
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(6, 2);
+
+    INSERT INTO schema_version VALUES (30) ON CONFLICT (version) DO UPDATE SET version=30;
+    """),
+    (31, """
+    -- Migration 31: No-Code Automation Engine Rules
+    CREATE TABLE IF NOT EXISTS automation_rules (
+        rule_id SERIAL PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        trigger_event TEXT NOT NULL,
+        condition_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        action_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT REFERENCES users(user_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_rules_guild ON automation_rules(guild_id, is_active);
+
+    INSERT INTO schema_version VALUES (31) ON CONFLICT (version) DO UPDATE SET version=31;
+    """),
+    (32, """
+    -- Migration 32: Productivity RPG, Vacation & Co-op Quests
+    CREATE TABLE IF NOT EXISTS user_rpg_profiles (
+        user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+        exp BIGINT NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        title TEXT NOT NULL DEFAULT 'Task Novice',
+        streak_freezes INTEGER NOT NULL DEFAULT 1,
+        vacation_until TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS coop_quests (
+        quest_id SERIAL PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        target_count INTEGER NOT NULL,
+        current_count INTEGER NOT NULL DEFAULT 0,
+        reward_exp INTEGER NOT NULL DEFAULT 100,
+        ends_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_coop_quests_guild_active ON coop_quests(guild_id, ends_at);
+
+    INSERT INTO schema_version VALUES (32) ON CONFLICT (version) DO UPDATE SET version=32;
+    """),
+    (33, """
+    -- Migration 33: Project Knowledge Base & Task Description Diff History
+    CREATE TABLE IF NOT EXISTS project_documents (
+        doc_id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        content_markdown TEXT NOT NULL,
+        author_id TEXT REFERENCES users(user_id),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_documents_project ON project_documents(project_id);
+
+    CREATE TABLE IF NOT EXISTS task_revisions (
+        revision_id BIGSERIAL PRIMARY KEY,
+        task_id INTEGER REFERENCES tasks(task_id) ON DELETE CASCADE,
+        edited_by TEXT REFERENCES users(user_id),
+        previous_description TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_revisions_task ON task_revisions(task_id, created_at DESC);
+
+    INSERT INTO schema_version VALUES (33) ON CONFLICT (version) DO UPDATE SET version=33;
+    """),
+    (34, """
+    -- Migration 34: Reusable DoD Checklist Templates & Custom JSONB Meta-Fields
+    CREATE TABLE IF NOT EXISTS checklist_templates (
+        template_id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_id TEXT REFERENCES users(user_id),
+        items JSONB NOT NULL DEFAULT '[]'::jsonb
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_templates_owner ON checklist_templates(owner_id);
+
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
+    CREATE INDEX IF NOT EXISTS idx_tasks_custom_fields ON tasks USING GIN (custom_fields);
+
+    INSERT INTO schema_version VALUES (34) ON CONFLICT (version) DO UPDATE SET version=34;
+    """),
+    (35, """
+    -- Migration 35: Multi-Server Federation & Multi-Assignees
+    CREATE TABLE IF NOT EXISTS project_federation_guilds (
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        guild_id TEXT NOT NULL,
+        linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (project_id, guild_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS task_assignees (
+        task_id INTEGER REFERENCES tasks(task_id) ON DELETE CASCADE,
+        user_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+        assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (task_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id);
+
+    INSERT INTO schema_version VALUES (35) ON CONFLICT (version) DO UPDATE SET version=35;
+    """),
+    (36, """
+    -- Migration 36: Strategic Milestones, Retrospective Boards & Tasks Archive
+    CREATE TABLE IF NOT EXISTS project_milestones (
+        milestone_id SERIAL PRIMARY KEY,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        target_date TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active'
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_milestones_project ON project_milestones(project_id, status);
+
+    CREATE TABLE IF NOT EXISTS sprint_retros (
+        retro_id SERIAL PRIMARY KEY,
+        sprint_id INTEGER REFERENCES sprints(sprint_id) ON DELETE CASCADE,
+        column_type TEXT NOT NULL CHECK (column_type IN ('well', 'improve', 'action')),
+        content TEXT NOT NULL,
+        author_id TEXT REFERENCES users(user_id),
+        votes INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_sprint_retros_sprint ON sprint_retros(sprint_id);
+
+    CREATE TABLE IF NOT EXISTS tasks_archive (LIKE tasks INCLUDING ALL);
+
+    INSERT INTO schema_version VALUES (36) ON CONFLICT (version) DO UPDATE SET version=36;
     """),
 ]
 
