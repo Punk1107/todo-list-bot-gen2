@@ -1133,4 +1133,13 @@ STRINGS = {
     'sla_status_title': '📊 SLA-Compliance-Dashboard',
     'sla_early_warning': '⏳ Frühwarnung: Aufgabe #{task_id} hat {pct}% ihrer SLA verbraucht.',
     'sla_breach_alert': '🚨 SLA-Verletzung: Aufgabe #{task_id} hat die Frist überschritten!',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': '365-Tage-Aktivitäts-Heatmap',
+    'viz_burndown_title': 'Sprint-Burndown-Diagramm',
+    'viz_cfd_title': 'Kumulatives Flussdiagramm (CFD)',
+    'viz_velocity_title': 'Agile Velocity-Vergleichsdiagramm',
+    'viz_sparkline_7day': '7-Tage-Produktivitätstrend: {trend}',
+    'viz_focus_wave': 'Fokus-Kontinuitätswelle: {wave}',
+    'viz_no_data': 'ℹ️ Nicht genügend Daten vorhanden, um diese Visualisierung zu erstellen.',
 }

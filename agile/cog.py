@@ -43,6 +43,15 @@ from core.database import db
 from core.security import rate_limit_check
 from locales.i18n import t
 from utils.helpers import ensure_user, get_user_lang
+from visualization import (
+    render_block_sparkline,
+    render_braille_sparkline,
+    render_braille_wave,
+    render_burndown_chart,
+    render_cfd_chart,
+    render_velocity_chart,
+)
+from visualization import service as viz_service
 
 log = logging.getLogger(__name__)
 
@@ -261,7 +270,99 @@ class AgileCog(commands.Cog, name="Agile"):
                 task_lines.append(f"... และอีก {len(tasks) - 10} งาน")
             embed.add_field(name=f"📋 รายการงานใน Sprint ({len(tasks)})", value="\n".join(task_lines), inline=False)
 
+            # Sparkline focus & progress indicator
+            completed_cnt = sum(1 for t in tasks if t["status"] == "Completed")
+            in_prog_cnt = sum(1 for t in tasks if t["status"] in ("In_Progress", "In Progress"))
+            pend_cnt = len(tasks) - completed_cnt - in_prog_cnt
+            wave = render_braille_wave(count=8)
+            spark = render_block_sparkline([pend_cnt, in_prog_cnt, completed_cnt])
+            embed.add_field(
+                name="📈 Flow Dynamics",
+                value=f"Flow: `{spark}` | Focus: {wave}",
+                inline=False,
+            )
+
         await interaction.followup.send(embed=embed)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /sprint burndown
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @sprint.command(
+        name="burndown",
+        description="📉 กราฟ Sprint Burndown Chart แสดงงานที่เหลือเทียบกับเส้นอุดมคติ",
+    )
+    @app_commands.describe(sprint_id="Sprint ID number")
+    @rate_limit_check("command")
+    async def sprint_burndown(self, interaction: discord.Interaction, sprint_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer()
+
+        data = await viz_service.get_sprint_burndown_data(sprint_id)
+        if not data:
+            await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
+            return
+
+        buf = render_burndown_chart(
+            sprint_name=data["sprint_name"],
+            total_points=data["total_points"],
+            ideal_burn=data["ideal_burn"],
+            actual_burn=data["actual_burn"],
+            day_labels=data["day_labels"],
+        )
+        file = discord.File(fp=buf, filename="burndown.png")
+        embed = discord.Embed(
+            title=f"📉 Sprint Burndown Chart — {data['sprint_name']}",
+            description=(
+                f"**Total Scope:** {data['total_points']:.1f} pts\n"
+                f"**Current Remaining:** {data['actual_burn'][-1]:.1f} pts\n"
+                f"💡 *กราฟเส้นตรง (เทา) คือ Ideal Burn Line และเส้นจุด (เขียว) คือ Actual Remaining*"
+            ),
+            color=0x57F287,
+        )
+        embed.set_image(url="attachment://burndown.png")
+        await interaction.followup.send(embed=embed, file=file)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /sprint cfd
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @sprint.command(
+        name="cfd",
+        description="🌊 กราฟ Cumulative Flow Diagram (CFD) วิเคราะห์จุดคอขวดของงาน",
+    )
+    @app_commands.describe(sprint_id="Sprint ID number")
+    @rate_limit_check("command")
+    async def sprint_cfd(self, interaction: discord.Interaction, sprint_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await interaction.response.defer()
+
+        data = await viz_service.get_sprint_cfd_data(sprint_id)
+        if not data:
+            await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
+            return
+
+        buf = render_cfd_chart(
+            title=data["title"],
+            dates=data["dates"],
+            pending_series=data["pending_series"],
+            in_progress_series=data["in_progress_series"],
+            completed_series=data["completed_series"],
+        )
+        file = discord.File(fp=buf, filename="cfd.png")
+        embed = discord.Embed(
+            title=f"🌊 Cumulative Flow Diagram — {data['title']}",
+            description="วิเคราะห์ Work In Progress (WIP) และการสะสมงานในแต่ละสถานะ",
+            color=0x5865F2,
+        )
+        embed.set_image(url="attachment://cfd.png")
+        await interaction.followup.send(embed=embed, file=file)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /sprint backlog
@@ -333,7 +434,20 @@ class AgileCog(commands.Cog, name="Agile"):
 
         stats = await service.get_velocity_stats(project_id)
         embed = build_velocity_embed(stats, lang)
-        await interaction.followup.send(embed=embed)
+
+        vel_data = await viz_service.get_project_velocity_history(project_id)
+        if vel_data.get("sprint_names"):
+            buf = render_velocity_chart(
+                project_name=vel_data["project_name"],
+                sprint_names=vel_data["sprint_names"],
+                planned_points=vel_data["planned_points"],
+                completed_points=vel_data["completed_points"],
+            )
+            file = discord.File(fp=buf, filename="velocity.png")
+            embed.set_image(url="attachment://velocity.png")
+            await interaction.followup.send(embed=embed, file=file)
+        else:
+            await interaction.followup.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /sprint retro

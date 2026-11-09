@@ -1083,4 +1083,13 @@ STRINGS = {
     'sla_status_title': '📊 SLA コンプライアンス ダッシュボード',
     'sla_early_warning': '⏳ 早期警告: タスク #{task_id} はSLAの {pct}% を消費しました。',
     'sla_breach_alert': '🚨 SLA 違反: タスク #{task_id} が目標期限を超過しました！',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': '365日間のコントリビューションヒートマップ',
+    'viz_burndown_title': 'スプリント バーンダウン チャート',
+    'viz_cfd_title': '累積フローダイアグラム (CFD)',
+    'viz_velocity_title': 'アジャイル ベロシティ比較チャート',
+    'viz_sparkline_7day': '過去7日間の生産性トレンド: {trend}',
+    'viz_focus_wave': 'フォーカス継続ウェーブ: {wave}',
+    'viz_no_data': 'ℹ️ この視覚化を生成するのに十分なデータがありません。',
 }

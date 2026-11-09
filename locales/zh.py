@@ -1083,4 +1083,13 @@ STRINGS = {
     'sla_status_title': '📊 SLA 合规仪表板',
     'sla_early_warning': '⏳ 早期预警：任务 #{task_id} 已消耗其SLA的 {pct}%。',
     'sla_breach_alert': '🚨 SLA 违约：任务 #{task_id} 已超出目标截止期限！',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': '365天贡献热力图',
+    'viz_burndown_title': 'Sprint 燃尽图',
+    'viz_cfd_title': '累积流图 (CFD)',
+    'viz_velocity_title': '敏捷速率对比图 (Velocity)',
+    'viz_sparkline_7day': '最近7天生产力趋势：{trend}',
+    'viz_focus_wave': '专注连续性波动：{wave}',
+    'viz_no_data': 'ℹ️ 暂无足够数据以生成图表。',
 }

@@ -1089,4 +1089,13 @@ STRINGS = {
     'sla_status_title': '📊 Панель соответствия SLA',
     'sla_early_warning': '⏳ Раннее предупреждение: Задача #{task_id} израсходовала {pct}% своего SLA.',
     'sla_breach_alert': '🚨 Нарушение SLA: Задача #{task_id} превысила целевой срок!',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': '365-дневная тепловая карта активности',
+    'viz_burndown_title': 'График сгорания задач (Burndown)',
+    'viz_cfd_title': 'Диаграмма накопительного потока (CFD)',
+    'viz_velocity_title': 'Сравнительный график скорости спринтов (Velocity)',
+    'viz_sparkline_7day': 'Тренд продуктивности за 7 дней: {trend}',
+    'viz_focus_wave': 'Волна непрерывности фокуса: {wave}',
+    'viz_no_data': 'ℹ️ Недостаточно данных для построения графика.',
 }

@@ -13,6 +13,8 @@ from core.database import db
 from gamification import service
 from locales.i18n import t
 from utils.helpers import get_user_lang
+from visualization import render_block_sparkline, render_braille_wave, render_streak_heatmap
+from visualization import service as viz_service
 
 log = logging.getLogger(__name__)
 
@@ -27,15 +29,51 @@ class GamificationCog(commands.Cog, name="Gamification"):
     def cog_unload(self) -> None:
         self.streak_reminder_loop.cancel()
 
-    @app_commands.command(name="streak", description="🔥 View your current task-completion streak")
-    async def streak(self, interaction: discord.Interaction) -> None:
+    @app_commands.command(
+        name="streak",
+        description="🔥 View your task-completion streak and 365-day contribution heatmap",
+    )
+    @app_commands.describe(heatmap="สร้างและส่งภาพกราฟิก 365-Day Contribution Heatmap / Generate 365-day heatmap image")
+    async def streak(self, interaction: discord.Interaction, heatmap: bool = False) -> None:
         user_id = str(interaction.user.id)
         lang = await get_user_lang(user_id)
         summary = await service.get_habit_summary(user_id)
-        await interaction.response.send_message(
-            t("habit_streak_value", lang, streak_days=summary["streak_days"]),
-            ephemeral=True,
+        streak_days = summary.get("streak_days", 0)
+
+        activity_7d = await viz_service.get_user_7day_activity(user_id)
+        sparkline = render_block_sparkline(activity_7d) or "       "
+        wave = render_braille_wave(count=6)
+
+        if not heatmap:
+            embed = discord.Embed(
+                title=f"🔥 Task Completion Streak: {streak_days} Days",
+                description=(
+                    f"**Current Streak:** {streak_days} days {wave}\n"
+                    f"**7-Day Trend:** `{sparkline}`\n\n"
+                    f"💡 *ใช้ `/streak heatmap:True` เพื่อดูภาพตาราง 365-Day Heatmap ฉบับเต็ม!*"
+                ),
+                color=0xF1C40F,
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        counts = await viz_service.get_user_365_day_completions(user_id)
+        buf = render_streak_heatmap(
+            completion_counts=counts,
+            title="365-Day Contribution Heatmap",
+            username=interaction.user.display_name,
+            streak_days=streak_days,
+            longest_streak=max(streak_days, summary.get("longest_streak", streak_days)),
         )
+        file = discord.File(fp=buf, filename="streak_heatmap.png")
+        embed = discord.Embed(
+            title=f"🔥 365-Day Contribution Heatmap — {interaction.user.display_name}",
+            description=f"**Current Streak:** {streak_days} days · **7-Day Trend:** `{sparkline}`",
+            color=0x2ECC71,
+        )
+        embed.set_image(url="attachment://streak_heatmap.png")
+        await interaction.followup.send(embed=embed, file=file, ephemeral=True)
 
     @app_commands.command(name="habits", description="📊 View your task habits and achievements")
     async def habits(self, interaction: discord.Interaction) -> None:

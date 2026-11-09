@@ -1082,4 +1082,13 @@ STRINGS = {
     'sla_status_title': '📊 SLA 규정 준수 대시보드',
     'sla_early_warning': '⏳ 조기 경고: 작업 #{task_id}이(가) SLA의 {pct}%를 소비했습니다.',
     'sla_breach_alert': '🚨 SLA 위반: 작업 #{task_id}의 목표 마感 기한이 초과되었습니다!',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': '365일 기여 히트맵',
+    'viz_burndown_title': '스프린트 번다운 차트',
+    'viz_cfd_title': '누적 흐름 다이어그램 (CFD)',
+    'viz_velocity_title': '애자일 속도(Velocity) 비교 차트',
+    'viz_sparkline_7day': '최근 7일 생산성 추세: {trend}',
+    'viz_focus_wave': '집중 연속성 웨이브: {wave}',
+    'viz_no_data': 'ℹ️ 시각화를 생성하기 위한 데이터가 충분하지 않습니다.',
 }

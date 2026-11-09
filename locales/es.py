@@ -1082,4 +1082,13 @@ STRINGS = {
     'sla_status_title': '📊 Panel de cumplimiento de SLA',
     'sla_early_warning': '⏳ Alerta temprana: La tarea #{task_id} ha consumido el {pct}% de su SLA.',
     'sla_breach_alert': '🚨 Incumplimiento de SLA: ¡La tarea #{task_id} ha superado su plazo!',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': 'Mapa de calor de contribución de 365 días',
+    'viz_burndown_title': 'Gráfico de Burndown del Sprint',
+    'viz_cfd_title': 'Diagrama de flujo acumulado (CFD)',
+    'viz_velocity_title': 'Gráfico comparativo de velocidad ágil',
+    'viz_sparkline_7day': 'Tendencia de productividad de 7 días: {trend}',
+    'viz_focus_wave': 'Onda de continuidad de enfoque: {wave}',
+    'viz_no_data': 'ℹ️ No hay suficientes datos para generar esta visualización.',
 }
