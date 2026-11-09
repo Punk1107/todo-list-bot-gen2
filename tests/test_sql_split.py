@@ -184,13 +184,23 @@ class TestSqlSplit(unittest.TestCase):
 
     def test_migration_v38_time_tracking_engine(self):
         """Verify Gen 5.0 Pillar 4 database schema migration (v38) parses and contains required definitions."""
-        self.assertEqual(SCHEMA_VERSION, 38)
+        self.assertGreaterEqual(SCHEMA_VERSION, 38)
         v38_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 38))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS active_time_timers" in s for s in v38_stmts))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS user_workload_capacities" in s for s in v38_stmts))
         self.assertTrue(any("budget NUMERIC" in s for s in v38_stmts))
         self.assertTrue(any("currency TEXT" in s for s in v38_stmts))
         self.assertTrue(any("hourly_rate NUMERIC" in s for s in v38_stmts))
+
+    def test_migration_v39_automations_sla(self):
+        """Verify Gen 5.0 Pillar 5 database schema migration (v39) parses and contains required definitions."""
+        self.assertEqual(SCHEMA_VERSION, 39)
+        v39_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 39))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_escalations" in s for s in v39_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_sla_policies" in s for s in v39_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_sla_tracking" in s for s in v39_stmts))
+        self.assertTrue(any("early_warning_sent BOOLEAN" in s for s in v39_stmts))
+        self.assertTrue(any("breached BOOLEAN" in s for s in v39_stmts))
 
 
 if __name__ == "__main__":

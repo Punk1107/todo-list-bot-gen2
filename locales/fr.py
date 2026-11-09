@@ -1077,4 +1077,16 @@ STRINGS = {
     'proj_budget_title': 'Budget du projet et suivi des coûts',
     'proj_budget_updated': 'Budget du projet {project} mis à jour à {amount} {currency}.',
     'proj_rate_updated': 'Taux horaire pour {member} fixé à {rate}/h.',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ Règle d\'automatisation **{name}** (ID : `#{rule_id}`) créée avec succès !',
+    'auto_rule_deleted': '🗑️ Règle d\'automatisation `#{rule_id}` supprimée avec succès.',
+    'auto_rule_toggled': '🔄 Statut de la règle d\'automatisation `#{rule_id}` modifié en **{status}**.',
+    'auto_rule_list_title': '⚡ Règles d\'automatisation No-Code ECA',
+    'auto_escalation_set': '⚙️ Politique d\'escalade configurée pour le projet #{project_id} (Responsable : {lead}).',
+    'auto_escalation_status': '🚨 Rapport d\'état des tâches escaladées',
+    'sla_config_updated': '⚙️ Politique SLA pour le projet **{project_name}** mise à jour avec succès.',
+    'sla_status_title': '📊 Tableau de bord de conformité SLA',
+    'sla_early_warning': '⏳ Alerte précoce : La tâche #{task_id} a consommé {pct}% de son SLA.',
+    'sla_breach_alert': '🚨 Violation de SLA : La tâche #{task_id} a dépassé son échéance !',
 }

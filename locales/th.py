@@ -1147,4 +1147,16 @@ STRINGS = {
     'proj_budget_title': 'การติดตามงบประมาณและต้นทุนโครงการ',
     'proj_budget_updated': 'อัปเดตงบประมาณโครงการ {project} เป็น {amount} {currency} เรียบร้อยแล้ว',
     'proj_rate_updated': 'กำหนดอัตราค่าจ้างรายชั่วโมงของ {member} เป็น {rate}/ชม. เรียบร้อยแล้ว',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ สร้างกฎอัตโนมัติ **{name}** (ID: `#{rule_id}`) สำเร็จเรียบร้อยแล้ว!',
+    'auto_rule_deleted': '🗑️ ลบกฎอัตโนมัติ Rule `#{rule_id}` เรียบร้อยแล้ว',
+    'auto_rule_toggled': '🔄 เปลี่ยนสถานะกฎอัตโนมัติ `#{rule_id}` เป็น **{status}** เรียบร้อยแล้ว',
+    'auto_rule_list_title': '⚡ กฎอัตโนมัติ No-Code ECA',
+    'auto_escalation_set': '⚙️ ตั้งค่านโยบาย Escalation สำหรับโปรเจกต์ #{project_id} เรียบร้อยแล้ว (ทีมลีด: {lead})',
+    'auto_escalation_status': '🚨 รายงานสถานะงานที่ถูกยกระดับการแจ้งเตือน (Escalation Status)',
+    'sla_config_updated': '⚙️ อัปเดตข้อตกลงระดับการให้บริการ (SLA) ของโปรเจกต์ **{project_name}** สำเร็จแล้ว',
+    'sla_status_title': '📊 แดชบอร์ดความสอดคล้องตามข้อตกลง SLA',
+    'sla_early_warning': '⏳ แจ้งเตือนล่วงหน้า: งาน #{task_id} ใช้เวลา SLA ไปแล้ว {pct}%',
+    'sla_breach_alert': '🚨 ผิดข้อตกลง SLA: งาน #{task_id} เกินกำหนดเวลาส่งมอบแล้ว!',
 }

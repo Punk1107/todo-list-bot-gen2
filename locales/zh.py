@@ -1071,4 +1071,16 @@ STRINGS = {
     'proj_budget_title': '项目预算与成本追踪',
     'proj_budget_updated': '项目 {project} 的预算已更新为 {amount} {currency}。',
     'proj_rate_updated': '{member} 的小时费率已设置为 {rate}/小时。',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ 自动化规则 **{name}** (ID: `#{rule_id}`) 创建成功！',
+    'auto_rule_deleted': '🗑️ 自动化规则 `#{rule_id}` 已成功删除。',
+    'auto_rule_toggled': '🔄 自动化规则 `#{rule_id}` 状态已更改为 **{status}**。',
+    'auto_rule_list_title': '⚡ 无代码 ECA 自动化规则',
+    'auto_escalation_set': '⚙️ 已为项目 #{project_id} 配置升级策略（负责人：{lead}）。',
+    'auto_escalation_status': '🚨 升级任务状态报告',
+    'sla_config_updated': '⚙️ 项目 **{project_name}** 的SLA策略已成功更新。',
+    'sla_status_title': '📊 SLA 合规仪表板',
+    'sla_early_warning': '⏳ 早期预警：任务 #{task_id} 已消耗其SLA的 {pct}%。',
+    'sla_breach_alert': '🚨 SLA 违约：任务 #{task_id} 已超出目标截止期限！',
 }
