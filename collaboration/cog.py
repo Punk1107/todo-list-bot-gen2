@@ -87,6 +87,11 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         name="project",
         description="🤝 ระบบโปรเจกต์ร่วมกัน / Shared project collaboration",
     )
+    budget_group = app_commands.Group(
+        name="budget",
+        description="💰 Project budget, hourly rates, and cost tracking",
+        parent=project,
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # /project create
@@ -1216,6 +1221,165 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             tag_count=len(tag_map),
         )
         await interaction.followup.send(msg, ephemeral=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project budget (view, set, rate)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @budget_group.command(
+        name="view",
+        description="📊 ดูรายงานงบประมาณและค่าใช้จ่ายของโครงการ / View project budget report",
+    )
+    @app_commands.describe(project_id="Project ID number")
+    @rate_limit_check("command")
+    async def budget_view(self, interaction: discord.Interaction, project_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+
+        from time_tracking import service as tt_service
+        from time_tracking.views import build_budget_embed
+
+        metric = await tt_service.calculate_project_budget_spent(project_id)
+        if not metric:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        embed = build_budget_embed(metric, lang=lang)
+        await interaction.response.send_message(embed=embed)
+
+    @budget_group.command(
+        name="set",
+        description="💵 กำหนดงบประมาณรวมของโครงการ / Set total project budget",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        amount="Total budget amount",
+        currency="Currency code (default: THB)",
+    )
+    @rate_limit_check("command")
+    async def budget_set(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        amount: float,
+        currency: Optional[str] = "THB",
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+
+        is_admin = _is_admin(interaction)
+        project = await service.get_project(project_id, str(interaction.guild.id))
+        await service.require_role(project, uid, "lead", is_admin)
+
+        from time_tracking import service as tt_service
+
+        curr = currency or "THB"
+        await tt_service.set_project_budget(project_id, amount, curr)
+        await interaction.response.send_message(
+            f"✅ {t('proj_budget_updated', lang, project=project.name, amount=f'{amount:,.2f}', currency=curr)}",
+        )
+
+    @budget_group.command(
+        name="rate",
+        description="💼 กำหนดอัตราค่าจ้างรายชั่วโมงของสมาชิก / Set member's hourly billing rate",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        member="Team member to set rate for",
+        hourly_rate="Hourly billing rate",
+    )
+    @rate_limit_check("command")
+    async def budget_rate(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        member: discord.Member,
+        hourly_rate: float,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+
+        is_admin = _is_admin(interaction)
+        project = await service.get_project(project_id, str(interaction.guild.id))
+        await service.require_role(project, uid, "lead", is_admin)
+
+        from time_tracking import service as tt_service
+
+        await tt_service.set_member_rate(project_id, str(member.id), hourly_rate)
+        await interaction.response.send_message(
+            f"✅ {t('proj_rate_updated', lang, member=member.display_name, rate=f'{hourly_rate:,.2f}')}",
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project assign (with Burnout Shield)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="assign",
+        description="👥 มอบหมายงานให้สมาชิกในทีม / Assign task to a member with Burnout Shield",
+    )
+    @app_commands.describe(
+        task_id="Task ID number to assign",
+        member="Team member to assign the task to",
+        project_id="Optional Project ID (auto-detected if omitted)",
+    )
+    @rate_limit_check("command")
+    async def project_assign(
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+        member: discord.Member,
+        project_id: Optional[int] = None,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+
+        guild = interaction.guild
+        if not guild:
+            return
+
+        pid = project_id
+        if pid is None:
+            # Auto-detect project_id from tasks table
+            t_row = await service.db.fetchone(
+                "SELECT project_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+                (task_id,),
+            )
+            if not t_row or not t_row["project_id"]:
+                await interaction.response.send_message(f"❌ Task `#{task_id}` does not belong to a project.", ephemeral=True)
+                return
+            pid = int(t_row["project_id"])
+
+        is_admin = _is_admin(interaction)
+        task = await service.assign_task(
+            task_id=task_id,
+            project_id=pid,
+            guild_id=str(guild.id),
+            assignee_id=str(member.id),
+            actor_id=uid,
+            is_guild_admin=is_admin,
+        )
+
+        response_text = f"✅ Assigned task **#{task_id}: {task.task[:60]}** to {member.mention}."
+        if task.burnout_warning:
+            bw = task.burnout_warning
+            pct_val = f"{bw['workload_pct']:.0f}"
+            burnout_text = t("workload_burnout_warning", lang, member=member.display_name, pct=pct_val)
+            response_text += f"\n\n⚠️ **{burnout_text}**"
+
+        await interaction.response.send_message(response_text)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,12 +56,28 @@ class Project:
     priority:    int = 0
     manual_progress: Optional[int] = None
     notification_channel_id: Optional[int] = None
+    budget: float = 0.0
+    currency: str = "THB"
 
     @classmethod
     def from_record(cls, row) -> "Project":
         priority = 0
         manual_progress = None
         notification_channel_id = None
+        budget = 0.0
+        currency = "THB"
+        try:
+            val = row["budget"]
+            if val is not None:
+                budget = float(val)
+        except (KeyError, TypeError, IndexError):
+            pass
+        try:
+            val = row["currency"]
+            if val is not None:
+                currency = str(val)
+        except (KeyError, TypeError, IndexError):
+            pass
         try:
             val = row["priority"]
             if val is not None:
@@ -97,6 +113,8 @@ class Project:
             priority        = priority,
             manual_progress = manual_progress,
             notification_channel_id = notification_channel_id,
+            budget          = budget,
+            currency        = currency,
         )
 
     @property
@@ -119,14 +137,23 @@ class ProjectMember:
     user_id:    str
     role:       str   # ProjectRole value
     joined_at:  datetime
+    hourly_rate: float = 0.0
 
     @classmethod
     def from_record(cls, row) -> "ProjectMember":
+        rate = 0.0
+        try:
+            val = row["hourly_rate"]
+            if val is not None:
+                rate = float(val)
+        except (KeyError, TypeError, IndexError):
+            pass
         return cls(
-            project_id = row["project_id"],
-            user_id    = row["user_id"],
-            role       = row["role"],
-            joined_at  = row["joined_at"],
+            project_id  = row["project_id"],
+            user_id     = row["user_id"],
+            role        = row["role"],
+            joined_at   = row["joined_at"],
+            hourly_rate = rate,
         )
 
     @property
@@ -154,6 +181,7 @@ class ProjectTask:
     assignees:   list[str] = field(default_factory=list)
     assigned_roles: list[int] = field(default_factory=list)
     blocked_by: list[tuple[int, str, str]] = field(default_factory=list)
+    burnout_warning: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_record(

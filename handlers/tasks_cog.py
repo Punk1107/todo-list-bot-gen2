@@ -671,7 +671,12 @@ class TasksCog(commands.Cog, name="Tasks"):
     # /stats
     # ─────────────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="stats", description="📊 สถิติของคุณ / Your task statistics")
+    stats_group = app_commands.Group(
+        name="stats",
+        description="📊 สถิติและการวิเคราะห์ / Task statistics & analytics",
+    )
+
+    @stats_group.command(name="overview", description="📊 สถิติของคุณ / Your task statistics")
     @rate_limit_check("command")
     async def stats(self, interaction: discord.Interaction) -> None:
         uid  = str(interaction.user.id)
@@ -681,6 +686,32 @@ class TasksCog(commands.Cog, name="Tasks"):
         stats = await db.user_task_stats(uid)
         avatar_url = interaction.user.display_avatar.url if interaction.user.display_avatar else None
         embed = build_stats_embed(stats, lang, interaction.user.display_name, avatar_url=avatar_url)
+        await interaction.response.send_message(embed=embed)
+
+    @stats_group.command(
+        name="estimation",
+        description="🎯 วิเคราะห์ความแม่นยำในการประเมินเวลา / Estimation Accuracy & Variance",
+    )
+    @app_commands.describe(
+        project_id="Optional project ID to filter analytics",
+        member="Optional team member to filter analytics",
+    )
+    @rate_limit_check("command")
+    async def stats_estimation(
+        self,
+        interaction: discord.Interaction,
+        project_id: Optional[int] = None,
+        member: Optional[discord.Member] = None,
+    ) -> None:
+        from time_tracking import service as tt_service
+        from time_tracking.views import build_estimation_analytics_embed
+
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        target_uid = str(member.id) if member else None
+        scope_title = f"Project #{project_id}" if project_id else (f"Member: {member.display_name}" if member else "All Guild Tasks")
+        data = await tt_service.calculate_estimation_accuracy(project_id=project_id, user_id=target_uid)
+        embed = build_estimation_analytics_embed(data, scope_title=scope_title, lang=lang)
         await interaction.response.send_message(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────

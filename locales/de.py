@@ -1106,4 +1106,19 @@ STRINGS = {
     'standup_config_saved': '⏰ Tägliches Standup für **{time}** in {channel} geplant.',
     'standup_submitted_success': '✅ Tägliches Standup erfolgreich übermittelt!',
     'standup_no_entries': '📭 Heute wurden noch keine Standup-Einträge eingereicht.',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': 'Arbeitszeit erfolgreich erfasst!',
+    'time_timer_started': 'Stoppuhr gestartet!',
+    'time_timer_stopped': 'Stoppuhr angehalten und Zeit erfasst!',
+    'time_timer_already_running': 'Sie haben bereits einen aktiven Timer laufen!',
+    'time_timer_none': 'Sie haben keinen aktiven Timer laufen.',
+    'time_timesheet_title': 'Stundenzettel-Übersicht',
+    'stats_estimation_title': 'Zeitschätzungsgenauigkeit & Varianz',
+    'workload_capacity_title': 'Team-Arbeitsbelastungskapazität & Burnout-Schutz',
+    'workload_capacity_set': 'Wöchentliche Kapazität auf {hours} Stunden aktualisiert.',
+    'workload_burnout_warning': 'Warnung vor Überlastung: {member} liegt bei {pct}% wöchentlicher Kapazität! Zuweisung kann zu Verzögerungen führen.',
+    'proj_budget_title': 'Projektbudget & Kostenverfolgung',
+    'proj_budget_updated': 'Projektbudget für {project} auf {amount} {currency} aktualisiert.',
+    'proj_rate_updated': 'Stundensatz für {member} auf {rate}/Std. festgelegt.',
 }

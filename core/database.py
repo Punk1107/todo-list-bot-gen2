@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 37   # bump when adding migrations below
+SCHEMA_VERSION = 38   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,6 +191,7 @@ _KNOWN_TABLES = {
     "sprint_retros", "tasks_archive",
     "voice_focus_rooms", "user_chime_settings", "project_scheduled_events",
     "project_forum_configs", "task_forum_posts", "standup_configs", "daily_standups",
+    "active_time_timers", "user_workload_capacities",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1360,6 +1361,28 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_standup_guild_date ON daily_standups(guild_id, standup_date);
 
     INSERT INTO schema_version VALUES (37) ON CONFLICT (version) DO UPDATE SET version=37;
+    """),
+    (38, """
+    -- Migration 38: Time Tracking, Capacity & Estimation Engine
+    CREATE TABLE IF NOT EXISTS active_time_timers (
+        user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+        task_id INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_active_timers_task ON active_time_timers(task_id);
+
+    CREATE TABLE IF NOT EXISTS user_workload_capacities (
+        user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+        weekly_capacity_hours NUMERIC(5, 2) NOT NULL DEFAULT 40.0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS budget NUMERIC(12, 2) DEFAULT 0.0;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'THB';
+    ALTER TABLE project_members ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10, 2) NOT NULL DEFAULT 0.0;
+
+    INSERT INTO schema_version VALUES (38) ON CONFLICT (version) DO UPDATE SET version=38;
     """),
 ]
 

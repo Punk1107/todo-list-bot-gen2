@@ -1056,4 +1056,19 @@ STRINGS = {
     'standup_config_saved': '⏰ 毎日のスタンドアップを {channel} で **{time}** にスケジュールしました。',
     'standup_submitted_success': '✅ 毎日のスタンドアップを送信しました！今日も頑張りましょう！',
     'standup_no_entries': '📭 今日のスタンドアップはまだ提出されていません。',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': '作業時間を記録しました！',
+    'time_timer_started': 'ストップウォッチを開始しました！',
+    'time_timer_stopped': 'タイマーを停止し、作業時間を記録しました！',
+    'time_timer_already_running': '既に実行中のタイマーがあります！',
+    'time_timer_none': '実行中のタイマーはありません。',
+    'time_timesheet_title': 'タイムシート概要',
+    'stats_estimation_title': '時間見積もりの精度と乖離分析',
+    'workload_capacity_title': 'チーム作業負荷キャパシティ＆バーンアウト防止',
+    'workload_capacity_set': '週間の稼働可能時間を {hours} 時間に設定しました。',
+    'workload_burnout_warning': '過負荷警告: {member} の今週の負荷は {pct}% に達しています！さらなる割り当ては遅延や過労の原因となる可能性があります。',
+    'proj_budget_title': 'プロジェクト予算とコスト追跡',
+    'proj_budget_updated': 'プロジェクト {project} の予算を {amount} {currency} に更新しました。',
+    'proj_rate_updated': '{member} の時給レートを {rate}/時間に設定しました。',
 }
