@@ -1319,68 +1319,6 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             f"✅ {t('proj_rate_updated', lang, member=member.display_name, rate=f'{hourly_rate:,.2f}')}",
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # /project assign (with Burnout Shield)
-    # ─────────────────────────────────────────────────────────────────────────
-
-    @project.command(
-        name="assign",
-        description="👥 มอบหมายงานให้สมาชิกในทีม / Assign task to a member with Burnout Shield",
-    )
-    @app_commands.describe(
-        task_id="Task ID number to assign",
-        member="Team member to assign the task to",
-        project_id="Optional Project ID (auto-detected if omitted)",
-    )
-    @rate_limit_check("command")
-    async def project_assign(
-        self,
-        interaction: discord.Interaction,
-        task_id: int,
-        member: discord.Member,
-        project_id: Optional[int] = None,
-    ) -> None:
-        uid = str(interaction.user.id)
-        lang = await get_user_lang(uid)
-        if not await _guild_only(interaction, lang):
-            return
-        await ensure_user(uid, lang)
-
-        guild = interaction.guild
-        if not guild:
-            return
-
-        pid = project_id
-        if pid is None:
-            # Auto-detect project_id from tasks table
-            t_row = await service.db.fetchone(
-                "SELECT project_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
-                (task_id,),
-            )
-            if not t_row or not t_row["project_id"]:
-                await interaction.response.send_message(f"❌ Task `#{task_id}` does not belong to a project.", ephemeral=True)
-                return
-            pid = int(t_row["project_id"])
-
-        is_admin = _is_admin(interaction)
-        task = await service.assign_task(
-            task_id=task_id,
-            project_id=pid,
-            guild_id=str(guild.id),
-            assignee_id=str(member.id),
-            actor_id=uid,
-            is_guild_admin=is_admin,
-        )
-
-        response_text = f"✅ Assigned task **#{task_id}: {task.task[:60]}** to {member.mention}."
-        if task.burnout_warning:
-            bw = task.burnout_warning
-            pct_val = f"{bw['workload_pct']:.0f}"
-            burnout_text = t("workload_burnout_warning", lang, member=member.display_name, pct=pct_val)
-            response_text += f"\n\n⚠️ **{burnout_text}**"
-
-        await interaction.response.send_message(response_text)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(CollaborationCog(bot))
