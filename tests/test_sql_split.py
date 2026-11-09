@@ -194,13 +194,21 @@ class TestSqlSplit(unittest.TestCase):
 
     def test_migration_v39_automations_sla(self):
         """Verify Gen 5.0 Pillar 5 database schema migration (v39) parses and contains required definitions."""
-        self.assertEqual(SCHEMA_VERSION, 39)
+        self.assertGreaterEqual(SCHEMA_VERSION, 39)
         v39_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 39))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_escalations" in s for s in v39_stmts))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_sla_policies" in s for s in v39_stmts))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_sla_tracking" in s for s in v39_stmts))
         self.assertTrue(any("early_warning_sent BOOLEAN" in s for s in v39_stmts))
         self.assertTrue(any("breached BOOLEAN" in s for s in v39_stmts))
+
+    def test_migration_v40_trgm_index(self):
+        """Verify Gen 5.0 Pillar 7 database schema migration (v40) parses and contains required definitions."""
+        self.assertGreaterEqual(SCHEMA_VERSION, 40)
+        v40_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 40))
+        self.assertTrue(any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in s for s in v40_stmts))
+        self.assertTrue(any("idx_tasks_task_trgm" in s for s in v40_stmts))
+
 
 
 if __name__ == "__main__":

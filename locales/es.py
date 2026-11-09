@@ -1091,4 +1091,16 @@ STRINGS = {
     'viz_sparkline_7day': 'Tendencia de productividad de 7 días: {trend}',
     'viz_focus_wave': 'Onda de continuidad de enfoque: {wave}',
     'viz_no_data': 'ℹ️ No hay suficientes datos para generar esta visualización.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 Plan Diario Inteligente & Bloques de Tiempo — {work_date}',
+    'dayplan_desc': '🕒 Horario de trabajo: **{start_time} - {end_time}**\n🎯 Tiempo de enfoque: **{focus_hours}h {focus_mins}m**\n☕ Pausas ergonómicas: **{break_hours}h {break_mins}m**\n📋 Tareas programadas: **{tasks_count} tareas**',
+    'dayplan_morning_field': '🌅 Sesión de la Mañana',
+    'dayplan_afternoon_field': '🌇 Sesión de la Tarde',
+    'dayplan_footer': '💡 Consejo: 45m de enfoque + 15m de descanso maximiza el rendimiento y previene el cansancio visual.',
+    'dayplan_start_btn': '▶️ Iniciar Plan Diario',
+    'dayplan_started_msg': '⏱️ ¡Cronómetro iniciado para la tarea #{task_id} **{task_title}**! ¡A enfocarse!',
+    'dayplan_no_tasks': '📭 No hay tareas urgentes ni importantes para hoy. ¡Disfruta de tu tiempo libre de enfoque!',
+    'dedup_warning_msg': '💡 Posible tarea duplicada detectada ({pct}% coincidencia): Tarea #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 Resultados de Búsqueda Booleana: **{query}** ({total} encontrados)',
 }

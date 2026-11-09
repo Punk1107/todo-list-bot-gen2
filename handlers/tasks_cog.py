@@ -37,6 +37,7 @@ from handlers.task_views import (
 )
 from recurrence.rules import validate_rule
 from gamification import service as gamification_service
+from heuristics.dedup import find_potential_duplicate
 
 log = logging.getLogger(__name__)
 
@@ -281,6 +282,24 @@ class TasksCog(commands.Cog, name="Tasks"):
 
             full_row = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1", (task_id,))
             embed = build_task_embed(full_row, lang, tz_name)
+
+            # Check potential duplicate task (>= 80% similarity)
+            dup = await find_potential_duplicate(
+                task_name=task_name,
+                owner_id=uid,
+                guild_id=str(interaction.guild_id) if interaction.guild_id else None,
+                threshold=0.80,
+            )
+            if dup and dup["task_id"] != task_id:
+                dup_msg = t(
+                    "dedup_warning_msg",
+                    lang,
+                    task_id=dup["task_id"],
+                    existing_title=dup["task"],
+                    pct=dup["similarity_pct"],
+                )
+                embed.add_field(name="💡 Potential Duplicate Task Warning", value=dup_msg, inline=False)
+
             view  = TaskActionView(task_id, uid, lang, current_priority=prio)
             tl    = time_left_str(dt.isoformat())
             await interaction.followup.send(

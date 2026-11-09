@@ -1098,4 +1098,16 @@ STRINGS = {
     'viz_sparkline_7day': 'Тренд продуктивности за 7 дней: {trend}',
     'viz_focus_wave': 'Волна непрерывности фокуса: {wave}',
     'viz_no_data': 'ℹ️ Недостаточно данных для построения графика.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 Умное расписание на день и тайм-блоки — {work_date}',
+    'dayplan_desc': '🕒 Рабочее окно: **{start_time} - {end_time}**\n🎯 Время фокуса: **{focus_hours}ч {focus_mins}м**\n☕ Эргономичные перерывы: **{break_hours}ч {break_mins}м**\n📋 Запланировано задач: **{tasks_count}**',
+    'dayplan_morning_field': '🌅 Утренняя сессия',
+    'dayplan_afternoon_field': '🌇 Дневная сессия',
+    'dayplan_footer': '💡 Совет: 45 мин фокуса + 15 мин отдыха продлевают продуктивность и защищают зрение.',
+    'dayplan_start_btn': '▶️ Начать план на день',
+    'dayplan_started_msg': '⏱️ Запущен таймер для задачи #{task_id} **{task_title}**! За работу!',
+    'dayplan_no_tasks': '📭 На сегодня нет срочных или важных задач. Проведите время продуктивно!',
+    'dedup_warning_msg': '💡 Возможно, эта задача уже существует ({pct}% сходства): Задача #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 Результаты булевого поиска: **{query}** (найдено: {total})',
 }
