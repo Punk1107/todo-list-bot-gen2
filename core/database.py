@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 40   # bump when adding migrations below
+SCHEMA_VERSION = 41   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1431,6 +1431,12 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_tasks_task_trgm ON tasks USING gin (task gin_trgm_ops);
 
     INSERT INTO schema_version VALUES (40) ON CONFLICT (version) DO UPDATE SET version=40;
+    """),
+    (41, """
+    -- Migration 41: Automated Escalations Project Lead Support
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS lead_id TEXT;
+
+    INSERT INTO schema_version VALUES (41) ON CONFLICT (version) DO UPDATE SET version=41;
     """),
 ]
 

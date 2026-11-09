@@ -195,6 +195,48 @@ async def test_check_and_escalate_tasks_level1_and_level2():
         assert mock_channel.send.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_check_and_escalate_tasks_fallback_without_lead_id_column():
+    """Verify fallback query runs seamlessly if column p.lead_id does not exist."""
+    now_utc = datetime.now(timezone.utc)
+    created_14h_ago = now_utc - timedelta(hours=14)
+
+    fake_tasks = [
+        {
+            "task_id": 201,
+            "task": "Database Slow Query",
+            "priority": 6,
+            "guild_id": "G1",
+            "project_id": 2,
+            "created_at": created_14h_ago,
+            "project_name": "Core Backend",
+            "channel_id": "999",
+            "owner_id": "701",
+            "lead_id": "701",
+            "escalation_level": 0,
+            "level1_escalated_at": None,
+            "level2_escalated_at": None,
+        }
+    ]
+
+    bot = MagicMock()
+    mock_channel = AsyncMock()
+    bot.get_channel.return_value = mock_channel
+
+    side_effects = [
+        Exception("column p.lead_id does not exist"),
+        fake_tasks,
+    ]
+
+    with patch("core.database.db.fetchall", side_effect=side_effects) as mock_fetch, \
+         patch("core.database.db.execute", new_callable=AsyncMock) as mock_exec:
+        escalated = await engine.check_and_escalate_tasks(bot)
+        assert len(escalated) == 1
+        assert escalated[0]["task_id"] == 201
+        assert mock_fetch.call_count == 2
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Feature 23: SLA Monitoring & Breach Warning Tests
 # ─────────────────────────────────────────────────────────────────────────────

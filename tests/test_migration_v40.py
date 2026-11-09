@@ -17,15 +17,15 @@ from core.database import (
 
 
 def test_schema_version_is_40():
-    """Verify that current schema version constant is set to 40."""
-    assert SCHEMA_VERSION == 40
+    """Verify that current schema version constant is at least 40."""
+    assert SCHEMA_VERSION >= 40
 
 
 def test_migrations_continuity_v1_to_v40():
-    """Verify migrations list contains all versions from 1 to 40 monotonically without gaps."""
+    """Verify migrations list contains all versions from 1 monotonically without gaps."""
     versions = [v for v, _ in MIGRATIONS]
-    expected_versions = list(range(1, 41))
-    assert versions == expected_versions, f"Migration versions gap or mismatch: {versions}"
+    assert 40 in versions
+    assert versions == list(range(1, len(versions) + 1))
 
 
 def test_v40_migration_splits_cleanly():

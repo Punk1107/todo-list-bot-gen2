@@ -209,6 +209,13 @@ class TestSqlSplit(unittest.TestCase):
         self.assertTrue(any("CREATE EXTENSION IF NOT EXISTS pg_trgm" in s for s in v40_stmts))
         self.assertTrue(any("idx_tasks_task_trgm" in s for s in v40_stmts))
 
+    def test_migration_v41_lead_id(self):
+        """Verify database schema migration (v41) parses and contains lead_id definition."""
+        self.assertGreaterEqual(SCHEMA_VERSION, 41)
+        v41_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 41))
+        self.assertTrue(any("ALTER TABLE projects ADD COLUMN IF NOT EXISTS lead_id TEXT" in s for s in v41_stmts))
+
+
 
 
 if __name__ == "__main__":
