@@ -1071,4 +1071,16 @@ STRINGS = {
     'proj_budget_title': 'プロジェクト予算とコスト追跡',
     'proj_budget_updated': 'プロジェクト {project} の予算を {amount} {currency} に更新しました。',
     'proj_rate_updated': '{member} の時給レートを {rate}/時間に設定しました。',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ 自動化ルール **{name}** (ID: `#{rule_id}`) が正常に作成されました！',
+    'auto_rule_deleted': '🗑️ 自動化ルール `#{rule_id}` を削除しました。',
+    'auto_rule_toggled': '🔄 自動化ルール `#{rule_id}` の状態を **{status}** に変更しました。',
+    'auto_rule_list_title': '⚡ ノーコード ECA 自動化ルール',
+    'auto_escalation_set': '⚙️ プロジェクト #{project_id} のエスカレーションポリシーを設定しました (リード: {lead})。',
+    'auto_escalation_status': '🚨 エスカレーションされたタスクのステータスレポート',
+    'sla_config_updated': '⚙️ プロジェクト **{project_name}** のSLAポリシーが正常に更新されました。',
+    'sla_status_title': '📊 SLA コンプライアンス ダッシュボード',
+    'sla_early_warning': '⏳ 早期警告: タスク #{task_id} はSLAの {pct}% を消費しました。',
+    'sla_breach_alert': '🚨 SLA 違反: タスク #{task_id} が目標期限を超過しました！',
 }

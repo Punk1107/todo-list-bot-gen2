@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 38   # bump when adding migrations below
+SCHEMA_VERSION = 39   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +192,7 @@ _KNOWN_TABLES = {
     "voice_focus_rooms", "user_chime_settings", "project_scheduled_events",
     "project_forum_configs", "task_forum_posts", "standup_configs", "daily_standups",
     "active_time_timers", "user_workload_capacities",
+    "task_escalations", "project_sla_policies", "task_sla_tracking",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1383,6 +1384,39 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE project_members ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10, 2) NOT NULL DEFAULT 0.0;
 
     INSERT INTO schema_version VALUES (38) ON CONFLICT (version) DO UPDATE SET version=38;
+    """),
+    (39, """
+    -- Migration 39: Advanced Native Workflow Engine & Automations
+    CREATE TABLE IF NOT EXISTS task_escalations (
+        task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+        escalation_level INTEGER NOT NULL DEFAULT 0,
+        level1_escalated_at TIMESTAMPTZ,
+        level2_escalated_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_escalations_level ON task_escalations(escalation_level);
+
+    CREATE TABLE IF NOT EXISTS project_sla_policies (
+        project_id INTEGER PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,
+        guild_id TEXT NOT NULL,
+        p7_hours NUMERIC(5, 2) NOT NULL DEFAULT 2.0,
+        p6_hours NUMERIC(5, 2) NOT NULL DEFAULT 8.0,
+        p5_hours NUMERIC(5, 2) NOT NULL DEFAULT 24.0,
+        p4_hours NUMERIC(5, 2) NOT NULL DEFAULT 48.0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS task_sla_tracking (
+        task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        target_deadline TIMESTAMPTZ NOT NULL,
+        early_warning_sent BOOLEAN NOT NULL DEFAULT FALSE,
+        breached BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_sla_deadline ON task_sla_tracking(target_deadline, breached);
+
+    INSERT INTO schema_version VALUES (39) ON CONFLICT (version) DO UPDATE SET version=39;
     """),
 ]
 

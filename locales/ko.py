@@ -1070,4 +1070,16 @@ STRINGS = {
     'proj_budget_title': '프로젝트 예산 및 비용 추적',
     'proj_budget_updated': '프로젝트 {project}의 예산이 {amount} {currency}(으)로 업데이트되었습니다.',
     'proj_rate_updated': '{member}님의 시간당 요율이 {rate}/시간으로 설정되었습니다.',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ 자동화 규칙 **{name}**(ID: `#{rule_id}`)이(가) 성공적으로 생성되었습니다!',
+    'auto_rule_deleted': '🗑️ 자동화 규칙 `#{rule_id}`이(가) 삭제되었습니다.',
+    'auto_rule_toggled': '🔄 자동화 규칙 `#{rule_id}`의 상태가 **{status}**(으)로 변경되었습니다.',
+    'auto_rule_list_title': '⚡ 노코드 ECA 자동화 규칙',
+    'auto_escalation_set': '⚙️ 프로젝트 #{project_id}의 에스컬레이션 정책이 설정되었습니다 (리드: {lead}).',
+    'auto_escalation_status': '🚨 에스컬레이션된 작업 상태 보고서',
+    'sla_config_updated': '⚙️ 프로젝트 **{project_name}**의 SLA 정책이 성공적으로 업데이트되었습니다.',
+    'sla_status_title': '📊 SLA 규정 준수 대시보드',
+    'sla_early_warning': '⏳ 조기 경고: 작업 #{task_id}이(가) SLA의 {pct}%를 소비했습니다.',
+    'sla_breach_alert': '🚨 SLA 위반: 작업 #{task_id}의 목표 마感 기한이 초과되었습니다!',
 }

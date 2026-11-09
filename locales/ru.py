@@ -1077,4 +1077,16 @@ STRINGS = {
     'proj_budget_title': 'Бюджет проекта и учет затрат',
     'proj_budget_updated': 'Бюджет проекта {project} обновлен: {amount} {currency}.',
     'proj_rate_updated': 'Почасовая ставка для {member} установлена: {rate}/ч.',
+
+    # ─── Gen 5.0 Pillar 5: Advanced Native Workflow Engine & Automations ─────
+    'auto_rule_created': '✅ Правило автоматизации **{name}** (ID: `#{rule_id}`) успешно создано!',
+    'auto_rule_deleted': '🗑️ Правило автоматизации `#{rule_id}` успешно удалено.',
+    'auto_rule_toggled': '🔄 Статус правила автоматизации `#{rule_id}` изменён на **{status}**.',
+    'auto_rule_list_title': '⚡ No-Code ECA правила автоматизации',
+    'auto_escalation_set': '⚙️ Политика эскалации настроена для проекта #{project_id} (Лидер: {lead}).',
+    'auto_escalation_status': '🚨 Отчёт о статусе эскалированных задач',
+    'sla_config_updated': '⚙️ Политика SLA для проекта **{project_name}** успешно обновлена.',
+    'sla_status_title': '📊 Панель соответствия SLA',
+    'sla_early_warning': '⏳ Раннее предупреждение: Задача #{task_id} израсходовала {pct}% своего SLA.',
+    'sla_breach_alert': '🚨 Нарушение SLA: Задача #{task_id} превысила целевой срок!',
 }

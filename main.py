@@ -79,6 +79,7 @@ COGS = [
     "discord_native.reaction_cog",          # One-Click Reaction Task Capture & Quick Complete (Gen 5.0)
     "standup.cog",                          # /standup — Asynchronous Daily Standup & Digest (Gen 5.0)
     "time_tracking.cog",                    # /time, /workload — Time Tracking, Capacity & Estimation (Gen 5.0)
+    "automation.cog",                       # /automation, /sla — ECA Automations, Escalations & SLA (Gen 5.0)
 ]
 
 

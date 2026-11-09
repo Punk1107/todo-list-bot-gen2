@@ -9,6 +9,7 @@ from typing import Any, Optional
 import pytz
 
 from core.database import db
+from routine_workflows.dynamic_variables import resolve_template_variables
 from routine_workflows.models import (
     ChecklistItem,
     RoutineEventRule,
@@ -419,10 +420,13 @@ async def apply_template(
     guild_id: Optional[str] = None,
     project_id: Optional[int] = None,
     tz_name: str = "UTC",
+    assignee_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Instantiate a template for a user:
     - Calculates relative deadlines according to tz_name.
+    - Resolves dynamic variables: {{today}}, {{tomorrow}}, {{month_name}}, {{year}},
+      {{week_number}}, {{assignee}}, {{creator}}, {{project_name}}, {{sprint_name}}.
     - Inserts parent task, subtasks, and checklists in a single atomic transaction.
     - Returns summary dict with parent task ID and counts.
     """
@@ -436,10 +440,36 @@ async def apply_template(
         user_tz = pytz.utc
     now_local = datetime.now(user_tz)
 
+    project_name = ""
+    sprint_name = ""
+    if project_id:
+        try:
+            proj_row = await db.fetchone("SELECT name FROM projects WHERE project_id = $1", project_id)
+            if proj_row:
+                project_name = proj_row.get("name") or ""
+            sprint_row = await db.fetchone(
+                "SELECT name FROM project_sprints WHERE project_id = $1 AND status = 'Active' ORDER BY sprint_id DESC LIMIT 1",
+                project_id,
+            )
+            if sprint_row:
+                sprint_name = sprint_row.get("name") or ""
+        except Exception as e:
+            log.warning("Could not fetch project/sprint metadata for template variables: %s", e)
+
+    var_context = {
+        "user_id": user_id,
+        "assignee_id": assignee_id,
+        "project_name": project_name,
+        "sprint_name": sprint_name,
+        "now_local": now_local,
+        "tz_name": tz_name,
+    }
+
     items = tmpl.items or {}
-    parent_title = items.get("task") or tmpl.name
+    parent_title = resolve_template_variables(items.get("task") or tmpl.name, var_context, tz_name)
     parent_priority = max(0, min(7, int(items.get("priority", tmpl.priority or 0))))
-    parent_desc = items.get("description") or tmpl.description
+    parent_desc_raw = items.get("description") or tmpl.description
+    parent_desc = resolve_template_variables(parent_desc_raw, var_context, tz_name) if parent_desc_raw else None
     parent_tags = items.get("category") or tmpl.category
     parent_rel_days = int(items.get("relative_days", 3))
 
@@ -474,7 +504,7 @@ async def apply_template(
 
             # 2. Insert parent DoD checklists
             for pos, chk_title in enumerate(parent_checklists):
-                chk_clean = str(chk_title).strip()
+                chk_clean = resolve_template_variables(str(chk_title).strip(), var_context, tz_name)
                 if chk_clean:
                     await conn.execute(
                         """INSERT INTO task_checklists (task_id, title, is_done, position)
@@ -487,9 +517,10 @@ async def apply_template(
 
             # 3. Insert subtasks
             for s in subtasks:
-                s_title = s.get("task", "Subtask").strip()
+                s_title = resolve_template_variables(s.get("task", "Subtask").strip(), var_context, tz_name)
                 s_prio = max(0, min(7, int(s.get("priority", parent_priority))))
-                s_desc = s.get("description")
+                s_desc_raw = s.get("description")
+                s_desc = resolve_template_variables(s_desc_raw, var_context, tz_name) if s_desc_raw else None
                 s_rel_days = int(s.get("relative_days", 1))
                 s_dl_dt = now_local + timedelta(days=s_rel_days)
                 s_dl_iso = s_dl_dt.astimezone(timezone.utc).isoformat()
@@ -516,7 +547,7 @@ async def apply_template(
                 # Subtask DoD checklists
                 s_chks: list[str] = s.get("checklists") or []
                 for s_pos, s_chk_title in enumerate(s_chks):
-                    s_chk_clean = str(s_chk_title).strip()
+                    s_chk_clean = resolve_template_variables(str(s_chk_title).strip(), var_context, tz_name)
                     if s_chk_clean:
                         await conn.execute(
                             """INSERT INTO task_checklists (task_id, title, is_done, position)
