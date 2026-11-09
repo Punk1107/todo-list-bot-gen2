@@ -1103,7 +1103,7 @@ async def claim_task(
     if task.status == "Pending":
         wip_limit = await get_project_wip_limit(project_id, guild_id)
         if wip_limit > 0:
-            row = await db.fetch_one(
+            row = await db.fetchone(
                 "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
                 (project_id, guild_id),
             )
@@ -1158,7 +1158,7 @@ async def assign_task(
     if task.status == "Pending":
         wip_limit = await get_project_wip_limit(project_id, guild_id)
         if wip_limit > 0:
-            row = await db.fetch_one(
+            row = await db.fetchone(
                 "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
                 (project_id, guild_id),
             )

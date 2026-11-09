@@ -23,7 +23,7 @@ TAG_NAMES = {
 
 async def get_project_forum_config(project_id: int) -> Optional[Dict[str, Any]]:
     """Retrieve forum channel binding for a project."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         "SELECT * FROM project_forum_configs WHERE project_id = $1 AND is_active = TRUE",
         (project_id,),
     )
@@ -95,7 +95,7 @@ async def sync_task_to_forum(
     if not isinstance(forum_channel, discord.ForumChannel):
         return None
 
-    task_row = await db.fetch_one(
+    task_row = await db.fetchone(
         "SELECT task_id, task, status, priority, description, deadline FROM tasks WHERE task_id = $1",
         (task_id,),
     )
@@ -115,7 +115,7 @@ async def sync_task_to_forum(
         applied_tags.append(tag_map["Critical"])
 
     # Check existing post mapping
-    post_row = await db.fetch_one(
+    post_row = await db.fetchone(
         "SELECT thread_id FROM task_forum_posts WHERE task_id = $1",
         (task_id,),
     )

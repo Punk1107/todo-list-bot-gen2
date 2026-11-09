@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 async def get_project_synced_events(project_id: int) -> List[Dict[str, Any]]:
     """Retrieve all synced event mappings for a project."""
-    rows = await db.fetch_all(
+    rows = await db.fetchall(
         "SELECT * FROM project_scheduled_events WHERE project_id = $1",
         (project_id,),
     )
@@ -57,7 +57,7 @@ async def sync_project_events(
     updated_count = 0
 
     # 1. Fetch project details
-    proj_row = await db.fetch_one(
+    proj_row = await db.fetchone(
         "SELECT project_id, name, emoji FROM projects WHERE project_id = $1 AND guild_id = $2",
         (project_id, str(guild.id)),
     )
@@ -76,7 +76,7 @@ async def sync_project_events(
     }
 
     # 3. Fetch Milestones
-    milestone_rows = await db.fetch_all(
+    milestone_rows = await db.fetchall(
         """
         SELECT milestone_id, title, target_date
         FROM project_milestones
@@ -130,7 +130,7 @@ async def sync_project_events(
                 log.warning("Could not create scheduled event for milestone %s: %s", mid, exc)
 
     # 4. Fetch Critical Tasks (P6 / P7)
-    task_rows = await db.fetch_all(
+    task_rows = await db.fetchall(
         """
         SELECT task_id, task, priority, deadline
         FROM tasks

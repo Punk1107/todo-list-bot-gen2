@@ -463,7 +463,7 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        row = await db.fetch_one(
+        row = await db.fetchone(
             "SELECT task_id, task, project_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
             (task_id,),
         )

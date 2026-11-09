@@ -24,7 +24,7 @@ async def bind_voice_room(
     break_minutes: int = 5,
 ) -> Dict[str, Any]:
     """Bind a Discord voice channel to the Pomodoro Virtual Focus Room system."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         """
         INSERT INTO voice_focus_rooms
             (guild_id, channel_id, bound_by, is_active, work_minutes, break_minutes, current_phase, current_round)
@@ -56,7 +56,7 @@ async def unbind_voice_room(channel_id: str) -> bool:
 
 async def get_voice_room(channel_id: str) -> Optional[Dict[str, Any]]:
     """Fetch active configuration for a voice focus room."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         "SELECT * FROM voice_focus_rooms WHERE channel_id = $1 AND is_active = TRUE",
         (channel_id,),
     )
@@ -65,7 +65,7 @@ async def get_voice_room(channel_id: str) -> Optional[Dict[str, Any]]:
 
 async def get_all_active_voice_rooms() -> List[Dict[str, Any]]:
     """Fetch all active voice focus rooms across all guilds."""
-    rows = await db.fetch_all(
+    rows = await db.fetchall(
         "SELECT * FROM voice_focus_rooms WHERE is_active = TRUE"
     )
     return [dict(r) for r in rows]
@@ -104,7 +104,7 @@ async def reset_room_to_idle(channel_id: str) -> None:
 
 async def toggle_user_chime(user_id: str) -> bool:
     """Toggle user-specific chime alerts on/off."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         "SELECT chime_enabled FROM user_chime_settings WHERE user_id = $1",
         (user_id,),
     )
@@ -123,7 +123,7 @@ async def toggle_user_chime(user_id: str) -> bool:
 
 async def get_user_chime_setting(user_id: str) -> bool:
     """Check if user has chime alerts enabled (defaults to True)."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         "SELECT chime_enabled FROM user_chime_settings WHERE user_id = $1",
         (user_id,),
     )
