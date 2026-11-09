@@ -1062,4 +1062,19 @@ STRINGS = {
     'standup_config_saved': '⏰ Ежедневный стендап запланирован на **{time}** в {channel}.',
     'standup_submitted_success': '✅ Ежедневный стендап успешно отправлен!',
     'standup_no_entries': '📭 На сегодня записей стендапа пока нет.',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': 'Время работы успешно записано!',
+    'time_timer_started': 'Секундомер запущен!',
+    'time_timer_stopped': 'Секундомер остановлен, время зафиксировано!',
+    'time_timer_already_running': 'У вас уже запущен активный таймер!',
+    'time_timer_none': 'У вас нет активного таймера.',
+    'time_timesheet_title': 'Сводка учета времени (Timesheet)',
+    'stats_estimation_title': 'Точность и расхождение оценки времени',
+    'workload_capacity_title': 'Загрузка команды и защита от выгорания',
+    'workload_capacity_set': 'Еженедельная норма времени обновлена: {hours} ч.',
+    'workload_burnout_warning': 'Предупреждение о перегрузке: {member} загружен(а) на {pct}% от нормы! Назначение может привести к задержкам.',
+    'proj_budget_title': 'Бюджет проекта и учет затрат',
+    'proj_budget_updated': 'Бюджет проекта {project} обновлен: {amount} {currency}.',
+    'proj_rate_updated': 'Почасовая ставка для {member} установлена: {rate}/ч.',
 }

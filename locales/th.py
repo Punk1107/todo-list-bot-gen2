@@ -1132,4 +1132,19 @@ STRINGS = {
     'standup_config_saved': '⏰ ตั้งเวลา Daily Standup เรียบร้อย: **{time}** ที่ {channel}',
     'standup_submitted_success': '✅ บันทึก Daily Standup เรียบร้อยแล้ว! ลุยงานต่อได้เลย!',
     'standup_no_entries': '📭 ยังไม่มีการบันทึก Daily Standup สำหรับวันนี้',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': 'บันทึกเวลาการทำงานเรียบร้อยแล้ว!',
+    'time_timer_started': 'เริ่มจับเวลาการทำงานแล้ว!',
+    'time_timer_stopped': 'หยุดจับเวลาและบันทึกเวลาทำงานเรียบร้อยแล้ว!',
+    'time_timer_already_running': 'คุณมีตัวจับเวลาทำงานอยู่แล้ว!',
+    'time_timer_none': 'คุณไม่มีตัวจับเวลาที่กำลังทำงานอยู่',
+    'time_timesheet_title': 'รายงานสรุปเวลาทำงาน (Timesheet)',
+    'stats_estimation_title': 'สถิติความแม่นยำในการประเมินเวลาทำงาน',
+    'workload_capacity_title': 'การจัดสรรภาระงานและระบบป้องกันภาวะหมดไฟ (Burnout Shield)',
+    'workload_capacity_set': 'ตั้งค่าชั่วโมงความพร้อมทำงานเป็น {hours} ชม./สัปดาห์ เรียบร้อยแล้ว',
+    'workload_burnout_warning': 'คำเตือนภาระงานเกินขีดจำกัด: คุณ {member} มีภาระงานสัปดาห์นี้อยู่ที่ {pct}% แล้ว การมอบหมายงานนี้อาจเสี่ยงต่อภาวะหมดไฟหรือส่งผลให้งานล่าช้า',
+    'proj_budget_title': 'การติดตามงบประมาณและต้นทุนโครงการ',
+    'proj_budget_updated': 'อัปเดตงบประมาณโครงการ {project} เป็น {amount} {currency} เรียบร้อยแล้ว',
+    'proj_rate_updated': 'กำหนดอัตราค่าจ้างรายชั่วโมงของ {member} เป็น {rate}/ชม. เรียบร้อยแล้ว',
 }

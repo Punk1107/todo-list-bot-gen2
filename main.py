@@ -78,6 +78,7 @@ COGS = [
     "cpm_roadmap.cog",                      # /roadmap, /project critical-path, /project gantt (Gen 5.0)
     "discord_native.reaction_cog",          # One-Click Reaction Task Capture & Quick Complete (Gen 5.0)
     "standup.cog",                          # /standup — Asynchronous Daily Standup & Digest (Gen 5.0)
+    "time_tracking.cog",                    # /time, /workload — Time Tracking, Capacity & Estimation (Gen 5.0)
 ]
 
 

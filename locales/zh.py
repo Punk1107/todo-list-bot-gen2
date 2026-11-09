@@ -1056,4 +1056,19 @@ STRINGS = {
     'standup_config_saved': '⏰ 每日站会已设置在 **{time}**，频道：{channel}。',
     'standup_submitted_success': '✅ 每日站会提交成功！继续加油！',
     'standup_no_entries': '📭 今日暂无提交的站会记录。',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': '工作时间记录成功！',
+    'time_timer_started': '秒表计时器已启动！',
+    'time_timer_stopped': '计时器已停止，时间已记录！',
+    'time_timer_already_running': '您已有一个正在运行的计时器！',
+    'time_timer_none': '您当前没有正在运行的计时器。',
+    'time_timesheet_title': '工时单汇总 (Timesheet)',
+    'stats_estimation_title': '时间预估准确率与偏差分析',
+    'workload_capacity_title': '团队工作负载容量与防倦怠护盾 (Burnout Shield)',
+    'workload_capacity_set': '每周工作时间容量已更新为 {hours} 小时。',
+    'workload_burnout_warning': '工作超负荷警告：{member} 本周工作负载已达 {pct}%！继续分配任务可能导致延期或倦怠。',
+    'proj_budget_title': '项目预算与成本追踪',
+    'proj_budget_updated': '项目 {project} 的预算已更新为 {amount} {currency}。',
+    'proj_rate_updated': '{member} 的小时费率已设置为 {rate}/小时。',
 }

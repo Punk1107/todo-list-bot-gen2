@@ -1055,4 +1055,19 @@ STRINGS = {
     'standup_config_saved': '⏰ Standup diario programado para las **{time}** en {channel}.',
     'standup_submitted_success': '✅ ¡Standup diario enviado con éxito!',
     'standup_no_entries': '📭 Aún no se han enviado entradas de standup para hoy.',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': '¡Tiempo registrado con éxito!',
+    'time_timer_started': '¡Cronómetro iniciado!',
+    'time_timer_stopped': '¡Cronómetro detenido y tiempo guardado!',
+    'time_timer_already_running': '¡Ya tienes un temporizador activo en marcha!',
+    'time_timer_none': 'No tienes ningún temporizador activo.',
+    'time_timesheet_title': 'Resumen de horas de trabajo (Timesheet)',
+    'stats_estimation_title': 'Precisión y variación de estimación de tiempo',
+    'workload_capacity_title': 'Capacidad de carga de trabajo y escudo contra el agotamiento',
+    'workload_capacity_set': 'Capacidad semanal actualizada a {hours} horas.',
+    'workload_burnout_warning': 'Advertencia de carga: ¡{member} está al {pct}% de su capacidad semanal! Puede causar retrasos o agotamiento.',
+    'proj_budget_title': 'Seguimiento de presupuesto y costes del proyecto',
+    'proj_budget_updated': 'Presupuesto del proyecto {project} actualizado a {amount} {currency}.',
+    'proj_rate_updated': 'Tarifa por hora para {member} establecida en {rate}/h.',
 }

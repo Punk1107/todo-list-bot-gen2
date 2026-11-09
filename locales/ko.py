@@ -1055,4 +1055,19 @@ STRINGS = {
     'standup_config_saved': '⏰ 일일 스탠드업이 {channel}에서 **{time}**으로 예약되었습니다.',
     'standup_submitted_success': '✅ 일일 스탠드업이 성공적으로 제출되었습니다!',
     'standup_no_entries': '📭 오늘 제출된 스탠드업 내역이 아직 없습니다.',
+
+    # ─── Gen 5.0 Pillar 4: Time Tracking, Capacity & Estimation ──────────────
+    'time_logged_success': '작업 시간이 성공적으로 기록되었습니다!',
+    'time_timer_started': '스톱워치 타이머가 시작되었습니다!',
+    'time_timer_stopped': '타이머가 중지되고 시간이 기록되었습니다!',
+    'time_timer_already_running': '이미 실행 중인 타이머가 있습니다!',
+    'time_timer_none': '실행 중인 타이머가 없습니다.',
+    'time_timesheet_title': '타임시트 요약',
+    'stats_estimation_title': '작업 시간 추정 정확도 및 편차 분석',
+    'workload_capacity_title': '팀 업무량 수용 한도 및 번아웃 쉴드',
+    'workload_capacity_set': '주간 작업 가능 시간이 {hours}시간으로 설정되었습니다.',
+    'workload_burnout_warning': '업무 과부하 경고: {member}님의 이번 주 업무량이 {pct}%에 도달했습니다! 추가 할당 시 번아웃이나 지연이 발생할 수 있습니다.',
+    'proj_budget_title': '프로젝트 예산 및 비용 추적',
+    'proj_budget_updated': '프로젝트 {project}의 예산이 {amount} {currency}(으)로 업데이트되었습니다.',
+    'proj_rate_updated': '{member}님의 시간당 요율이 {rate}/시간으로 설정되었습니다.',
 }

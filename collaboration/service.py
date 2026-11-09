@@ -1173,7 +1173,20 @@ async def assign_task(
     db.query_cache.invalidate_tables(["tasks", "task_assignments"])
     await log_activity(project_id, guild_id, actor_id, "task_assigned",
                        f"#{task_id} → {assignee_id}")
-    return await get_project_task(task_id, project_id, guild_id)
+    task_res = await get_project_task(task_id, project_id, guild_id)
+
+    # Burnout Shield: Check if assignee's weekly workload capacity exceeds 100%
+    try:
+        from time_tracking import service as tt_service
+        t_info = await db.fetchone("SELECT estimated_hours FROM tasks WHERE task_id = $1", (task_id,))
+        task_est = float(t_info["estimated_hours"]) if t_info and t_info["estimated_hours"] else 0.0
+        burnout = await tt_service.check_burnout_shield(guild_id, assignee_id, additional_hours=task_est)
+        if burnout:
+            task_res.burnout_warning = burnout
+    except Exception as exc:
+        log.warning("Could not check burnout shield for user %s: %s", assignee_id, exc)
+
+    return task_res
 
 
 async def update_task_status(
