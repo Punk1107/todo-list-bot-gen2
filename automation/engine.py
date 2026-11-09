@@ -293,7 +293,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
           AND t.created_at <= $1
         ORDER BY t.priority DESC, t.created_at ASC
     """
-    rows = await db.fetchall(query, twelve_hours_ago)
+    rows = await db.fetchall(query, (twelve_hours_ago,))
     escalations: list[dict[str, Any]] = []
 
     for r in rows:

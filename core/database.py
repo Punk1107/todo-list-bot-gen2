@@ -233,12 +233,19 @@ class QueryCache:
         try:
             if not params:
                 return (sql, ())
-            p_tuple = tuple(params)
+            if isinstance(params, (tuple, list)):
+                p_tuple = tuple(params)
+            else:
+                p_tuple = (params,)
             hash(p_tuple)
             return (sql, p_tuple)
-        except (TypeError, Exception):
-            raw = json.dumps([sql, list(params) if params else []], sort_keys=True, default=str)
-            return (sql, raw)
+        except Exception:
+            try:
+                p_list = list(params) if isinstance(params, (tuple, list)) else [params]
+                raw = json.dumps([sql, p_list], sort_keys=True, default=str)
+                return (sql, raw)
+            except Exception:
+                return (sql, str(params))
 
     def get(self, sql: str, params: Any) -> Any:
         k = self._key(sql, params)
@@ -1633,12 +1640,25 @@ class DatabaseManager:
 
     # ── Core async methods ────────────────────────────────────────────────────
 
-    async def execute(self, sql: str, params: Sequence[Any] = ()) -> str:
+    @staticmethod
+    def _normalize_args(args: tuple[Any, ...], params: Any = None) -> tuple[Any, ...]:
+        if args:
+            if len(args) == 1 and isinstance(args[0], (tuple, list)):
+                return tuple(args[0])
+            return args
+        if params is not None and params != ():
+            if isinstance(params, (tuple, list)):
+                return tuple(params)
+            return (params,)
+        return ()
+
+    async def execute(self, sql: str, *args: Any, params: Any = None) -> str:
         """
         Execute a write statement (INSERT/UPDATE/DELETE).
         Invalidates table-scoped query cache. Returns asyncpg status string.
         Retries on transient connection errors with exponential backoff.
         """
+        p = self._normalize_args(args, params)
         lower_sql = sql.lower()
         if "last_reminder" in lower_sql or "last_active" in lower_sql or "last_digest_date" in lower_sql:
             pass  # Background timestamp writes don't invalidate user query caches
@@ -1653,7 +1673,7 @@ class DatabaseManager:
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 async with self._pool.acquire() as conn:
-                    result = await conn.execute(sql, *params)
+                    result = await conn.execute(sql, *p)
                 return result
             except (
                 asyncpg.TooManyConnectionsError,
@@ -1763,9 +1783,10 @@ class DatabaseManager:
                 raise
         raise RuntimeError("DB execute_batch failed after retries")
 
-    async def fetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[asyncpg.Record]:
+    async def fetchone(self, sql: str, *args: Any, params: Any = None) -> Optional[asyncpg.Record]:
         """Fetch a single row. Results are L1-cached. Retries on transient connection errors."""
-        cached = self.query_cache.get(sql, params)
+        p = self._normalize_args(args, params)
+        cached = self.query_cache.get(sql, p)
         if not isinstance(cached, _MissType):
             return cached
 
@@ -1773,8 +1794,8 @@ class DatabaseManager:
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 async with self._pool.acquire() as conn:
-                    result = await conn.fetchrow(sql, *params)
-                self.query_cache.set(sql, params, result)
+                    result = await conn.fetchrow(sql, *p)
+                self.query_cache.set(sql, p, result)
                 return result
             except (
                 asyncpg.TooManyConnectionsError,
@@ -1797,9 +1818,10 @@ class DatabaseManager:
                 raise
         raise last_exc  # type: ignore[misc]
 
-    async def fetchall(self, sql: str, params: Sequence[Any] = ()) -> List[asyncpg.Record]:
+    async def fetchall(self, sql: str, *args: Any, params: Any = None) -> List[asyncpg.Record]:
         """Fetch all rows. Results are L1-cached. Retries on transient connection errors."""
-        cached = self.query_cache.get(sql, params)
+        p = self._normalize_args(args, params)
+        cached = self.query_cache.get(sql, p)
         if not isinstance(cached, _MissType):
             return cached
 
@@ -1807,8 +1829,8 @@ class DatabaseManager:
         for attempt in range(1, self._MAX_RETRIES + 1):
             try:
                 async with self._pool.acquire() as conn:
-                    result = await conn.fetch(sql, *params)
-                self.query_cache.set(sql, params, result)
+                    result = await conn.fetch(sql, *p)
+                self.query_cache.set(sql, p, result)
                 return result
             except (
                 asyncpg.TooManyConnectionsError,
@@ -1839,14 +1861,14 @@ class DatabaseManager:
     fetch_all = fetchall
     fetch = fetchall
 
-    async def aexecute(self, sql: str, params: Sequence[Any] = ()) -> str:
-        return await self.execute(sql, params)
+    async def aexecute(self, sql: str, *args: Any, params: Any = None) -> str:
+        return await self.execute(sql, *args, params=params)
 
-    async def afetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[asyncpg.Record]:
-        return await self.fetchone(sql, params)
+    async def afetchone(self, sql: str, *args: Any, params: Any = None) -> Optional[asyncpg.Record]:
+        return await self.fetchone(sql, *args, params=params)
 
-    async def afetchall(self, sql: str, params: Sequence[Any] = ()) -> List[asyncpg.Record]:
-        return await self.fetchall(sql, params)
+    async def afetchall(self, sql: str, *args: Any, params: Any = None) -> List[asyncpg.Record]:
+        return await self.fetchall(sql, *args, params=params)
 
     async def aexecutemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
         return await self.executemany(sql, params_list)
