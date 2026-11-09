@@ -1,6 +1,7 @@
 """Pomodoro focus commands and durable session scheduling."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -11,6 +12,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from core.database import db
+from focus import voice_service
 from locales.i18n import t
 from utils.helpers import ensure_user, format_deadline, get_user_lang, get_user_timezone
 
@@ -30,13 +32,17 @@ class FocusCog(commands.Cog, name="Focus"):
     """Persistent work/break timers that add completed focus time to tasks."""
 
     focus = app_commands.Group(name="focus", description="Pomodoro focus timer")
+    voice = app_commands.Group(name="voice", description="Virtual Focus Room voice channel sync", parent=focus)
+    chime = app_commands.Group(name="chime", description="Harmonic bell audio alerts", parent=focus)
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session_loop.start()
+        self.voice_room_loop.start()
 
     def cog_unload(self) -> None:
         self.session_loop.cancel()
+        self.voice_room_loop.cancel()
 
     @focus.command(name="start", description="Start a Pomodoro timer for a task")
     @app_commands.describe(task_id="Pending task to focus on")
@@ -288,6 +294,205 @@ class FocusCog(commands.Cog, name="Focus"):
                WHERE session_id=$1 AND status='active'""",
             (session_id,),
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Virtual Focus Room: /focus voice & /focus chime
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @voice.command(name="bind", description="ผูกห้อง Voice Channel เข้ากับระบบ Virtual Focus Room")
+    @app_commands.describe(
+        channel="Voice channel to bind as Virtual Focus Room",
+        work_minutes="ระยะเวลาทำงานต่อรอบ (default: 25 นาที)",
+        break_minutes="ระยะเวลาพักต่อรอบ (default: 5 นาที)",
+    )
+    async def voice_bind(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.VoiceChannel,
+        work_minutes: Optional[int] = 25,
+        break_minutes: Optional[int] = 5,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+
+        if not interaction.guild:
+            await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+            return
+
+        wm = work_minutes if work_minutes and work_minutes > 0 else 25
+        bm = break_minutes if break_minutes and break_minutes > 0 else 5
+        guild_id = str(interaction.guild.id)
+        cid = str(channel.id)
+
+        await voice_service.bind_voice_room(guild_id, cid, uid, wm, bm)
+        await interaction.response.send_message(
+            t("focus_voice_bound", lang, channel=channel.mention, work=wm, rest=bm),
+            ephemeral=False,
+        )
+
+    @voice.command(name="unbind", description="ยกเลิกการผูกห้อง Voice Channel ออกจากระบบ Focus Room")
+    @app_commands.describe(channel="Voice channel to unbind")
+    async def voice_unbind(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+
+        cid = str(channel.id)
+        ok = await voice_service.unbind_voice_room(cid)
+        if ok:
+            await voice_service.update_voice_channel_status(channel, None)
+            await interaction.response.send_message(
+                t("focus_voice_unbound", lang, channel=channel.mention),
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                t("focus_voice_not_found", lang, channel=channel.mention),
+                ephemeral=True,
+            )
+
+    @voice.command(name="status", description="ตรวจสอบสถานะรอบโฟกัสของห้อง Voice")
+    @app_commands.describe(channel="Voice channel to inspect")
+    async def voice_status(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        cid = str(channel.id)
+
+        room = await voice_service.get_voice_room(cid)
+        if not room:
+            await interaction.response.send_message(
+                t("focus_voice_not_found", lang, channel=channel.mention),
+                ephemeral=True,
+            )
+            return
+
+        phase_str = room["current_phase"]
+        round_num = room["current_round"]
+        ends_at = room.get("phase_ends_at")
+        rem_str = f"<t:{int(ends_at.timestamp())}:R>" if ends_at else "—"
+
+        embed = discord.Embed(
+            title=f"🎙️ Focus Room: {channel.name}",
+            description=(
+                f"• **Status:** `{phase_str.upper()}`\n"
+                f"• **Round:** `Round {round_num}`\n"
+                f"• **Work/Break:** `{room['work_minutes']}m / {room['break_minutes']}m`\n"
+                f"• **Phase Ends:** {rem_str}\n"
+                f"• **Members in Room:** `{len([m for m in channel.members if not m.bot])} คน`"
+            ),
+            color=0x57F287 if phase_str == "work" else (0xFEE75C if phase_str == "break" else 0x5865F2),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @chime.command(name="toggle", description="เปิดหรือปิดเสียงระฆังสมาธิ (Focus Chimes) ส่วนตัว")
+    async def chime_toggle(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+
+        new_val = await voice_service.toggle_user_chime(uid)
+        msg_key = "focus_chime_enabled" if new_val else "focus_chime_disabled"
+        await interaction.response.send_message(t(msg_key, lang), ephemeral=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Voice State Event Listener & Background Room Loop
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Auto-start Focus Room when members join, auto-reset when empty."""
+        if member.bot:
+            return
+
+        now = datetime.now(timezone.utc)
+        # Check channel joined
+        if after.channel and after.channel != before.channel:
+            cid = str(after.channel.id)
+            room = await voice_service.get_voice_room(cid)
+            if room and room["current_phase"] == "idle":
+                # Start Work Phase
+                wm = room["work_minutes"]
+                ends_at = now + timedelta(minutes=wm)
+                await voice_service.update_room_phase(cid, "work", 1, ends_at)
+                await voice_service.update_voice_channel_status(
+                    after.channel, f"🍅 Focus Round 1 (เหลืออีก {wm} นาที)"
+                )
+                if room.get("chime_enabled", True):
+                    asyncio.create_task(voice_service.play_chime_in_voice(after.channel, "work"))
+
+        # Check channel left
+        if before.channel and before.channel != after.channel:
+            cid = str(before.channel.id)
+            room = await voice_service.get_voice_room(cid)
+            if room:
+                non_bot_count = len([m for m in before.channel.members if not m.bot])
+                if non_bot_count == 0:
+                    # Reset to idle
+                    await voice_service.reset_room_to_idle(cid)
+                    await voice_service.update_voice_channel_status(before.channel, None)
+
+    @tasks.loop(seconds=20)
+    async def voice_room_loop(self) -> None:
+        """Periodic loop to advance active Focus Room phases and update channel statuses."""
+        now = datetime.now(timezone.utc)
+        rooms = await voice_service.get_all_active_voice_rooms()
+        for r in rooms:
+            cid = r["channel_id"]
+            phase = r["current_phase"]
+            if phase == "idle":
+                continue
+
+            channel = self.bot.get_channel(int(cid))
+            if not isinstance(channel, discord.VoiceChannel):
+                continue
+
+            non_bot_count = len([m for m in channel.members if not m.bot])
+            if non_bot_count == 0:
+                await voice_service.reset_room_to_idle(cid)
+                await voice_service.update_voice_channel_status(channel, None)
+                continue
+
+            ends_at = r.get("phase_ends_at")
+            if not ends_at:
+                continue
+
+            # Check if current phase has ended
+            if ends_at <= now:
+                if phase == "work":
+                    # Transition to Break
+                    bm = r["break_minutes"]
+                    next_ends = now + timedelta(minutes=bm)
+                    await voice_service.update_room_phase(cid, "break", r["current_round"], next_ends)
+                    await voice_service.update_voice_channel_status(channel, f"☕ Break Time ({bm} นาที)")
+                    if r.get("chime_enabled", True):
+                        asyncio.create_task(voice_service.play_chime_in_voice(channel, "break"))
+                else:
+                    # Transition to next Work Round
+                    next_round = r["current_round"] + 1
+                    wm = r["work_minutes"]
+                    next_ends = now + timedelta(minutes=wm)
+                    await voice_service.update_room_phase(cid, "work", next_round, next_ends)
+                    await voice_service.update_voice_channel_status(channel, f"🍅 Focus Round {next_round} (เหลืออีก {wm} นาที)")
+                    if r.get("chime_enabled", True):
+                        asyncio.create_task(voice_service.play_chime_in_voice(channel, "work"))
+            else:
+                # Update remaining minutes
+                rem_mins = max(1, int((ends_at - now).total_seconds() // 60))
+                if phase == "work":
+                    status_str = f"🍅 Focus Round {r['current_round']} (เหลืออีก {rem_mins} นาที)"
+                else:
+                    status_str = f"☕ Break Time (เหลืออีก {rem_mins} นาที)"
+                await voice_service.update_voice_channel_status(channel, status_str)
+
+    @voice_room_loop.before_loop
+    async def before_voice_room_loop(self) -> None:
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot: commands.Bot) -> None:

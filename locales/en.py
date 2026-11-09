@@ -1110,4 +1110,16 @@ STRINGS = {
     'health_on_track': '🟢 On Track: Progress matches delivery timeline.',
     'health_at_risk': '🟡 At Risk: Progress is lagging {gap}% behind schedule.',
     'health_delayed': '🔴 Delayed: Progress is lagging {gap}% behind schedule. Critical bottlenecks detected!',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ Focus room bound to {channel}. Voice Pomodoro tracking active!',
+    'focus_voice_unbound': '🔌 Focus room unbound from {channel}.',
+    'focus_voice_not_found': '❌ Voice channel {channel} is not bound as a focus room.',
+    'focus_chime_enabled': '🔔 In-memory focus chime audio alerts **enabled**.',
+    'focus_chime_disabled': '🔕 In-memory focus chime audio alerts **disabled**.',
+    'proj_events_synced': '📅 Synchronized {count} milestone/critical task(s) to Discord Scheduled Events!',
+    'proj_forum_mode_enabled': '📌 Forum Kanban Mode enabled! Tasks will sync with {forum}.',
+    'standup_config_saved': '⏰ Daily standup scheduled for **{time}** in {channel}.',
+    'standup_submitted_success': '✅ Daily standup submitted successfully! Keep up the momentum!',
+    'standup_no_entries': '📭 No standup entries recorded for today yet.',
 }

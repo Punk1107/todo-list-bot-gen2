@@ -55,7 +55,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v18_focus_and_recurrence_schema(self):
         v18 = next(sql for version, sql in MIGRATIONS if version == 18)
         statements = _split_sql_statements(v18)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("recurrence_rule JSONB" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS focus_sessions" in stmt for stmt in statements))
         self.assertTrue(any("idx_focus_sessions_one_active_per_user" in stmt for stmt in statements))
@@ -63,7 +63,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v20_adds_discord_native_references(self):
         v20 = next(sql for version, sql in MIGRATIONS if version == 20)
         statements = _split_sql_statements(v20)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("source_message_url" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_task_threads" in stmt for stmt in statements))
         self.assertTrue(any("thread_id" in stmt and "BIGINT UNIQUE" in stmt for stmt in statements))
@@ -71,14 +71,14 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v22_enables_nullable_deadlines_and_calendar_tokens(self):
         v22 = next(sql for version, sql in MIGRATIONS if version == 22)
         statements = _split_sql_statements(v22)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("deadline DROP NOT NULL" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS calendar_feed_tokens" in stmt for stmt in statements))
 
     def test_migration_v23_adds_templates_checklists_and_routine_rules(self):
         v23 = next(sql for version, sql in MIGRATIONS if version == 23)
         statements = _split_sql_statements(v23)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_templates" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_checklists" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS routine_event_rules" in stmt for stmt in statements))
@@ -86,7 +86,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v24_adds_soft_delete_and_permissions(self):
         v24 = next(sql for version, sql in MIGRATIONS if version == 24)
         statements = _split_sql_statements(v24)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("is_deleted BOOLEAN" in stmt for stmt in statements))
         self.assertTrue(any("is_private BOOLEAN" in stmt for stmt in statements))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_role_permissions" in stmt for stmt in statements))
@@ -94,7 +94,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v25_adds_saved_filters(self):
         v25 = next(sql for version, sql in MIGRATIONS if version == 25)
         statements = _split_sql_statements(v25)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS saved_filters" in stmt for stmt in statements))
         self.assertTrue(any("uq_user_filter_name" in stmt for stmt in statements))
         self.assertTrue(any("idx_saved_filters_owner" in stmt for stmt in statements))
@@ -102,14 +102,14 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v26_adds_audit_index_and_retrospective(self):
         v26 = next(sql for version, sql in MIGRATIONS if version == 26)
         statements = _split_sql_statements(v26)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("idx_audit_target_created" in stmt for stmt in statements))
         self.assertTrue(any("weekly_retrospective" in stmt for stmt in statements))
 
     def test_migration_v27_adds_performance_indexes(self):
         v27 = next(sql for version, sql in MIGRATIONS if version == 27)
         statements = _split_sql_statements(v27)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("idx_tasks_recurring_due" in stmt for stmt in statements))
         self.assertTrue(any("idx_tasks_deadline_dm_pending" in stmt for stmt in statements))
         self.assertTrue(any("idx_tasks_pending_reminders" in stmt for stmt in statements))
@@ -118,7 +118,7 @@ class TestSqlSplit(unittest.TestCase):
     def test_migration_v28_adds_user_and_active_task_indexes(self):
         v28 = next(sql for version, sql in MIGRATIONS if version == 28)
         statements = _split_sql_statements(v28)
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
         self.assertTrue(any("idx_users_daily_digest" in stmt for stmt in statements))
         self.assertTrue(any("idx_users_weekly_retrospective" in stmt for stmt in statements))
         self.assertTrue(any("idx_users_streak_reminder" in stmt for stmt in statements))
@@ -126,7 +126,7 @@ class TestSqlSplit(unittest.TestCase):
 
     def test_migration_v29_to_v36_gen5_schema(self):
         """Verify Gen 5.0 database schema migrations (v29-v36) parse and contain required definitions."""
-        self.assertEqual(SCHEMA_VERSION, 36)
+        self.assertGreaterEqual(SCHEMA_VERSION, 36)
 
         # v29: Sprints & story points
         v29_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 29))
@@ -169,6 +169,18 @@ class TestSqlSplit(unittest.TestCase):
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_milestones" in s for s in v36_stmts))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS sprint_retros" in s for s in v36_stmts))
         self.assertTrue(any("CREATE TABLE IF NOT EXISTS tasks_archive" in s for s in v36_stmts))
+
+    def test_migration_v37_discord_native_ecosystem(self):
+        """Verify Gen 5.0 Pillar 3 database schema migration (v37) parses and contains required definitions."""
+        self.assertEqual(SCHEMA_VERSION, 37)
+        v37_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 37))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS voice_focus_rooms" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS user_chime_settings" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_scheduled_events" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS project_forum_configs" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS task_forum_posts" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS standup_configs" in s for s in v37_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS daily_standups" in s for s in v37_stmts))
 
 
 if __name__ == "__main__":

@@ -1094,4 +1094,16 @@ STRINGS = {
     'health_on_track': '🟢 Auf Kurs: Fortschritt entspricht dem Zeitplan.',
     'health_at_risk': '🟡 Gefährdet: Fortschritt liegt {gap}% hinter dem Zeitplan.',
     'health_delayed': '🔴 Verzögert: Fortschritt liegt {gap}% hinter dem Zeitplan. Kritische Engpässe erkannt!',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ Fokus-Raum an {channel} gebunden. Sprach-Pomodoro ist aktiv!',
+    'focus_voice_unbound': '🔌 Fokus-Raum von {channel} getrennt.',
+    'focus_voice_not_found': '❌ Sprachkanal {channel} ist nicht als Fokus-Raum gebunden.',
+    'focus_chime_enabled': '🔔 Fokus-Glocken-Audiobenachrichtigungen **aktiviert**.',
+    'focus_chime_disabled': '🔕 Fokus-Glocken-Audiobenachrichtigungen **deaktiviert**.',
+    'proj_events_synced': '📅 {count} Meilenstein-/kritische Aufgabe(n) mit Discord-Events synchronisiert!',
+    'proj_forum_mode_enabled': '📌 Forum-Kanban-Modus aktiviert! Aufgaben werden mit {forum} synchronisiert.',
+    'standup_config_saved': '⏰ Tägliches Standup für **{time}** in {channel} geplant.',
+    'standup_submitted_success': '✅ Tägliches Standup erfolgreich übermittelt!',
+    'standup_no_entries': '📭 Heute wurden noch keine Standup-Einträge eingereicht.',
 }

@@ -1044,4 +1044,16 @@ STRINGS = {
     'health_on_track': '🟢 順調: 進捗は予定スケジュール通りです。',
     'health_at_risk': '🟡 リスクあり: 進捗が予定より {gap}% 遅れています。',
     'health_delayed': '🔴 遅延: 進捗が予定より {gap}% 大幅に遅れています。重大なボトルネックを検出しました！',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ 集中ルームを {channel} にバインドしました。ボイスポモドーロが有効です！',
+    'focus_voice_unbound': '🔌 {channel} の集中ルームバインドを解除しました。',
+    'focus_voice_not_found': '❌ ボイスチャンネル {channel} は集中ルームとしてバインドされていません。',
+    'focus_chime_enabled': '🔔 集中チャイム音声通知を**有効化**しました。',
+    'focus_chime_disabled': '🔕 集中チャイム音声通知を**無効化**しました。',
+    'proj_events_synced': '📅 {count} 件のマイルストーン/重要タスクをDiscordイベントに同期しました！',
+    'proj_forum_mode_enabled': '📌 フォーラムカンバンモードを有効化しました！タスクは {forum} と同期されます。',
+    'standup_config_saved': '⏰ 毎日のスタンドアップを {channel} で **{time}** にスケジュールしました。',
+    'standup_submitted_success': '✅ 毎日のスタンドアップを送信しました！今日も頑張りましょう！',
+    'standup_no_entries': '📭 今日のスタンドアップはまだ提出されていません。',
 }

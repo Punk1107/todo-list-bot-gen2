@@ -1043,4 +1043,16 @@ STRINGS = {
     'health_on_track': '🟢 En curso: El progreso coincide con el cronograma previsto.',
     'health_at_risk': '🟡 En riesgo: El progreso lleva un retraso del {gap}% respecto al plan.',
     'health_delayed': '🔴 Retrasado: El progreso lleva un retraso del {gap}%. ¡Se detectaron cuellos de botella críticos!',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ Sala de enfoque vinculada a {channel}. ¡Pomodoro por voz activo!',
+    'focus_voice_unbound': '🔌 Sala de enfoque desvinculada de {channel}.',
+    'focus_voice_not_found': '❌ El canal de voz {channel} no está vinculado como sala de enfoque.',
+    'focus_chime_enabled': '🔔 Alertas de audio de campana de enfoque **activadas**.',
+    'focus_chime_disabled': '🔕 Alertas de audio de campana de enfoque **desactivadas**.',
+    'proj_events_synced': '📅 ¡Se sincronizaron {count} hito(s)/tarea(s) crítica(s) con eventos de Discord!',
+    'proj_forum_mode_enabled': '📌 ¡Modo Foro Kanban activado! Las tareas se sincronizarán con {forum}.',
+    'standup_config_saved': '⏰ Standup diario programado para las **{time}** en {channel}.',
+    'standup_submitted_success': '✅ ¡Standup diario enviado con éxito!',
+    'standup_no_entries': '📭 Aún no se han enviado entradas de standup para hoy.',
 }

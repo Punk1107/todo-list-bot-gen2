@@ -1043,4 +1043,16 @@ STRINGS = {
     'health_on_track': '🟢 순항 중: 진행 상황이 일정과 일치합니다.',
     'health_at_risk': '🟡 위험: 진행 상황이 일정보다 {gap}% 지연되고 있습니다.',
     'health_delayed': '🔴 지연됨: 진행 상황이 일정보다 {gap}% 크게 지연되었습니다. 중요한 병목 현상이 감지되었습니다!',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ 집중 음성 채널이 {channel}에 연결되었습니다. 음성 뽀모도로가 활성화되었습니다!',
+    'focus_voice_unbound': '🔌 {channel}에서 집중 음성 채널 연결이 해제되었습니다.',
+    'focus_voice_not_found': '❌ 음성 채널 {channel}은(는) 집중 채널로 연결되어 있지 않습니다.',
+    'focus_chime_enabled': '🔔 집중 차임벨 오디오 알림이 **활성화**되었습니다.',
+    'focus_chime_disabled': '🔕 집중 차임벨 오디오 알림이 **비활성화**되었습니다.',
+    'proj_events_synced': '📅 {count}개의 마일스톤/중요 작업이 Discord 예정된 이벤트로 동기화되었습니다!',
+    'proj_forum_mode_enabled': '📌 포럼 칸반 모드가 활성화되었습니다! 작업이 {forum} 채널과 동기화됩니다.',
+    'standup_config_saved': '⏰ 일일 스탠드업이 {channel}에서 **{time}**으로 예약되었습니다.',
+    'standup_submitted_success': '✅ 일일 스탠드업이 성공적으로 제출되었습니다!',
+    'standup_no_entries': '📭 오늘 제출된 스탠드업 내역이 아직 없습니다.',
 }

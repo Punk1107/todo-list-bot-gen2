@@ -1050,4 +1050,16 @@ STRINGS = {
     'health_on_track': '🟢 Sur la bonne voie : la progression respecte les délais prévus.',
     'health_at_risk': '🟡 À risque : la progression accuse un retard de {gap}% sur le planning.',
     'health_delayed': '🔴 En retard : la progression accuse un retard de {gap}%. Goulots d’étranglement détectés !',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ Salon de concentration lié à {channel}. Suivi Pomodoro vocal actif !',
+    'focus_voice_unbound': '🔌 Salon de concentration dissocié de {channel}.',
+    'focus_voice_not_found': '❌ Le salon vocal {channel} n\'est pas configuré comme salon de concentration.',
+    'focus_chime_enabled': '🔔 Alertes sonores de carillon de concentration **activées**.',
+    'focus_chime_disabled': '🔕 Alertes sonores de carillon de concentration **désactivées**.',
+    'proj_events_synced': '📅 {count} jalon(s)/tâche(s) critique(s) synchronisé(s) avec les événements Discord !',
+    'proj_forum_mode_enabled': '📌 Mode Forum Kanban activé ! Les tâches seront synchronisées avec {forum}.',
+    'standup_config_saved': '⏰ Standup quotidien programmé à **{time}** dans {channel}.',
+    'standup_submitted_success': '✅ Standup quotidien envoyé avec succès !',
+    'standup_no_entries': '📭 Aucune entrée de standup enregistrée pour aujourd\'hui.',
 }

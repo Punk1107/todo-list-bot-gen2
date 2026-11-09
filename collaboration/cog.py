@@ -1132,6 +1132,91 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             view = GanttSwitchView(cpm_result, project_name=p_name)
             await interaction.followup.send(embed=embed, view=view)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # /project sync-events & /project forum-mode
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @project.command(
+        name="sync-events",
+        description="📅 ซิงค์ Milestones และงานวิกฤต P6/P7 เข้าสู่ Discord Scheduled Events",
+    )
+    @app_commands.describe(project_id="Project ID number")
+    @rate_limit_check("command")
+    async def project_sync_events(self, interaction: discord.Interaction, project_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer()
+
+        guild = interaction.guild
+        if not guild:
+            await interaction.followup.send(t("proj_guild_only", lang), ephemeral=True)
+            return
+
+        try:
+            await service.get_project(project_id, str(guild.id))
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        from collaboration import events_service
+
+        res = await events_service.sync_project_events(project_id, guild)
+        created = res["created"]
+        updated = res["updated"]
+
+        msg = t("proj_events_synced", lang, project_id=project_id, created=created, updated=updated)
+        await interaction.followup.send(msg)
+
+    @project.command(
+        name="forum-mode",
+        description="📌 แปลง Discord Forum Channel ให้เป็นกระดานงาน Kanban Task Board",
+    )
+    @app_commands.describe(
+        project_id="Project ID number",
+        forum_channel="Discord Forum Channel ที่ต้องการผูกงาน",
+    )
+    @rate_limit_check("command")
+    async def project_forum_mode(
+        self,
+        interaction: discord.Interaction,
+        project_id: int,
+        forum_channel: discord.ForumChannel,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        if not await _guild_only(interaction, lang):
+            return
+        await ensure_user(uid, lang)
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        if not guild:
+            await interaction.followup.send(t("proj_guild_only", lang), ephemeral=True)
+            return
+
+        try:
+            await service.get_project(project_id, str(guild.id))
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        from collaboration import forum_service
+
+        await forum_service.set_project_forum_config(project_id, str(guild.id), str(forum_channel.id))
+        tag_map = await forum_service.ensure_forum_kanban_tags(forum_channel)
+
+        msg = t(
+            "proj_forum_mode_enabled",
+            lang,
+            project_id=project_id,
+            channel=forum_channel.mention,
+            tag_count=len(tag_map),
+        )
+        await interaction.followup.send(msg, ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(CollaborationCog(bot))
