@@ -22,6 +22,13 @@ from core.config import config
 from core.database import db
 from locales.i18n import t
 from utils.helpers import get_user_lang
+from visualization import (
+    render_block_sparkline,
+    render_braille_sparkline,
+    render_braille_wave,
+    render_progress_bar,
+)
+from visualization import service as viz_service
 
 log = logging.getLogger(__name__)
 
@@ -173,6 +180,35 @@ class AnalyticsCog(commands.Cog, name="Analytics"):
             "[analytics] User %s (%s) %s weekly digest",
             interaction.user, user_id, "enabled" if enabled else "disabled",
         )
+
+    @analytics_group.command(
+        name="sparkline",
+        description="📈 แสดงแนวโน้มผลผลิต 7 วันล่าสุดด้วย Unicode Sparklines และ Braille Waves",
+    )
+    async def analytics_sparkline(self, interaction: discord.Interaction) -> None:
+        """Renders 7-day productivity sparklines and Braille focus wave."""
+        user_id = str(interaction.user.id)
+        activity_7d = await viz_service.get_user_7day_activity(user_id)
+        total_7d = sum(activity_7d)
+        avg_7d = total_7d / 7.0
+
+        block_spark = render_block_sparkline(activity_7d) or "       "
+        braille_spark = render_braille_sparkline(activity_7d) or "       "
+        focus_wave = render_braille_wave(count=12)
+
+        embed = discord.Embed(
+            title="📈 7-Day Productivity Sparkline & Focus Waves",
+            description=(
+                f"**7-Day Completion Trend:** `{block_spark}`\n"
+                f"**Braille Height Matrix:** `{braille_spark}`\n"
+                f"**Focus Continuity Wave:** {focus_wave}\n\n"
+                f"• งานที่เสร็จใน 7 วัน: **{total_7d}** งาน\n"
+                f"• ค่าเฉลี่ยต่อวัน: **{avg_7d:.1f}** งาน/วัน"
+            ),
+            color=0x5865F2,
+        )
+        embed.set_footer(text="Pure In-Bot Text Sparklines · Zero external network latency")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 

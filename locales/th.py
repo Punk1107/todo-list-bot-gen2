@@ -1159,4 +1159,13 @@ STRINGS = {
     'sla_status_title': '📊 แดชบอร์ดความสอดคล้องตามข้อตกลง SLA',
     'sla_early_warning': '⏳ แจ้งเตือนล่วงหน้า: งาน #{task_id} ใช้เวลา SLA ไปแล้ว {pct}%',
     'sla_breach_alert': '🚨 ผิดข้อตกลง SLA: งาน #{task_id} เกินกำหนดเวลาส่งมอบแล้ว!',
+
+    # ─── Gen 5.0 Pillar 6: Pure In-Bot Visual Graphic & Data Visualization ─
+    'viz_heatmap_title': 'ตารางสรุปการทำงาน 365 วัน (Contribution Heatmap)',
+    'viz_burndown_title': 'กราฟ Sprint Burndown',
+    'viz_cfd_title': 'แผนภูมิสะสมงาน (Cumulative Flow Diagram - CFD)',
+    'viz_velocity_title': 'กราฟเปรียบเทียบความเร็วรอบงาน (Sprint Velocity)',
+    'viz_sparkline_7day': 'แนวโน้มผลผลิต 7 วันล่าสุด: {trend}',
+    'viz_focus_wave': 'คลื่นความต่อเนื่องในการโฟกัส: {wave}',
+    'viz_no_data': 'ℹ️ ยังไม่มีข้อมูลเพียงพอสำหรับสร้างกราฟในขณะนี้',
 }
