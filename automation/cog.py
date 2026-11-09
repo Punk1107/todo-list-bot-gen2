@@ -224,7 +224,10 @@ class AutomationCog(commands.Cog, name="Automation"):
             return
 
         if lead_mention:
-            await db.execute("UPDATE projects SET lead_id = $1 WHERE project_id = $2", str(lead_mention.id), project_id)
+            try:
+                await db.execute("UPDATE projects SET lead_id = $1 WHERE project_id = $2", str(lead_mention.id), project_id)
+            except Exception as e:
+                log.warning("Could not update lead_id on project %s: %s", project_id, e)
 
         msg = t("auto_escalation_set", lang, project_id=project_id, lead=lead_mention.mention if lead_mention else "Current Lead")
         await interaction.response.send_message(msg)

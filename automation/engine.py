@@ -283,7 +283,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
     # Find candidate critical tasks in Pending status
     query = """
         SELECT t.task_id, t.task, t.priority, t.guild_id, t.project_id, t.created_at,
-               p.name AS project_name, p.channel_id, p.lead_id,
+               p.name AS project_name, p.channel_id, p.lead_id, p.owner_id,
                e.escalation_level, e.level1_escalated_at, e.level2_escalated_at
         FROM tasks t
         LEFT JOIN projects p ON t.project_id = p.project_id
@@ -293,7 +293,27 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
           AND t.created_at <= $1
         ORDER BY t.priority DESC, t.created_at ASC
     """
-    rows = await db.fetchall(query, (twelve_hours_ago,))
+    try:
+        rows = await db.fetchall(query, (twelve_hours_ago,))
+    except Exception as exc:
+        if "lead_id" in str(exc).lower():
+            # Graceful fallback if lead_id column has not been added to projects yet
+            fallback_query = """
+                SELECT t.task_id, t.task, t.priority, t.guild_id, t.project_id, t.created_at,
+                       p.name AS project_name, p.channel_id, p.owner_id AS lead_id, p.owner_id,
+                       e.escalation_level, e.level1_escalated_at, e.level2_escalated_at
+                FROM tasks t
+                LEFT JOIN projects p ON t.project_id = p.project_id
+                LEFT JOIN task_escalations e ON t.task_id = e.task_id
+                WHERE t.status = 'Pending'
+                  AND t.priority >= 6
+                  AND t.created_at <= $1
+                ORDER BY t.priority DESC, t.created_at ASC
+            """
+            rows = await db.fetchall(fallback_query, (twelve_hours_ago,))
+        else:
+            raise
+
     escalations: list[dict[str, Any]] = []
 
     for r in rows:
@@ -304,7 +324,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
 
         current_level = int(r.get("escalation_level") or 0)
         channel_id = r.get("channel_id")
-        lead_id = r.get("lead_id")
+        lead_id = r.get("lead_id") or r.get("owner_id")
         project_name = r.get("project_name") or "Project"
         task_title = r.get("task") or "Untitled Task"
         priority = int(r.get("priority", 6))
