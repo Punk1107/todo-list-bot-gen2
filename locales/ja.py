@@ -1092,4 +1092,16 @@ STRINGS = {
     'viz_sparkline_7day': '過去7日間の生産性トレンド: {trend}',
     'viz_focus_wave': 'フォーカス継続ウェーブ: {wave}',
     'viz_no_data': 'ℹ️ この視覚化を生成するのに十分なデータがありません。',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 スマートデイリータイムブロック計画 — {work_date}',
+    'dayplan_desc': '🕒 勤務時間枠: **{start_time} - {end_time}**\n🎯 集中時間: **{focus_hours}時間 {focus_mins}分**\n☕ 人間工学休憩: **{break_hours}時間 {break_mins}分**\n📋 割り当てタスク数: **{tasks_count} 件**',
+    'dayplan_morning_field': '🌅 午前のセッション',
+    'dayplan_afternoon_field': '🌇 午後のセッション',
+    'dayplan_footer': '💡 ヒント: 45分集中 + 15分休憩が集中力の維持と眼精疲労防止に最適です。',
+    'dayplan_start_btn': '▶️ デイリープラン開始',
+    'dayplan_started_msg': '⏱️ タスク #{task_id} **{task_title}** のタイマーを開始しました！集中していきましょう！',
+    'dayplan_no_tasks': '📭 本日締め切りの重要・緊急タスクはありません。自由な集中時間をお楽しみください！',
+    'dedup_warning_msg': '💡 重複の可能性があるタスクを検出 ({pct}% 一致): タスク #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 ブール検索結果: **{query}** ({total} 件)',
 }

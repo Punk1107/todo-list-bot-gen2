@@ -1092,4 +1092,16 @@ STRINGS = {
     'viz_sparkline_7day': '最近7天生产力趋势：{trend}',
     'viz_focus_wave': '专注连续性波动：{wave}',
     'viz_no_data': 'ℹ️ 暂无足够数据以生成图表。',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 智能每日时间块排程 — {work_date}',
+    'dayplan_desc': '🕒 工作时段: **{start_time} - {end_time}**\n🎯 专注时间: **{focus_hours}小时 {focus_mins}分钟**\n☕ 人体工学休息: **{break_hours}小时 {break_mins}分钟**\n📋 排程任务数: **{tasks_count} 个任务**',
+    'dayplan_morning_field': '🌅 上午时段',
+    'dayplan_afternoon_field': '🌇 下午时段',
+    'dayplan_footer': '💡 提示: 45分钟专注 + 15分钟休息能最大限度保持脑力并减轻视力疲劳。',
+    'dayplan_start_btn': '▶️ 开始今日计划',
+    'dayplan_started_msg': '⏱️ 已为任务 #{task_id} **{task_title}** 启动计时器！开始专注！',
+    'dayplan_no_tasks': '📭 今日没有待办的紧急或重要任务，尽情享受自由专注时光吧！',
+    'dedup_warning_msg': '💡 检测到潜在重复任务 ({pct}% 相似): 任务 #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 布尔搜索结果: **{query}** (共 {total} 条)',
 }

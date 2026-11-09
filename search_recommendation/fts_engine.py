@@ -19,6 +19,7 @@ import re
 from typing import Any, Optional
 
 from core.database import db
+from search_recommendation.boolean_parser import compile_boolean_query
 from search_recommendation.models import (
     SearchFilter,
     SearchQuery,
@@ -48,12 +49,103 @@ class FtsEngine:
     async def search(self, query: SearchQuery) -> SearchResultPage:
         """Execute search and return a paginated SearchResultPage."""
         text = (query.text or "").strip()
+        if self._is_boolean_query(text):
+            return await self._boolean_search(query, text)
+
         use_fts = len(text) >= _MIN_FTS_LENGTH
 
         if use_fts:
             return await self._fts_search(query, text)
         else:
             return await self._filter_search(query)
+
+    def _is_boolean_query(self, text: str) -> bool:
+        """Detect whether query contains boolean operators or attribute filters."""
+        if not text:
+            return False
+        if re.search(r"\b(AND|OR|NOT)\b", text):
+            return True
+        if "(" in text and ")" in text:
+            return True
+        if re.search(r"\b(tag|tags|priority|status|assignee|due|has|project):", text, re.IGNORECASE):
+            return True
+        return False
+
+    async def _boolean_search(self, query: SearchQuery, text: str) -> SearchResultPage:
+        """Execute boolean & attribute parsed search."""
+        page_size = max(1, min(query.page_size, 25))
+        page = max(1, query.page)
+
+        where_clauses: list[str] = ["t.is_deleted = FALSE"]
+        params: list[Any] = []
+        idx = [1]
+
+        _builder._apply_scope(query.filter, where_clauses, params, idx)
+        _builder._apply_field_filters(query.filter, where_clauses, params, idx)
+
+        try:
+            sql_cond, params = compile_boolean_query(text, base_params=params)
+            where_clauses.append(f"({sql_cond})")
+        except Exception as exc:
+            log.warning("Boolean query parsing failed for '%s': %s — falling back to FTS/ILIKE", text, exc)
+            return await self._fts_search(query, text)
+
+        where_sql = " AND ".join(where_clauses)
+
+        sort_map = {
+            SortBy.RELEVANCE:    "t.priority DESC, t.deadline ASC NULLS LAST",
+            SortBy.PRIORITY_DESC:"t.priority DESC, t.deadline ASC NULLS LAST",
+            SortBy.DEADLINE_ASC: "t.deadline ASC NULLS LAST, t.priority DESC",
+            SortBy.DEADLINE_DESC:"t.deadline DESC, t.priority DESC",
+            SortBy.CREATED_DESC: "t.created_at DESC",
+        }
+        order_sql = sort_map.get(query.sort_by, "t.priority DESC, t.deadline ASC NULLS LAST")
+
+        count_sql = f"""
+SELECT COUNT(*) AS total
+FROM tasks t
+WHERE {where_sql}
+"""
+        count_params = list(params)
+
+        params.append(page_size)
+        limit_ph = f"${len(params)}"
+        params.append((page - 1) * page_size)
+        offset_ph = f"${len(params)}"
+
+        data_sql = f"""
+SELECT
+    t.task_id, t.task, t.deadline, t.priority, t.status,
+    t.tags, t.description, t.note, t.owner_id, t.guild_id,
+    t.project_id, t.is_pinned, t.created_at, t.updated_at,
+    t.completed_at,
+    0.0::real AS rank_score
+FROM tasks t
+WHERE {where_sql}
+ORDER BY {order_sql}
+LIMIT {limit_ph} OFFSET {offset_ph}
+"""
+
+        try:
+            count_row = await db.fetchone(count_sql, count_params)
+            total = int(count_row["total"]) if count_row else 0
+            rows = await db.fetchall(data_sql, params) if total > 0 else []
+        except Exception as exc:
+            log.error("Boolean search query failed: %s", exc)
+            return await self._ilike_fallback(query, text)
+
+        items = [self._row_to_result(row, text, None) for row in rows]
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        return SearchResultPage(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+            query_text=text,
+            sort_by=query.sort_by,
+        )
 
     # ── FTS Path ──────────────────────────────────────────────────────────────
 

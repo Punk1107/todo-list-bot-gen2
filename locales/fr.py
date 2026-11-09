@@ -1098,4 +1098,16 @@ STRINGS = {
     'viz_sparkline_7day': 'Tendance de productivité sur 7 jours : {trend}',
     'viz_focus_wave': 'Onde de continuité de concentration : {wave}',
     'viz_no_data': 'ℹ️ Pas assez de données pour générer cette visualisation.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 Planning Quotidien Intelligent & Blocs de Temps — {work_date}',
+    'dayplan_desc': '🕒 Plage de travail: **{start_time} - {end_time}**\n🎯 Temps de concentration: **{focus_hours}h {focus_mins}m**\n☕ Pauses ergonomiques: **{break_hours}h {break_mins}m**\n📋 Tâches planifiées: **{tasks_count} tâches**',
+    'dayplan_morning_field': '🌅 Session du Matin',
+    'dayplan_afternoon_field': '🌇 Session de l\'Après-midi',
+    'dayplan_footer': '💡 Astuce: 45m de concentration + 15m de pause préserve l\'endurance cognitive et réduit la fatigue oculaire.',
+    'dayplan_start_btn': '▶️ Démarrer le planning',
+    'dayplan_started_msg': '⏱️ Chronomètre démarré pour la tâche #{task_id} **{task_title}**! C\'est parti!',
+    'dayplan_no_tasks': '📭 Aucune tâche urgente ou importante prévue aujourd\'hui. Profitez de votre temps de concentration libre!',
+    'dedup_warning_msg': '💡 Tâche potentiellement en double détectée ({pct}% de similarité): Tâche #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 Résultats de recherche booléenne: **{query}** ({total} trouvés)',
 }

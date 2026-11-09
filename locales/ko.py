@@ -1091,4 +1091,16 @@ STRINGS = {
     'viz_sparkline_7day': '최근 7일 생산성 추세: {trend}',
     'viz_focus_wave': '집중 연속성 웨이브: {wave}',
     'viz_no_data': 'ℹ️ 시각화를 생성하기 위한 데이터가 충분하지 않습니다.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 스마트 데일리 일정 & 타임블록 — {work_date}',
+    'dayplan_desc': '🕒 근무 시간: **{start_time} - {end_time}**\n🎯 집중 시간: **{focus_hours}시간 {focus_mins}분**\n☕ 인체공학적 휴식: **{break_hours}시간 {break_mins}분**\n📋 배정된 할 일: **{tasks_count}개**',
+    'dayplan_morning_field': '🌅 오전 세션',
+    'dayplan_afternoon_field': '🌇 오후 세션',
+    'dayplan_footer': '💡 팁: 45분 집중 + 15분 휴식은 인지 지구력을 극대화하고 눈의 피로를 예방합니다.',
+    'dayplan_start_btn': '▶️ 데일리 플랜 시작',
+    'dayplan_started_msg': '⏱️ 할 일 #{task_id} **{task_title}**의 타이머를 시작했습니다! 집중해 보세요!',
+    'dayplan_no_tasks': '📭 오늘 마감인 긴급하거나 중요한 할 일이 없습니다. 자유로운 집중 시간을 즐기세요!',
+    'dedup_warning_msg': '💡 중복 가능성이 있는 할 일 감지 ({pct}% 일치): 할 일 #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 불리언 검색 결과: **{query}** ({total}개 발견)',
 }

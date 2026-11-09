@@ -1142,4 +1142,16 @@ STRINGS = {
     'viz_sparkline_7day': '7-Tage-Produktivitätstrend: {trend}',
     'viz_focus_wave': 'Fokus-Kontinuitätswelle: {wave}',
     'viz_no_data': 'ℹ️ Nicht genügend Daten vorhanden, um diese Visualisierung zu erstellen.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 Intelligenter Tagesplan & Zeitblocker — {work_date}',
+    'dayplan_desc': '🕒 Arbeitszeitfenster: **{start_time} - {end_time}**\n🎯 Fokuszeit: **{focus_hours}h {focus_mins}m**\n☕ Ergonomische Pausen: **{break_hours}h {break_mins}m**\n📋 Geplante Aufgaben: **{tasks_count} Aufgaben**',
+    'dayplan_morning_field': '🌅 Vormittagssitzung',
+    'dayplan_afternoon_field': '🌇 Nachmittagssitzung',
+    'dayplan_footer': '💡 Pro-Tipp: 45 Min Fokus + 15 Min Pause maximiert die kognitive Ausdauer und schont die Augen.',
+    'dayplan_start_btn': '▶️ Tagesplan starten',
+    'dayplan_started_msg': '⏱️ Timer für Aufgabe #{task_id} **{task_title}** gestartet! Ran an die Arbeit!',
+    'dayplan_no_tasks': '📭 Keine dringenden oder wichtigen Aufgaben für heute fällig. Genießen Sie Ihre freie Fokuszeit!',
+    'dedup_warning_msg': '💡 Mögliches Duplikat erkannt ({pct}% Übereinstimmung): Aufgabe #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 Boolesche Suchergebnisse: **{query}** ({total} gefunden)',
 }

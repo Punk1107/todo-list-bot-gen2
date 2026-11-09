@@ -1168,4 +1168,16 @@ STRINGS = {
     'viz_sparkline_7day': 'แนวโน้มผลผลิต 7 วันล่าสุด: {trend}',
     'viz_focus_wave': 'คลื่นความต่อเนื่องในการโฟกัส: {wave}',
     'viz_no_data': 'ℹ️ ยังไม่มีข้อมูลเพียงพอสำหรับสร้างกราฟในขณะนี้',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 ตารางเวลาอัจฉริยะประจำวัน (Smart Day Plan) — {work_date}',
+    'dayplan_desc': '🕒 ช่วงเวลาทำงาน: **{start_time} - {end_time}**\n🎯 เวลาโฟกัสงาน (Focus): **{focus_hours} ชม. {focus_mins} นาที**\n☕ เวลาพักสายตา & เบรก (Ergonomics): **{break_hours} ชม. {break_mins} นาที**\n📋 จัดสรรงานลงบล็อก: **{tasks_count} งาน**',
+    'dayplan_morning_field': '🌅 ช่วงเช้า (Morning Session)',
+    'dayplan_afternoon_field': '🌇 ช่วงบ่าย (Afternoon Session)',
+    'dayplan_footer': '💡 Pro-tip: 45m Focus + 15m Break ช่วยลดอาการล้าของสมองและสายตาได้สูงสุด',
+    'dayplan_start_btn': '▶️ เริ่มจับเวลา Day Plan',
+    'dayplan_started_msg': '⏱️ เริ่มจับเวลาสำหรับงาน #{task_id} **{task_title}** แล้ว! ลุยเลย!',
+    'dayplan_no_tasks': '📭 ไม่พบงานสำคัญที่ค้างส่งในวันนี้ คุณมีเวลาว่างสำหรับการโฟกัสงานอิสระอย่างเต็มที่!',
+    'dedup_warning_msg': '💡 ตรวจพบงานที่อาจซ้ำซ้อนในระบบ ({pct}%): งาน #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 ผลการค้นหาแบบ Boolean Search: **{query}** ({total} รายการ)',
 }

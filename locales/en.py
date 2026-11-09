@@ -1158,4 +1158,16 @@ STRINGS = {
     'viz_sparkline_7day': '7-Day Productivity Trend: {trend}',
     'viz_focus_wave': 'Focus Continuity Wave: {wave}',
     'viz_no_data': 'ℹ️ Not enough data recorded to generate this visualization.',
+
+    # ─── Gen 5.0 Pillar 7: Smart Heuristics, Day Planner & Search Parsing ─
+    'dayplan_title': '📅 Smart Daily Schedule & Time-Blocker — {work_date}',
+    'dayplan_desc': '🕒 Work Window: **{start_time} - {end_time}**\n🎯 Focus Time: **{focus_hours}h {focus_mins}m**\n☕ Ergonomic Breaks: **{break_hours}h {break_mins}m**\n📋 Scheduled Tasks: **{tasks_count} tasks**',
+    'dayplan_morning_field': '🌅 Morning Session',
+    'dayplan_afternoon_field': '🌇 Afternoon Session',
+    'dayplan_footer': '💡 Pro-tip: 45m Focus + 15m Break maximizes cognitive stamina and prevents eye strain.',
+    'dayplan_start_btn': '▶️ Start Day Plan',
+    'dayplan_started_msg': '⏱️ Timer started for task #{task_id} **{task_title}**! Let\'s focus!',
+    'dayplan_no_tasks': '📭 No urgent or important tasks due today. Enjoy your free focus time!',
+    'dedup_warning_msg': '💡 Potential duplicate task detected ({pct}% match): Task #{task_id} **{existing_title}**',
+    'search_boolean_results': '🔍 Boolean Search Results: **{query}** ({total} found)',
 }
