@@ -23,7 +23,7 @@ async def save_standup_config(
     user_id: str,
 ) -> StandupConfig:
     """Save or update guild standup channel and daily prompt time."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         """
         INSERT INTO standup_configs (guild_id, channel_id, standup_time, is_active, created_by)
         VALUES ($1, $2, $3, TRUE, $4)
@@ -41,7 +41,7 @@ async def save_standup_config(
 
 async def get_standup_config(guild_id: str) -> Optional[StandupConfig]:
     """Retrieve active standup configuration for a guild."""
-    row = await db.fetch_one(
+    row = await db.fetchone(
         "SELECT * FROM standup_configs WHERE guild_id = $1 AND is_active = TRUE",
         (guild_id,),
     )
@@ -50,7 +50,7 @@ async def get_standup_config(guild_id: str) -> Optional[StandupConfig]:
 
 async def get_all_active_standup_configs() -> List[StandupConfig]:
     """Retrieve all active standup configs across all guilds for scheduler."""
-    rows = await db.fetch_all("SELECT * FROM standup_configs WHERE is_active = TRUE")
+    rows = await db.fetchall("SELECT * FROM standup_configs WHERE is_active = TRUE")
     return [StandupConfig.from_row(r) for r in rows]
 
 
@@ -65,7 +65,7 @@ async def submit_standup(
     today_date = date.today()
     clean_blockers = blockers.strip() if blockers and blockers.strip() else None
 
-    row = await db.fetch_one(
+    row = await db.fetchone(
         """
         INSERT INTO daily_standups (guild_id, user_id, standup_date, yesterday_text, today_text, blockers_text)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -88,7 +88,7 @@ async def get_daily_standups(
 ) -> List[DailyStandupEntry]:
     """Retrieve all standup entries for a guild on a given date."""
     target_date = standup_date or date.today()
-    rows = await db.fetch_all(
+    rows = await db.fetchall(
         """
         SELECT * FROM daily_standups
         WHERE guild_id = $1 AND standup_date = $2

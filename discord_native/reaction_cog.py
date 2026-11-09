@@ -83,7 +83,7 @@ class ReactionCog(commands.Cog, name="ReactionTriggers"):
         jump_link = message.jump_url
         description = f"{t('context_source_message', lang)}: {jump_link}\n\n{task_text}"
 
-        row = await db.fetch_one(
+        row = await db.fetchone(
             """
             INSERT INTO tasks (owner_id, task, description, status, priority, is_private)
             VALUES ($1, $2, $3, 'Pending', 3, TRUE)

@@ -1775,8 +1775,12 @@ class DatabaseManager:
         raise last_exc  # type: ignore[misc]
 
 
-    # ── Async aliases (kept for API compatibility with cog code) ──────────────
+    # ── Async & compatibility aliases (kept for API compatibility with cog code) ──
     # asyncpg is already fully async — these are just aliases.
+    fetch_one = fetchone
+    fetchrow = fetchone
+    fetch_all = fetchall
+    fetch = fetchall
 
     async def aexecute(self, sql: str, params: Sequence[Any] = ()) -> str:
         return await self.execute(sql, params)
