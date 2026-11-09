@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 36   # bump when adding migrations below
+SCHEMA_VERSION = 37   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -184,11 +184,13 @@ _KNOWN_TABLES = {
     "project_task_role_assignments", "task_templates", "task_checklists",
     "routine_event_rules", "project_role_permissions", "saved_filters",
     "focus_sessions", "calendar_feed_tokens", "task_comments",
-    # Gen 5.0 (Schema v29-v36)
+    # Gen 5.0 (Schema v29-v37)
     "sprints", "epics", "task_time_logs", "automation_rules", "user_rpg_profiles",
     "coop_quests", "project_documents", "task_revisions", "checklist_templates",
     "project_federation_guilds", "task_assignees", "project_milestones",
     "sprint_retros", "tasks_archive",
+    "voice_focus_rooms", "user_chime_settings", "project_scheduled_events",
+    "project_forum_configs", "task_forum_posts", "standup_configs", "daily_standups",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1286,6 +1288,78 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE TABLE IF NOT EXISTS tasks_archive (LIKE tasks INCLUDING ALL);
 
     INSERT INTO schema_version VALUES (36) ON CONFLICT (version) DO UPDATE SET version=36;
+    """),
+    (37, """
+    -- Migration 37: Discord-Native Voice, Community & Event Ecosystem
+    CREATE TABLE IF NOT EXISTS voice_focus_rooms (
+        guild_id TEXT NOT NULL,
+        channel_id TEXT PRIMARY KEY,
+        bound_by TEXT REFERENCES users(user_id),
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        work_minutes INTEGER NOT NULL DEFAULT 25,
+        break_minutes INTEGER NOT NULL DEFAULT 5,
+        current_phase TEXT NOT NULL DEFAULT 'idle' CHECK (current_phase IN ('idle', 'work', 'break')),
+        current_round INTEGER NOT NULL DEFAULT 1,
+        phase_ends_at TIMESTAMPTZ,
+        chime_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_voice_focus_guild ON voice_focus_rooms(guild_id);
+
+    CREATE TABLE IF NOT EXISTS user_chime_settings (
+        user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+        chime_enabled BOOLEAN NOT NULL DEFAULT TRUE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_scheduled_events (
+        event_id TEXT PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        project_id INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('milestone', 'task')),
+        entity_id INTEGER NOT NULL,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_proj_events ON project_scheduled_events(project_id, entity_type, entity_id);
+
+    CREATE TABLE IF NOT EXISTS project_forum_configs (
+        project_id INTEGER PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,
+        guild_id TEXT NOT NULL,
+        forum_channel_id TEXT NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS task_forum_posts (
+        task_id INTEGER PRIMARY KEY REFERENCES tasks(task_id) ON DELETE CASCADE,
+        thread_id TEXT NOT NULL,
+        forum_channel_id TEXT NOT NULL,
+        synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_forum_thread ON task_forum_posts(thread_id);
+
+    CREATE TABLE IF NOT EXISTS standup_configs (
+        guild_id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        standup_time TEXT NOT NULL DEFAULT '09:30',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_by TEXT REFERENCES users(user_id),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_standups (
+        standup_id SERIAL PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        user_id TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+        standup_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        yesterday_text TEXT NOT NULL,
+        today_text TEXT NOT NULL,
+        blockers_text TEXT,
+        submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (guild_id, user_id, standup_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_standup_guild_date ON daily_standups(guild_id, standup_date);
+
+    INSERT INTO schema_version VALUES (37) ON CONFLICT (version) DO UPDATE SET version=37;
     """),
 ]
 

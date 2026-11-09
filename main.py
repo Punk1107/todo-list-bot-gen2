@@ -76,6 +76,8 @@ COGS = [
     "history_reporting.cog",                # /history & /retrospective — Audit Trail & Weekly Retrospective
     "agile.cog",                            # /sprint, /poker, /epic — Agile & Scrum Full Suite (Gen 5.0)
     "cpm_roadmap.cog",                      # /roadmap, /project critical-path, /project gantt (Gen 5.0)
+    "discord_native.reaction_cog",          # One-Click Reaction Task Capture & Quick Complete (Gen 5.0)
+    "standup.cog",                          # /standup — Asynchronous Daily Standup & Digest (Gen 5.0)
 ]
 
 

@@ -1044,4 +1044,16 @@ STRINGS = {
     'health_on_track': '🟢 正常推进：进展与交付时间表保持一致。',
     'health_at_risk': '🟡 存在风险：进展落后于计划 {gap}%。',
     'health_delayed': '🔴 严重滞后：进展落后于计划 {gap}%。发现关键瓶颈任务！',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ 专注房间已绑定至 {channel}。语音番茄钟已激活！',
+    'focus_voice_unbound': '🔌 已解除 {channel} 的专注房间绑定。',
+    'focus_voice_not_found': '❌ 语音频道 {channel} 未绑定为专注房间。',
+    'focus_chime_enabled': '🔔 专注钟声提示音**已启用**。',
+    'focus_chime_disabled': '🔕 专注钟声提示音**已禁用**。',
+    'proj_events_synced': '📅 已将 {count} 个里程碑/关键任务同步至 Discord 计划活动！',
+    'proj_forum_mode_enabled': '📌 论坛看板模式已启用！任务将与 {forum} 保持同步。',
+    'standup_config_saved': '⏰ 每日站会已设置在 **{time}**，频道：{channel}。',
+    'standup_submitted_success': '✅ 每日站会提交成功！继续加油！',
+    'standup_no_entries': '📭 今日暂无提交的站会记录。',
 }

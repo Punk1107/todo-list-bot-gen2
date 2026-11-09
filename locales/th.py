@@ -1120,4 +1120,16 @@ STRINGS = {
     'health_on_track': '🟢 ตามแผน: ความคืบหน้าสอดคล้องกับกรอบเวลาส่งมอบ',
     'health_at_risk': '🟡 มีความเสี่ยง: ความคืบหน้าช้ากว่าแผน {gap}%',
     'health_delayed': '🔴 ล่าช้า: ความคืบหน้าช้ากว่าแผน {gap}% ตรวจพบคอขวดวิกฤต!',
+
+    # ─── Gen 5.0 Pillar 3: Voice, Community & Event Ecosystem ────────────────
+    'focus_voice_bound': '🎙️ ผูกห้องโฟกัสกับ {channel} สำเร็จ! ระบบติดตาม Voice Pomodoro เริ่มทำงานแล้ว',
+    'focus_voice_unbound': '🔌 ยกเลิกการผูกห้องโฟกัสจาก {channel} แล้ว',
+    'focus_voice_not_found': '❌ ห้องเสียง {channel} ไม่ได้ถูกผูกไว้กับห้องโฟกัส',
+    'focus_chime_enabled': '🔔 เปิดใช้งานเสียงระฆังสมาธิในห้องเสียงแล้ว',
+    'focus_chime_disabled': '🔕 ปิดใช้งานเสียงระฆังสมาธิในห้องเสียงแล้ว',
+    'proj_events_synced': '📅 ซิงค์ {count} ไมล์สโตน/งานสำคัญไปยัง Discord Scheduled Events เรียบร้อยแล้ว!',
+    'proj_forum_mode_enabled': '📌 เปิดใช้งาน Forum Kanban Mode แล้ว! งานจะซิงค์กับ {forum}',
+    'standup_config_saved': '⏰ ตั้งเวลา Daily Standup เรียบร้อย: **{time}** ที่ {channel}',
+    'standup_submitted_success': '✅ บันทึก Daily Standup เรียบร้อยแล้ว! ลุยงานต่อได้เลย!',
+    'standup_no_entries': '📭 ยังไม่มีการบันทึก Daily Standup สำหรับวันนี้',
 }
