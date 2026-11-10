@@ -115,7 +115,7 @@ class DatabaseConfig:
             database=_env("SUPABASE_DB", "postgres"),
             user=_env("SUPABASE_USER", required=True),
             password=_env("SUPABASE_PASSWORD", required=True),
-            pool_size=_env_int("DB_POOL_SIZE", 10),
+            pool_size=_env_int("DB_POOL_SIZE", 5),
             timeout=_env_int("DB_TIMEOUT", 30),
             query_cache_ttl=_env_float("DB_QUERY_CACHE_TTL", 30.0),
             bulk_write_interval_ms=_env_int("DB_BULK_WRITE_INTERVAL_MS", 500),

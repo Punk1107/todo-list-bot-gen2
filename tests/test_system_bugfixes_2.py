@@ -231,6 +231,7 @@ async def test_get_project_board_excludes_deleted_blockers():
     }]
 
     with patch("collaboration.service.get_project", AsyncMock(return_value=project)), \
+         patch("collaboration.service.db.fetchone", AsyncMock(return_value=None)), \
          patch("collaboration.service.db.fetchall", AsyncMock(side_effect=[
              tasks_mock,  # tasks
              [],          # assignees

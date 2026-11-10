@@ -19,10 +19,11 @@ import logging
 import random
 import time
 from collections import OrderedDict, deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Any, List, Optional, Sequence
+from typing import Any, AsyncIterator, List, Optional, Sequence
 
 import asyncpg
 
@@ -1625,19 +1626,20 @@ class DatabaseManager:
         Create asyncpg connection pool and run migrations.
         Call this inside setup_hook (or any coroutine on the bot's event loop).
         """
+        pool_max = max(2, min(config.db.pool_size, 5))
         self._pool = await asyncpg.create_pool(
             host=config.db.host,
             port=config.db.port,
             database=config.db.database,
             user=config.db.user,
             password=config.db.password,
-            min_size=2,
-            max_size=config.db.pool_size,
+            min_size=1,
+            max_size=pool_max,
             command_timeout=config.db.timeout,
             statement_cache_size=0,   # required for Supabase/pgBouncer pooler
             ssl="require",
-            # Auto-recycle idle connections that Supabase may have killed (5 min idle limit)
-            max_inactive_connection_lifetime=300,
+            # Auto-recycle idle connections quickly (60s) to avoid hitting Supabase session limits
+            max_inactive_connection_lifetime=60,
             server_settings={
                 "application_name": "todo-bot-gen2",
                 "timezone": "UTC",
@@ -1645,7 +1647,7 @@ class DatabaseManager:
         )
         await self._migrate()
         log.info("DatabaseManager ready — Supabase PostgreSQL (schema v%d, pool max=%d)",
-                 SCHEMA_VERSION, config.db.pool_size)
+                 SCHEMA_VERSION, pool_max)
 
     # ── BulkWriter lifecycle ──────────────────────────────────────────────────
 
@@ -1653,18 +1655,41 @@ class DatabaseManager:
         """Call once the asyncio event loop is running (e.g. in setup_hook)."""
         self.bulk_writer.start()
 
-    def acquire(self) -> asyncpg.pool.PoolAcquireContext:
-        """Acquire a connection from the asyncpg pool.
+    @asynccontextmanager
+    async def acquire(self, timeout: Optional[float] = None) -> AsyncIterator[asyncpg.Connection]:
+        """Acquire a connection from the asyncpg pool with retry on transient pooler errors.
 
         Usage::
             async with db.acquire() as conn:
-                await conn.execute(\"SELECT 1\")
+                await conn.execute("SELECT 1")
 
         Raises RuntimeError if the pool has not been initialised yet.
         """
         if self._pool is None:
             raise RuntimeError("Database pool has not been initialized. Call db.initialize() first.")
-        return self._pool.acquire()
+
+        conn_proxy = None
+        for attempt in range(1, self._MAX_RETRIES + 1):
+            try:
+                conn_proxy = await self._pool.acquire(timeout=timeout)
+                break
+            except Exception as exc:
+                if self._is_transient_error(exc) and attempt < self._MAX_RETRIES:
+                    delay = self._retry_delay(attempt)
+                    log.warning("DB acquire transient pool error (attempt %d/%d), retry in %.3fs: %s",
+                                attempt, self._MAX_RETRIES, delay, exc)
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
+        try:
+            yield conn_proxy
+        finally:
+            if conn_proxy is not None:
+                try:
+                    await self._pool.release(conn_proxy)
+                except Exception as exc:
+                    log.warning("Failed releasing connection back to pool: %s", exc)
 
     # ── Migrations ────────────────────────────────────────────────────────────
 
@@ -1706,6 +1731,31 @@ class DatabaseManager:
         cap = self._RETRY_BASE * (2 ** attempt)
         return random.uniform(0, min(cap, 2.0))
 
+    @staticmethod
+    def _is_transient_error(exc: Exception) -> bool:
+        """Check if an exception is transient (connection reset, pool exhaustion, network blip)."""
+        if isinstance(exc, (
+            asyncpg.TooManyConnectionsError,
+            asyncpg.PostgresConnectionError,
+            asyncpg.InterfaceError,
+            asyncpg.CannotConnectNowError,
+            asyncpg.ConnectionDoesNotExistError,
+            asyncio.TimeoutError,
+            TimeoutError,
+        )):
+            return True
+        msg = str(exc).lower()
+        if (
+            "emaxconnsession" in msg
+            or "max clients reached" in msg
+            or "remaining connection slots are reserved" in msg
+            or "connection reset by peer" in msg
+            or "server closed the connection unexpectedly" in msg
+            or "pool_size" in msg
+        ):
+            return True
+        return False
+
     # ── Core async methods ────────────────────────────────────────────────────
 
     @staticmethod
@@ -1743,27 +1793,21 @@ class DatabaseManager:
                 async with self._pool.acquire() as conn:
                     result = await conn.execute(sql, *p)
                 return result
-            except (
-                asyncpg.TooManyConnectionsError,
-                asyncpg.PostgresConnectionError,
-                asyncpg.InterfaceError,       # connection reset mid-flight
-                asyncpg.CannotConnectNowError,
-                asyncpg.ConnectionDoesNotExistError,
-                asyncio.TimeoutError,
-            ) as exc:
-                last_exc = exc
-                if attempt < self._MAX_RETRIES:
-                    delay = self._retry_delay(attempt)
-                    log.warning("DB transient error (attempt %d/%d), retry in %.3fs: %s",
-                                attempt, self._MAX_RETRIES, delay, exc)
-                    await asyncio.sleep(delay)
-                else:
-                    log.error("DB execute failed after %d retries: %s | SQL: %.200s",
-                              self._MAX_RETRIES, exc, sql)
-                    raise
             except Exception as exc:
-                log.error("DB execute error: %s | SQL: %.200s", exc, sql)
-                raise
+                if self._is_transient_error(exc):
+                    last_exc = exc
+                    if attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB transient error (attempt %d/%d), retry in %.3fs: %s",
+                                    attempt, self._MAX_RETRIES, delay, exc)
+                        await asyncio.sleep(delay)
+                    else:
+                        log.error("DB execute failed after %d retries: %s | SQL: %.200s",
+                                  self._MAX_RETRIES, exc, sql)
+                        raise
+                else:
+                    log.error("DB execute error: %s | SQL: %.200s", exc, sql)
+                    raise
         raise last_exc  # type: ignore[misc]
 
     async def executemany(self, sql: str, params_list: list[Sequence[Any]]) -> None:
@@ -1780,23 +1824,17 @@ class DatabaseManager:
                     async with conn.transaction():
                         await conn.executemany(sql, [tuple(p) for p in params_list])
                 return
-            except (
-                asyncpg.TooManyConnectionsError,
-                asyncpg.PostgresConnectionError,
-                asyncpg.InterfaceError,
-                asyncpg.CannotConnectNowError,
-                asyncpg.ConnectionDoesNotExistError,
-                asyncio.TimeoutError,
-            ) as exc:
-                if attempt < self._MAX_RETRIES:
-                    delay = self._retry_delay(attempt)
-                    log.warning("DB executemany transient error, retry %d/%d: %s",
-                                attempt, self._MAX_RETRIES, exc)
-                    await asyncio.sleep(delay)
+            except Exception as exc:
+                if self._is_transient_error(exc):
+                    if attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB executemany transient error, retry %d/%d: %s",
+                                    attempt, self._MAX_RETRIES, exc)
+                        await asyncio.sleep(delay)
+                    else:
+                        raise
                 else:
                     raise
-            except Exception:
-                raise
         raise RuntimeError("DB executemany failed after retries")
 
     async def execute_batch(self, statements: list[tuple[str, Sequence[Any]]]) -> None:
@@ -1832,23 +1870,17 @@ class DatabaseManager:
                         for sql, params in statements:
                             await conn.execute(sql, *params)
                 return
-            except (
-                asyncpg.TooManyConnectionsError,
-                asyncpg.PostgresConnectionError,
-                asyncpg.InterfaceError,
-                asyncpg.CannotConnectNowError,
-                asyncpg.ConnectionDoesNotExistError,
-                asyncio.TimeoutError,
-            ) as exc:
-                if attempt < self._MAX_RETRIES:
-                    delay = self._retry_delay(attempt)
-                    log.warning("DB batch transient error, retry %d/%d: %s",
-                                attempt, self._MAX_RETRIES, exc)
-                    await asyncio.sleep(delay)
+            except Exception as exc:
+                if self._is_transient_error(exc):
+                    if attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        log.warning("DB batch transient error, retry %d/%d: %s",
+                                    attempt, self._MAX_RETRIES, exc)
+                        await asyncio.sleep(delay)
+                    else:
+                        raise
                 else:
                     raise
-            except Exception:
-                raise
         raise RuntimeError("DB execute_batch failed after retries")
 
     async def fetchone(self, sql: str, *args: Any, params: Any = None) -> Optional[asyncpg.Record]:
@@ -1865,25 +1897,19 @@ class DatabaseManager:
                     result = await conn.fetchrow(sql, *p)
                 self.query_cache.set(sql, p, result)
                 return result
-            except (
-                asyncpg.TooManyConnectionsError,
-                asyncpg.PostgresConnectionError,
-                asyncpg.InterfaceError,
-                asyncpg.CannotConnectNowError,
-                asyncpg.ConnectionDoesNotExistError,
-                asyncio.TimeoutError,
-            ) as exc:
-                last_exc = exc
-                if attempt < self._MAX_RETRIES:
-                    delay = self._retry_delay(attempt)
-                    await asyncio.sleep(delay)
-                else:
-                    log.error("DB fetchone failed after %d retries: %s | SQL: %.200s",
-                              self._MAX_RETRIES, exc, sql)
-                    raise
             except Exception as exc:
-                log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
-                raise
+                if self._is_transient_error(exc):
+                    last_exc = exc
+                    if attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        await asyncio.sleep(delay)
+                    else:
+                        log.error("DB fetchone failed after %d retries: %s | SQL: %.200s",
+                                  self._MAX_RETRIES, exc, sql)
+                        raise
+                else:
+                    log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
+                    raise
         raise last_exc  # type: ignore[misc]
 
     async def fetchall(self, sql: str, *args: Any, params: Any = None) -> List[asyncpg.Record]:
@@ -1900,25 +1926,19 @@ class DatabaseManager:
                     result = await conn.fetch(sql, *p)
                 self.query_cache.set(sql, p, result)
                 return result
-            except (
-                asyncpg.TooManyConnectionsError,
-                asyncpg.PostgresConnectionError,
-                asyncpg.InterfaceError,
-                asyncpg.CannotConnectNowError,
-                asyncpg.ConnectionDoesNotExistError,
-                asyncio.TimeoutError,
-            ) as exc:
-                last_exc = exc
-                if attempt < self._MAX_RETRIES:
-                    delay = self._retry_delay(attempt)
-                    await asyncio.sleep(delay)
-                else:
-                    log.error("DB fetchall failed after %d retries: %s | SQL: %.200s",
-                              self._MAX_RETRIES, exc, sql)
-                    raise
             except Exception as exc:
-                log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
-                raise
+                if self._is_transient_error(exc):
+                    last_exc = exc
+                    if attempt < self._MAX_RETRIES:
+                        delay = self._retry_delay(attempt)
+                        await asyncio.sleep(delay)
+                    else:
+                        log.error("DB fetchall failed after %d retries: %s | SQL: %.200s",
+                                  self._MAX_RETRIES, exc, sql)
+                        raise
+                else:
+                    log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
+                    raise
         raise last_exc  # type: ignore[misc]
 
 
