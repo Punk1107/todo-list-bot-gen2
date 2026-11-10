@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
@@ -10,9 +11,9 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from core.database import db
-from gamification import service
+from gamification import rpg, service, vacation
 from locales.i18n import t
-from utils.helpers import get_user_lang
+from utils.helpers import get_user_lang, ensure_user
 from visualization import render_block_sparkline, render_braille_wave, render_streak_heatmap
 from visualization import service as viz_service
 
@@ -138,6 +139,187 @@ class GamificationCog(commands.Cog, name="Gamification"):
         else:
             embed.description = t("leaderboard_empty", lang)
         await interaction.response.send_message(embed=embed)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Feature 30: Productivity RPG & Leveling Progression (/level & /rpg)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app_commands.command(
+        name="level",
+        description="⚔️ ดูเลเวลและฉายา Productivity RPG / View your Productivity RPG Level & Title",
+    )
+    @app_commands.describe(member="สมาชิกที่ต้องการดูสถิติ (Target member, default: you)")
+    async def level(
+        self,
+        interaction: discord.Interaction,
+        member: Optional[discord.Member] = None,
+    ) -> None:
+        target = member or interaction.user
+        uid = str(target.id)
+        await ensure_user(uid, target.name)
+        lang = await get_user_lang(str(interaction.user.id))
+
+        profile = await rpg.get_user_rpg_profile(uid)
+        embed = self._build_rpg_embed(profile, target.display_name, lang)
+        await interaction.response.send_message(embed=embed)
+
+    rpg_group = app_commands.Group(
+        name="rpg",
+        description="⚔️ Productivity RPG Leveling & Leaderboard (Gen 5.0)",
+    )
+
+    @rpg_group.command(
+        name="status",
+        description="📊 ดูสถานะเลเวล ฉายา และแต้ม EXP / View RPG status, level, and EXP",
+    )
+    @app_commands.describe(member="สมาชิกที่ต้องการดูสถิติ (Target member, default: you)")
+    async def rpg_status(
+        self,
+        interaction: discord.Interaction,
+        member: Optional[discord.Member] = None,
+    ) -> None:
+        await self.level(interaction, member)
+
+    @rpg_group.command(
+        name="leaderboard",
+        description="🏆 อันดับเลเวลและ EXP สูงสุดในเซิร์ฟเวอร์ / Server RPG Level & EXP Leaderboard",
+    )
+    async def rpg_leaderboard(self, interaction: discord.Interaction) -> None:
+        lang = await get_user_lang(str(interaction.user.id))
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
+
+        leaders = await rpg.get_rpg_leaderboard(guild_id, limit=10)
+        title = t("rpg_leaderboard_title", lang)
+        embed = discord.Embed(title=title, color=discord.Color.gold())
+
+        if leaders:
+            lines = []
+            for rank, u in enumerate(leaders, start=1):
+                medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"`#{rank}`"
+                lines.append(
+                    f"{medal} <@{u['user_id']}> — **Lv.{u['level']}** {u['title']}\n"
+                    f"   └ `{u['total_exp']:,} EXP` · 🔥 Streak: {u['streak_days']}d"
+                )
+            embed.description = "\n".join(lines)
+        else:
+            embed.description = t("leaderboard_empty", lang)
+
+        await interaction.response.send_message(embed=embed)
+
+    def _build_rpg_embed(self, profile: dict, name: str, lang: str) -> discord.Embed:
+        title = t("rpg_status_title", lang, user=name)
+        desc = (
+            f"**{profile['title']}**\n"
+            f"**Level {profile['level']}** · `{profile['total_exp']:,}` Total EXP\n"
+            f"Progress: `{profile['current_level_exp']:,} / {profile['next_level_exp']:,} EXP` ({profile['progress_pct']}%)\n"
+            f"`{profile['progress_bar']}`"
+        )
+        embed = discord.Embed(title=title, description=desc, color=discord.Color.gold())
+
+        v_until = profile.get("vacation_until")
+        v_str = f"🌴 Active (until {v_until})" if v_until else "💼 Normal"
+        embed.add_field(
+            name="🔥 Streak & Balance",
+            value=(
+                f"• Streak: **{profile['streak_days']}** days\n"
+                f"• Freeze Tokens: **{profile['streak_freeze_tokens']} / 3** 🧊\n"
+                f"• Vacation: **{v_str}**"
+            ),
+            inline=True,
+        )
+
+        embed.add_field(
+            name="📊 Cleared Tasks",
+            value=(
+                f"• Total: **{profile['total_completed']}** tasks\n"
+                f"• P7 (Critical): **{profile['p7_count']}**\n"
+                f"• P5-P6 (High): **{profile['p5_p6_count']}**\n"
+                f"• P0-P4: **{profile['p3_p4_count'] + profile['p0_p2_count']}**"
+            ),
+            inline=True,
+        )
+        return embed
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Feature 32: Vacation Mode & Streak Freeze Tokens (/vacation)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    vacation_group = app_commands.Group(
+        name="vacation",
+        description="🌴 Vacation Mode & Streak Protection (Gen 5.0)",
+    )
+
+    @vacation_group.command(
+        name="start",
+        description="🌴 เปิดโหมดพักร้อนเพื่อรักษาสถิติ Streak ชั่วคราว / Start Vacation Mode to freeze streak",
+    )
+    @app_commands.describe(
+        days="จำนวนวันที่ต้องการพักร้อน (1 - 90 วัน)",
+        reason="เหตุผลการลา เช่น ไปต่างจังหวัด / พักฟื้น (Optional)",
+    )
+    async def vacation_start(
+        self,
+        interaction: discord.Interaction,
+        days: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        uid = str(interaction.user.id)
+        await ensure_user(uid, interaction.user.name)
+        lang = await get_user_lang(uid)
+
+        res = await vacation.start_vacation(uid, days, reason)
+        msg = t(
+            "vacation_started_msg",
+            lang,
+            days=res["days"],
+            until=res["vacation_until"].strftime("%Y-%m-%d"),
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    @vacation_group.command(
+        name="stop",
+        description="💼 ยกเลิกโหมดพักร้อนและกลับมาทำงานตามปกติ / End vacation mode early",
+    )
+    async def vacation_stop(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        await ensure_user(uid, interaction.user.name)
+        lang = await get_user_lang(uid)
+
+        await vacation.stop_vacation(uid)
+        msg = t("vacation_stopped_msg", lang)
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    @vacation_group.command(
+        name="status",
+        description="🧊 ตรวจสอบสถานะวันลาและ Streak Freeze Tokens / View vacation status & freeze tokens",
+    )
+    async def vacation_status(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        await ensure_user(uid, interaction.user.name)
+        lang = await get_user_lang(uid)
+
+        st = await vacation.get_vacation_status(uid)
+        title = t("vacation_status_title", lang)
+        embed = discord.Embed(title=title, color=discord.Color.teal())
+
+        v_text = (
+            f"🌴 **โหมดพักร้อนกำลังทำงาน (Active)**\n"
+            f"• วันที่สิ้นสุด: `{st['vacation_until']}` (เหลืออีก {st['days_remaining']} วัน)\n"
+            f"• เหตุผล: {st['reason'] or '-'}"
+            if st["is_on_vacation"] else
+            "💼 **สถานะปกติ (Active Working)**\n• คุณไม่ได้เปิดโหมดพักร้อนอยู่ในขณะนี้"
+        )
+        embed.add_field(name="🌴 Vacation Status", value=v_text, inline=False)
+        embed.add_field(
+            name="🧊 Streak Freeze Tokens",
+            value=(
+                f"• คุณมีโทเคน: **{st['freeze_tokens']} / 3** ชิ้น 🧊\n"
+                f"• ระบบจะใช้โทเคนอัตโนมัติหากคุณลืมเคลียร์งาน 1 วัน\n"
+                f"• สะสมเพิ่มได้ทุกๆ สถิติ Streak ต่อเนื่อง 14 วัน"
+            ),
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @tasks.loop(minutes=1)
     async def streak_reminder_loop(self) -> None:

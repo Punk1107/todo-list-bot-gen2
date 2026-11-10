@@ -687,6 +687,13 @@ async def toggle_checklist_item(checklist_id: int, user_id: str) -> Optional[tup
         str(task_id),
         f"checklist_id={checklist_id},is_done={new_done}",
     )
+    if new_done:
+        try:
+            from gamification.rpg import award_exp, EXP_CHECKLIST
+            await award_exp(user_id, EXP_CHECKLIST, reason="Checklist item completed")
+        except Exception as exc:
+            log.warning("Could not award checklist EXP: %s", exc)
+
     pending_count = await get_pending_checklist_count(task_id)
     item = ChecklistItem(
         checklist_id=row["checklist_id"],

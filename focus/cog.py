@@ -245,6 +245,11 @@ class FocusCog(commands.Cog, name="Focus"):
                                     elapsed_seconds / 3600, row["task_id"],
                                 )
                                 changed_task = (row["user_id"], row["task_id"])
+                                try:
+                                    from gamification.rpg import award_exp, EXP_POMODORO
+                                    await award_exp(row["user_id"], EXP_POMODORO, reason="Pomodoro focus session completed")
+                                except Exception as exc:
+                                    log.warning("Could not award pomodoro EXP: %s", exc)
                         await conn.execute(
                             """UPDATE focus_sessions
                                SET phase=$1, phase_started_at=$2, phase_ends_at=$3,

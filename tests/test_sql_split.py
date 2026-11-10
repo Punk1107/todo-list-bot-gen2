@@ -215,6 +215,15 @@ class TestSqlSplit(unittest.TestCase):
         v41_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 41))
         self.assertTrue(any("ALTER TABLE projects ADD COLUMN IF NOT EXISTS lead_id TEXT" in s for s in v41_stmts))
 
+    def test_migration_v42_gamification_rpg(self):
+        """Verify database schema migration (v42) parses and contains Gamification 2.0 definitions."""
+        self.assertGreaterEqual(SCHEMA_VERSION, 42)
+        v42_stmts = _split_sql_statements(next(sql for v, sql in MIGRATIONS if v == 42))
+        self.assertTrue(any("ALTER TABLE users ADD COLUMN IF NOT EXISTS total_exp" in s for s in v42_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS guild_quests" in s for s in v42_stmts))
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS peer_kudos" in s for s in v42_stmts))
+
+
 
 
 

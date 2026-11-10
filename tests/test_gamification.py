@@ -15,6 +15,8 @@ class FakeConnection:
             "timezone": timezone_name,
             "streak_days": streak_days,
             "streak_last_completion": last_day,
+            "streak_freeze_tokens": 0,
+            "vacation_until": None,
         }
         self.remaining_tasks = remaining_tasks
         self.executed: list[tuple[str, tuple]] = []
@@ -102,7 +104,7 @@ async def test_completion_snapshots_timezone_streak_and_awards_eligible_badges()
         params for query, params in conn.executed
         if "UPDATE users SET streak_days" in query
     )
-    assert update == (5, date(2026, 6, 5), "user-1")
+    assert update == (5, date(2026, 6, 5), 0, "user-1")
     event_insert = next(
         params for query, params in conn.executed
         if "INSERT INTO task_completion_events" in query

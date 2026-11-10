@@ -30,7 +30,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 41   # bump when adding migrations below
+SCHEMA_VERSION = 42   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,6 +193,7 @@ _KNOWN_TABLES = {
     "project_forum_configs", "task_forum_posts", "standup_configs", "daily_standups",
     "active_time_timers", "user_workload_capacities",
     "task_escalations", "project_sla_policies", "task_sla_tracking",
+    "guild_quests", "guild_quest_participants", "peer_kudos",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1437,6 +1438,60 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS lead_id TEXT;
 
     INSERT INTO schema_version VALUES (41) ON CONFLICT (version) DO UPDATE SET version=41;
+    """),
+    (42, """
+    -- Migration 42: Gamification 2.0, RPG Progression, Guild Quests & Peer Kudos
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS total_exp INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS rpg_level INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS rpg_title TEXT NOT NULL DEFAULT 'Task Initiate';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_freeze_tokens INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS vacation_until DATE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS vacation_reason TEXT;
+
+    CREATE INDEX IF NOT EXISTS idx_users_rpg_level ON users(rpg_level DESC, total_exp DESC);
+
+    CREATE TABLE IF NOT EXISTS guild_quests (
+        quest_id SERIAL PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        creator_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        target_tasks INTEGER NOT NULL DEFAULT 100,
+        completed_tasks INTEGER NOT NULL DEFAULT 0,
+        min_tasks_per_member INTEGER NOT NULL DEFAULT 3,
+        exp_reward INTEGER NOT NULL DEFAULT 500,
+        badge_reward TEXT NOT NULL DEFAULT 'Guild Raid Hero',
+        start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        end_date TIMESTAMPTZ NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'expired')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_guild_quests_guild_status ON guild_quests(guild_id, status);
+
+    CREATE TABLE IF NOT EXISTS guild_quest_participants (
+        quest_id INTEGER NOT NULL REFERENCES guild_quests(quest_id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        tasks_contributed INTEGER NOT NULL DEFAULT 0,
+        reward_claimed BOOLEAN NOT NULL DEFAULT FALSE,
+        last_contributed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (quest_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_quest_participants_user ON guild_quest_participants(user_id);
+
+    CREATE TABLE IF NOT EXISTS peer_kudos (
+        kudos_id SERIAL PRIMARY KEY,
+        guild_id TEXT NOT NULL,
+        from_user_id TEXT NOT NULL,
+        to_user_id TEXT NOT NULL,
+        task_id INTEGER REFERENCES tasks(task_id) ON DELETE SET NULL,
+        reason TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 30,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_peer_kudos_guild_to ON peer_kudos(guild_id, to_user_id);
+    CREATE INDEX IF NOT EXISTS idx_peer_kudos_created ON peer_kudos(created_at);
+
+    INSERT INTO schema_version VALUES (42) ON CONFLICT (version) DO UPDATE SET version=42;
     """),
 ]
 
