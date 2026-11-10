@@ -277,10 +277,9 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
     - Over 18 hours: Level 2 escalation (Mention project lead/admin).
     """
     now_utc = datetime.now(timezone.utc)
-    twelve_hours_ago = now_utc - timedelta(hours=12)
     eighteen_hours_ago = now_utc - timedelta(hours=18)
 
-    # Find candidate critical tasks in Pending status
+    # Find candidate critical tasks in Pending status (pending > 12h)
     query = """
         SELECT t.task_id, t.task, t.priority, t.guild_id, t.project_id, t.created_at,
                p.name AS project_name, p.channel_id, p.lead_id, p.owner_id,
@@ -290,11 +289,11 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
         LEFT JOIN task_escalations e ON t.task_id = e.task_id
         WHERE t.status = 'Pending'
           AND t.priority >= 6
-          AND t.created_at <= $1
+          AND t.created_at <= NOW() - INTERVAL '12 hours'
         ORDER BY t.priority DESC, t.created_at ASC
     """
     try:
-        rows = await db.fetchall(query, (twelve_hours_ago,))
+        rows = await db.fetchall(query)
     except Exception as exc:
         if "lead_id" in str(exc).lower():
             # Graceful fallback if lead_id column has not been added to projects yet
@@ -307,10 +306,10 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
                 LEFT JOIN task_escalations e ON t.task_id = e.task_id
                 WHERE t.status = 'Pending'
                   AND t.priority >= 6
-                  AND t.created_at <= $1
+                  AND t.created_at <= NOW() - INTERVAL '12 hours'
                 ORDER BY t.priority DESC, t.created_at ASC
             """
-            rows = await db.fetchall(fallback_query, (twelve_hours_ago,))
+            rows = await db.fetchall(fallback_query)
         else:
             raise
 
@@ -318,8 +317,8 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
 
     for r in rows:
         task_id = int(r["task_id"])
-        created_at = r["created_at"]
-        if created_at.tzinfo is None:
+        created_at = r.get("created_at")
+        if created_at is not None and getattr(created_at, "tzinfo", None) is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
 
         current_level = int(r.get("escalation_level") or 0)
@@ -360,7 +359,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
             escalations.append({"task_id": task_id, "level": 1, "task": task_title})
 
         # Level 2 Escalation: > 18 hours and level == 1
-        elif current_level == 1 and created_at <= eighteen_hours_ago:
+        elif current_level == 1 and created_at and created_at <= eighteen_hours_ago:
             await db.execute(
                 """UPDATE task_escalations
                    SET escalation_level = 2, level2_escalated_at = NOW()

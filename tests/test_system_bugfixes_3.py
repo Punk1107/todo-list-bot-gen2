@@ -499,3 +499,62 @@ async def test_instantiate_template_iso_formatting():
             deadline_val = call_args[0][2]
             assert "::timestamp" not in sql
             assert "T" in deadline_val
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. Render Stability: Supabase Pool Exhaustion & Datetime Handling
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_is_transient_error_detects_emaxconnsession_and_limits():
+    """Verify that _is_transient_error catches Supabase/Supavisor EMAXCONNSESSION."""
+    err_msg = "(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15"
+    exc = Exception(err_msg)
+    assert db._is_transient_error(exc) is True
+
+    err_slots = Exception("remaining connection slots are reserved for non-replication superuser connections")
+    assert db._is_transient_error(err_slots) is True
+
+    err_reset = Exception("server closed the connection unexpectedly")
+    assert db._is_transient_error(err_reset) is True
+
+    err_other = Exception("column p.lead_id does not exist")
+    assert db._is_transient_error(err_other) is False
+
+
+@pytest.mark.asyncio
+async def test_check_and_escalate_tasks_query_uses_interval_without_datetime_arg():
+    """Verify check_and_escalate_tasks uses NOW() - INTERVAL '12 hours' with zero parameters."""
+    from automation import engine
+
+    bot_mock = MagicMock()
+    with patch("core.database.db.fetchall", new_callable=AsyncMock) as mock_fetchall:
+        mock_fetchall.return_value = []
+        await engine.check_and_escalate_tasks(bot_mock)
+
+        assert mock_fetchall.called
+        sql_called = mock_fetchall.call_args[0][0]
+        # Query must use interval in SQL, not $1
+        assert "INTERVAL '12 hours'" in sql_called
+        assert "$1" not in sql_called
+        # Arguments must be empty (no naive/aware datetime object passed)
+        assert len(mock_fetchall.call_args[0]) == 1
+
+
+@pytest.mark.asyncio
+async def test_db_acquire_retries_on_transient_pool_error_and_releases():
+    """Verify db.acquire retries on transient pooler errors and releases connection."""
+    mock_pool = MagicMock()
+    mock_conn = MagicMock()
+
+    # Fail on first attempt with EMAXCONNSESSION, then succeed on second attempt
+    err_emax = Exception("(EMAXCONNSESSION) max clients reached in session mode")
+    mock_pool.acquire = AsyncMock(side_effect=[err_emax, mock_conn])
+    mock_pool.release = AsyncMock()
+
+    with patch.object(db, "_pool", mock_pool), \
+         patch.object(db, "_retry_delay", return_value=0.001):
+        async with db.acquire() as conn:
+            assert conn is mock_conn
+
+        assert mock_pool.acquire.await_count == 2
+        mock_pool.release.assert_awaited_once_with(mock_conn)
