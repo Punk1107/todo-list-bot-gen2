@@ -907,6 +907,14 @@ async def get_weekly_retrospective_data(
     else:
         tip = t("retro_tip_standard", lang)
 
+    # 7. Peer Kudos received during the week
+    kudos_received = []
+    try:
+        from kudos.service import get_user_recent_kudos
+        kudos_received = await get_user_recent_kudos(user_id, days=7)
+    except Exception as e:
+        log.warning("Could not fetch kudos for retrospective: %s", e)
+
     return WeeklyRetrospectiveData(
         user_id=user_id,
         start_date=start_of_week,
@@ -920,6 +928,7 @@ async def get_weekly_retrospective_data(
         category_distribution=cat_dist,
         overdue_carryover_tasks=overdue_carryovers,
         coaching_tip=tip,
+        kudos_received=kudos_received,
     )
 
 
@@ -1004,6 +1013,20 @@ async def send_weekly_retrospective_dm(
         embed.add_field(
             name=f"🏷️ {t('retro_category_breakdown', lang)}",
             value=" • ".join(cat_lines),
+            inline=False,
+        )
+
+    # Peer Kudos Received
+    if retro_data.kudos_received:
+        k_lines = [
+            f"• จาก <@{k['from_user_id']}>: *\"{k['reason']}\"* (`+{k['points']} EXP`)"
+            for k in retro_data.kudos_received[:4]
+        ]
+        if len(retro_data.kudos_received) > 4:
+            k_lines.append(f"... และคำขอบคุณอื่นๆ อีก {len(retro_data.kudos_received) - 4} ข้อความ")
+        embed.add_field(
+            name=f"💖 {t('kudos_retro_field', lang)} ({len(retro_data.kudos_received)})",
+            value="\n".join(k_lines),
             inline=False,
         )
 

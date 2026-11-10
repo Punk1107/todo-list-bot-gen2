@@ -81,6 +81,8 @@ COGS = [
     "time_tracking.cog",                    # /time, /workload — Time Tracking, Capacity & Estimation (Gen 5.0)
     "automation.cog",                       # /automation, /sla — ECA Automations, Escalations & SLA (Gen 5.0)
     "day_planner.cog",                      # /dayplan — Smart Daily Time-Blocker & Ergonomic Optimizer (Gen 5.0)
+    "quests.cog",                           # /quest — Server Co-op Quests & Guild Raids (Gen 5.0)
+    "kudos.cog",                            # /kudos — Peer Kudos & Gratitude Leaderboard (Gen 5.0)
 ]
 
 

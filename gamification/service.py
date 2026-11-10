@@ -9,6 +9,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import pytz
 
 from core.database import db
+from gamification.rpg import award_exp, get_task_exp
+from gamification.vacation import (
+    MAX_STREAK_FREEZE_TOKENS,
+    STREAK_MILESTONE_INTERVAL,
+    evaluate_streak_update,
+)
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +96,8 @@ async def _record_completion(
     )
 
     user = await conn.fetchrow(
-        """SELECT timezone, streak_days, streak_last_completion
+        """SELECT timezone, streak_days, streak_last_completion,
+                  streak_freeze_tokens, vacation_until
            FROM users WHERE user_id=$1 FOR UPDATE""",
         user_id,
     )
@@ -106,13 +113,51 @@ async def _record_completion(
     local_day = completed_at.astimezone(user_tz).date()
     last_day = user["streak_last_completion"]
     streak = int(user["streak_days"] or 0)
+    try:
+        freeze_tokens = int(user["streak_freeze_tokens"] or 0)
+    except (KeyError, IndexError, TypeError):
+        freeze_tokens = 0
+    try:
+        vacation_until = user["vacation_until"]
+    except (KeyError, IndexError, TypeError):
+        vacation_until = None
+
     if last_day != local_day:
-        streak = _next_streak(streak, last_day, local_day)
-        await conn.execute(
-            """UPDATE users SET streak_days=$1, streak_last_completion=$2
-               WHERE user_id=$3""",
-            streak, local_day, user_id,
+        streak, freeze_used, vacation_shielded, remaining_tokens = evaluate_streak_update(
+            current_streak=streak,
+            last_day=last_day,
+            completion_day=local_day,
+            vacation_until=vacation_until,
+            freeze_tokens=freeze_tokens,
         )
+        # Check 14-day milestone for awarding a new streak freeze token
+        if streak > 0 and streak % STREAK_MILESTONE_INTERVAL == 0 and last_day != local_day:
+            if remaining_tokens < MAX_STREAK_FREEZE_TOKENS:
+                remaining_tokens += 1
+                log.info("Awarded Streak Freeze Token to user %s for reaching %d-day streak", user_id, streak)
+
+        await conn.execute(
+            """UPDATE users SET streak_days=$1, streak_last_completion=$2, streak_freeze_tokens=$3
+               WHERE user_id=$4""",
+            streak, local_day, remaining_tokens, user_id,
+        )
+
+    # Award Productivity RPG EXP based on task priority
+    priority = int(task.get("priority") or 1)
+    task_exp = get_task_exp(priority)
+    try:
+        await award_exp(user_id, task_exp, reason=f"Task #{task['task_id']} completed")
+    except Exception as exc:
+        log.warning("Could not award RPG exp for user %s: %s", user_id, exc)
+
+    # Server Co-op Quest contribution (if guild task)
+    guild_id = task.get("guild_id")
+    if guild_id:
+        try:
+            from quests import service as quest_service
+            await quest_service.record_task_contribution(str(guild_id), user_id)
+        except Exception as exc:
+            log.warning("Could not record quest contribution for guild %s: %s", guild_id, exc)
 
     badges: list[str] = []
     local_time = completed_at.astimezone(user_tz).time()

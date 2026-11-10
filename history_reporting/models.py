@@ -104,3 +104,4 @@ class WeeklyRetrospectiveData:
     category_distribution: Dict[str, int] = field(default_factory=dict)
     overdue_carryover_tasks: List[Dict[str, Any]] = field(default_factory=list)
     coaching_tip: str = ""
+    kudos_received: List[Dict[str, Any]] = field(default_factory=list)
