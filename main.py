@@ -86,6 +86,9 @@ COGS = [
     "knowledge_base.cog",                   # /doc — Markdown Wiki Docs & FTS Search (Gen 5.0)
     "custom_fields.cog",                    # /field — Custom Dynamic Meta-Fields JSONB EAV (Gen 5.0)
     "changelog.cog",                        # /changelog — Automated Semantic Release Notes (Gen 5.0)
+    "federation.cog",                       # /federation — Cross-Guild Project Federation (Gen 5.0)
+    "assignments.cog",                      # /assign — Multi-Assignees & Role Collective Sign-Off (Gen 5.0)
+    "privacy.cog",                          # /privacy — GDPR Right to be Forgotten Compliance (Gen 5.0)
 ]
 
 

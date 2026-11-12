@@ -186,6 +186,7 @@ class ProjectTask:
     created_at:  datetime
     updated_at:  datetime
     is_private:  bool = False
+    assignment_mode: str = "first_wins"
     # Populated after JOIN with task_assignments:
     assignees:   list[str] = field(default_factory=list)
     assigned_roles: list[int] = field(default_factory=list)
@@ -214,6 +215,7 @@ class ProjectTask:
             created_at  = row["created_at"],
             updated_at  = row["updated_at"],
             is_private  = bool(row.get("is_private") or False),
+            assignment_mode = str(row.get("assignment_mode") or "first_wins") if hasattr(row, "get") else "first_wins",
             assignees   = assignees or [],
             assigned_roles = assigned_roles or [],
             blocked_by  = blocked_by or [],

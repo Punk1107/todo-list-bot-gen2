@@ -31,7 +31,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 43   # bump when adding migrations below
+SCHEMA_VERSION = 44   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +49,7 @@ class _CachedUser:
     role: str
     theme: str = "default"
     weekly_retrospective: int = 1
+    display_mode: str = "standard"
     _expires: float = field(default_factory=lambda: time.monotonic() + _CACHE_TTL)
 
     @property
@@ -80,7 +81,8 @@ class UserCache:
 
     def set(self, uid: str, lang: str, timezone: str,
             channel_id: Optional[int], role: str, theme: str = "default",
-            weekly_retrospective: int = 1) -> None:
+            weekly_retrospective: int = 1,
+            display_mode: str = "standard") -> None:
         with self._lock:
             if uid in self._store:
                 self._store.move_to_end(uid)
@@ -91,6 +93,7 @@ class UserCache:
                 channel_id=channel_id, role=role,
                 theme=theme,
                 weekly_retrospective=weekly_retrospective,
+                display_mode=display_mode,
             )
 
     def invalidate(self, uid: str) -> None:
@@ -197,6 +200,9 @@ _KNOWN_TABLES = {
     "guild_quests", "guild_quest_participants", "peer_kudos",
     # Gen 5.0 Pillar 9
     "project_custom_fields",
+    # Gen 5.0 Pillar 10
+    "federation_invites", "task_role_assignments", "task_assignment_signoffs",
+    "audit_log_summary", "user_themes", "guild_themes",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1557,6 +1563,138 @@ MIGRATIONS: list[tuple[int, str]] = [
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS release_channel_id BIGINT;
 
     INSERT INTO schema_version VALUES (43) ON CONFLICT (version) DO UPDATE SET version=43;
+    """),
+
+    # ── v44: Gen 5.0 Pillar 10 — Federation, Multi-Assignees, Janitor, GDPR, Themes, Display Mode, DoD Templates ──
+    (44, """
+    -- Feature 42: System Sentinel User for GDPR anonymization without FK breakage
+    INSERT INTO users (user_id, lang, timezone, role, theme)
+    VALUES ('deleted_user', 'en', 'UTC', 'user', 'default')
+    ON CONFLICT (user_id) DO NOTHING;
+
+    -- Feature 38: Cross-Guild Project Federation (enrich v35 skeleton)
+    ALTER TABLE project_federation_guilds
+        ADD COLUMN IF NOT EXISTS linked_by       TEXT,
+        ADD COLUMN IF NOT EXISTS sync_channel_id BIGINT,
+        ADD COLUMN IF NOT EXISTS role_scope      TEXT NOT NULL DEFAULT 'member'
+            CHECK (role_scope IN ('viewer', 'member', 'lead')),
+        ADD COLUMN IF NOT EXISTS status          TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('pending', 'active', 'revoked'));
+
+    CREATE INDEX IF NOT EXISTS idx_proj_fed_guild_active
+        ON project_federation_guilds(guild_id, status);
+
+    CREATE TABLE IF NOT EXISTS federation_invites (
+        invite_code      TEXT PRIMARY KEY,
+        project_id       INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+        home_guild_id    TEXT NOT NULL,
+        target_guild_id  TEXT NOT NULL,
+        created_by       TEXT NOT NULL,
+        default_role     TEXT NOT NULL DEFAULT 'member' CHECK (default_role IN ('viewer', 'member', 'lead')),
+        expires_at       TIMESTAMPTZ NOT NULL,
+        accepted_at      TIMESTAMPTZ,
+        accepted_by      TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_fed_invites_target
+        ON federation_invites(target_guild_id, expires_at);
+
+    -- Feature 39: Multi-Assignees & Sign-Off Completion Modes
+    ALTER TABLE tasks
+        ADD COLUMN IF NOT EXISTS assignment_mode TEXT NOT NULL DEFAULT 'first_wins'
+            CHECK (assignment_mode IN ('first_wins', 'all_signoff'));
+
+    ALTER TABLE task_assignees
+        ADD COLUMN IF NOT EXISTS assigned_by TEXT,
+        ADD COLUMN IF NOT EXISTS guild_id    TEXT;
+
+    CREATE TABLE IF NOT EXISTS task_role_assignments (
+        task_id      INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        guild_id     TEXT NOT NULL,
+        role_id      BIGINT NOT NULL,
+        assigned_by  TEXT NOT NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (task_id, role_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_role_assign_guild
+        ON task_role_assignments(guild_id, role_id);
+
+    CREATE TABLE IF NOT EXISTS task_assignment_signoffs (
+        task_id     INTEGER NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        user_id     TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        signed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        note        TEXT,
+        PRIMARY KEY (task_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_signoffs_user ON task_assignment_signoffs(user_id);
+
+    -- Feature 41: Janitor Archival & Audit Summary
+    ALTER TABLE tasks_archive
+        ADD COLUMN IF NOT EXISTS archived_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS archived_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+    CREATE INDEX IF NOT EXISTS idx_tasks_archive_owner ON tasks_archive(owner_id, archived_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_archive_guild ON tasks_archive(guild_id, archived_at);
+
+    CREATE TABLE IF NOT EXISTS audit_log_summary (
+        summary_id   SERIAL PRIMARY KEY,
+        period_month TEXT NOT NULL,
+        guild_scope  TEXT NOT NULL DEFAULT 'global',
+        action       TEXT NOT NULL,
+        event_count  INTEGER NOT NULL DEFAULT 0,
+        unique_users INTEGER NOT NULL DEFAULT 0,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (period_month, guild_scope, action)
+    );
+
+    -- Feature 43: Custom User & Guild Theme Palettes
+    CREATE TABLE IF NOT EXISTS user_themes (
+        theme_id          SERIAL PRIMARY KEY,
+        user_id           TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+        name              TEXT NOT NULL,
+        primary_color     TEXT NOT NULL DEFAULT '#5865F2',
+        success_color     TEXT NOT NULL DEFAULT '#57F287',
+        warning_color     TEXT NOT NULL DEFAULT '#FEE75C',
+        danger_color      TEXT NOT NULL DEFAULT '#ED4245',
+        progress_style    TEXT NOT NULL DEFAULT 'neon'
+            CHECK (progress_style IN ('neon', 'retro', 'minimal', 'blocks')),
+        emoji_set         JSONB NOT NULL DEFAULT '{"pending":"⏳","in_progress":"🔄","done":"✅","overdue":"🚨"}'::jsonb,
+        is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_themes_active ON user_themes(user_id, is_active);
+
+    CREATE TABLE IF NOT EXISTS guild_themes (
+        guild_id          TEXT PRIMARY KEY,
+        name              TEXT NOT NULL DEFAULT 'Server Theme',
+        primary_color     TEXT NOT NULL DEFAULT '#5865F2',
+        success_color     TEXT NOT NULL DEFAULT '#57F287',
+        warning_color     TEXT NOT NULL DEFAULT '#FEE75C',
+        danger_color      TEXT NOT NULL DEFAULT '#ED4245',
+        progress_style    TEXT NOT NULL DEFAULT 'neon'
+            CHECK (progress_style IN ('neon', 'retro', 'minimal', 'blocks')),
+        emoji_set         JSONB NOT NULL DEFAULT '{"pending":"⏳","in_progress":"🔄","done":"✅","overdue":"🚨"}'::jsonb,
+        updated_by        TEXT,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Feature 44: Mobile-Optimized Compact Display Mode
+    ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS display_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK (display_mode IN ('standard', 'compact'));
+
+    -- Feature 45: Reusable DoD Checklist Templates (enrich v34 skeleton)
+    ALTER TABLE checklist_templates
+        ADD COLUMN IF NOT EXISTS guild_id    TEXT,
+        ADD COLUMN IF NOT EXISTS description TEXT,
+        ADD COLUMN IF NOT EXISTS is_shared   BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS usage_count INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_tpl_scope_name
+        ON checklist_templates (COALESCE(guild_id, 'global'), COALESCE(owner_id, 'system'), LOWER(name));
+
+    INSERT INTO schema_version VALUES (44) ON CONFLICT (version) DO UPDATE SET version=44;
     """),
 ]
 

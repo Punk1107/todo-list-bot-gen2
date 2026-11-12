@@ -12,6 +12,7 @@ from core.database import db
 from routine_workflows.dynamic_variables import resolve_template_variables
 from routine_workflows.models import (
     ChecklistItem,
+    ChecklistTemplate,
     RoutineEventRule,
     TaskTemplate,
 )
@@ -712,6 +713,276 @@ async def delete_checklist_item(checklist_id: int) -> bool:
     res = await db.aexecute("DELETE FROM task_checklists WHERE checklist_id=$1", (checklist_id,))
     db.query_cache.invalidate_tables(["task_checklists"])
     return not res.endswith(" 0")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3b. Reusable Definition of Done (DoD) Checklist Templates (Feature 45)
+# ─────────────────────────────────────────────────────────────────────────────
+
+BUILTIN_CHECKLIST_TEMPLATES: dict[str, ChecklistTemplate] = {
+    "code review dod": ChecklistTemplate(
+        template_id=None,
+        name="Code Review DoD",
+        owner_id=None,
+        description="Standard engineering code review checklist",
+        items=[
+            "Unit & integration tests passing",
+            "No linter / type-check errors",
+            "Peer review approved",
+            "Changelog or docs updated",
+        ],
+        is_shared=True,
+    ),
+    "graphic design checklist": ChecklistTemplate(
+        template_id=None,
+        name="Graphic Design Checklist",
+        owner_id=None,
+        description="Visual asset delivery checklist",
+        items=[
+            "Export PNG/SVG @2x resolution",
+            "Verify typography & brand hex palette",
+            "Check mobile & dark-mode contrast",
+        ],
+        is_shared=True,
+    ),
+    "event setup checklist": ChecklistTemplate(
+        template_id=None,
+        name="Event Setup Checklist",
+        owner_id=None,
+        description="Community & launch event readiness checklist",
+        items=[
+            "Confirm speaker / host schedule",
+            "Publish Discord Scheduled Event & announcement",
+            "Test voice stage & recording permissions",
+            "Prepare post-event feedback form",
+        ],
+        is_shared=True,
+    ),
+}
+
+
+def _parse_checklist_items(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = [line.strip() for line in raw.splitlines() if line.strip()]
+    if not isinstance(raw, list):
+        return []
+    cleaned: list[str] = []
+    for entry in raw:
+        val = str(entry).strip()
+        if val and val not in cleaned:
+            cleaned.append(val[:200])
+    return cleaned
+
+
+def _row_to_checklist_tpl(row: Any) -> ChecklistTemplate:
+    return ChecklistTemplate(
+        template_id=row.get("template_id"),
+        name=str(row["name"]),
+        owner_id=row.get("owner_id"),
+        guild_id=row.get("guild_id"),
+        description=row.get("description"),
+        items=_parse_checklist_items(row.get("items")),
+        is_shared=bool(row.get("is_shared", False)),
+        usage_count=int(row.get("usage_count") or 0),
+        created_at=row.get("created_at"),
+    )
+
+
+async def create_checklist_template(
+    name: str,
+    items: list[str],
+    owner_id: str,
+    *,
+    guild_id: Optional[str] = None,
+    description: Optional[str] = None,
+    is_shared: bool = False,
+) -> ChecklistTemplate:
+    """Save or update a reusable DoD checklist template."""
+    clean_name = (name or "").strip()[:60]
+    if not clean_name:
+        raise ValueError("Template name cannot be empty.")
+    cleaned_items = _parse_checklist_items(items)
+    if not cleaned_items:
+        raise ValueError("Checklist template must contain at least 1 item.")
+
+    from utils.helpers import ensure_user
+
+    await ensure_user(str(owner_id))
+    scope_gid = str(guild_id) if (is_shared and guild_id) else None
+    existing = await db.afetchone(
+        """SELECT template_id FROM checklist_templates
+           WHERE COALESCE(guild_id, 'global') = $1
+             AND COALESCE(owner_id, 'system') = $2
+             AND LOWER(name) = LOWER($3)""",
+        (scope_gid or "global", str(owner_id), clean_name),
+    )
+    if existing:
+        row = await db.afetchone(
+            """UPDATE checklist_templates
+               SET name=$2, items=$3::jsonb, description=$4, is_shared=$5
+               WHERE template_id=$1
+               RETURNING *""",
+            (existing["template_id"], clean_name, json.dumps(cleaned_items), description, bool(is_shared)),
+        )
+    else:
+        row = await db.afetchone(
+            """INSERT INTO checklist_templates (name, owner_id, guild_id, description, items, is_shared)
+               VALUES ($1,$2,$3,$4,$5::jsonb,$6)
+               RETURNING *""",
+            (clean_name, str(owner_id), scope_gid, description, json.dumps(cleaned_items), bool(is_shared)),
+        )
+    db.query_cache.invalidate_table("checklist_templates")
+    return _row_to_checklist_tpl(dict(row)) if row else ChecklistTemplate(
+        template_id=None,
+        name=clean_name,
+        owner_id=str(owner_id),
+        guild_id=scope_gid,
+        description=description,
+        items=cleaned_items,
+        is_shared=bool(is_shared),
+    )
+
+
+async def save_checklist_template_from_task(
+    task_id: int,
+    name: str,
+    owner_id: str,
+    *,
+    guild_id: Optional[str] = None,
+    is_shared: bool = False,
+    description: Optional[str] = None,
+) -> ChecklistTemplate:
+    """Copy a task's existing `task_checklists` items into a reusable template."""
+    items = await get_checklists(task_id)
+    if not items:
+        raise ValueError(f"Task #{task_id} has no checklist items to save.")
+    return await create_checklist_template(
+        name=name,
+        items=[it.title for it in items],
+        owner_id=owner_id,
+        guild_id=guild_id,
+        is_shared=is_shared,
+        description=description or f"Saved from task #{task_id}",
+    )
+
+
+async def list_checklist_templates(
+    owner_id: str,
+    guild_id: Optional[str] = None,
+) -> list[ChecklistTemplate]:
+    """List personal, server-shared, and built-in DoD checklist templates."""
+    if guild_id:
+        rows = await db.afetchall(
+            """SELECT * FROM checklist_templates
+               WHERE owner_id=$1 OR (guild_id=$2 AND is_shared=TRUE)
+               ORDER BY usage_count DESC, name ASC""",
+            (str(owner_id), str(guild_id)),
+        )
+    else:
+        rows = await db.afetchall(
+            """SELECT * FROM checklist_templates
+               WHERE owner_id=$1
+               ORDER BY usage_count DESC, name ASC""",
+            (str(owner_id),),
+        )
+    result = [_row_to_checklist_tpl(dict(r)) for r in (rows or [])]
+    seen_names = {tpl.name.lower() for tpl in result}
+    for key, preset in BUILTIN_CHECKLIST_TEMPLATES.items():
+        if key not in seen_names:
+            result.append(preset)
+    return result
+
+
+async def get_checklist_template(
+    name: str,
+    owner_id: str,
+    guild_id: Optional[str] = None,
+) -> Optional[ChecklistTemplate]:
+    """Resolve a checklist template by name (user -> guild shared -> built-in)."""
+    clean = (name or "").strip().lower()
+    if not clean:
+        return None
+    if guild_id:
+        row = await db.afetchone(
+            """SELECT * FROM checklist_templates
+               WHERE LOWER(name)=$1 AND (owner_id=$2 OR (guild_id=$3 AND is_shared=TRUE))
+               ORDER BY CASE WHEN owner_id=$2 THEN 0 ELSE 1 END
+               LIMIT 1""",
+            (clean, str(owner_id), str(guild_id)),
+        )
+    else:
+        row = await db.afetchone(
+            "SELECT * FROM checklist_templates WHERE LOWER(name)=$1 AND owner_id=$2 LIMIT 1",
+            (clean, str(owner_id)),
+        )
+    if row:
+        return _row_to_checklist_tpl(dict(row))
+    return BUILTIN_CHECKLIST_TEMPLATES.get(clean)
+
+
+async def apply_checklist_template(
+    task_id: int,
+    template_name: str,
+    actor_id: str,
+    *,
+    guild_id: Optional[str] = None,
+    is_guild_admin: bool = False,
+) -> tuple[ChecklistTemplate, int]:
+    """Apply all items from `template_name` to `task_id` cleanly (skipping duplicates)."""
+    task_row = await db.afetchone(
+        "SELECT task_id, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+        (task_id,),
+    )
+    if not task_row:
+        raise ValueError(f"Task #{task_id} not found.")
+
+    uid = str(actor_id)
+    if not is_guild_admin and str(task_row["owner_id"]) != uid:
+        proj_id = task_row.get("project_id")
+        if proj_id and guild_id:
+            from collaboration import service as collab_service
+            role = await collab_service.get_member_role(int(proj_id), uid)
+            if role not in ("member", "lead"):
+                raise PermissionError("You do not have permission to edit this task's checklist.")
+        else:
+            raise PermissionError("You do not have permission to edit this task's checklist.")
+
+    tpl = await get_checklist_template(template_name, uid, guild_id=guild_id)
+    if not tpl:
+        raise ValueError(f"Checklist template '{template_name}' not found.")
+
+    existing = await get_checklists(task_id)
+    existing_titles = {it.title.strip().lower() for it in existing}
+    added = 0
+    for title in tpl.items:
+        if title.strip().lower() not in existing_titles:
+            item = await add_checklist_item(task_id, title)
+            if item:
+                added += 1
+                existing_titles.add(title.strip().lower())
+
+    if tpl.template_id:
+        await db.aexecute(
+            "UPDATE checklist_templates SET usage_count = usage_count + 1 WHERE template_id=$1",
+            (tpl.template_id,),
+        )
+        db.query_cache.invalidate_table("checklist_templates")
+    return tpl, added
+
+
+async def delete_checklist_template(name: str, owner_id: str) -> bool:
+    """Delete a user-owned checklist template."""
+    row = await db.afetchone(
+        "DELETE FROM checklist_templates WHERE LOWER(name)=LOWER($1) AND owner_id=$2 RETURNING template_id",
+        (name.strip(), str(owner_id)),
+    )
+    if row:
+        db.query_cache.invalidate_table("checklist_templates")
+        return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

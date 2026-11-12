@@ -161,17 +161,20 @@ async def _load_user_from_db_async(uid: str):
     from core.database import db
     row = await db.afetchone(
         """SELECT lang, timezone, channel_id, role, theme,
-                  COALESCE(weekly_retrospective, 1) AS weekly_retrospective
+                  COALESCE(weekly_retrospective, 1) AS weekly_retrospective,
+                  COALESCE(display_mode, 'standard') AS display_mode
            FROM users WHERE user_id=$1""", (uid,)
     )
-    if row:
+    if row and ("lang" in row):
         theme = row.get("theme") or "default"
         weekly_retro = 1 if row.get("weekly_retrospective") is None else int(row["weekly_retrospective"])
+        display_mode = row.get("display_mode") or "standard"
         db.user_cache.set(
             uid, row["lang"], row["timezone"], row["channel_id"], row["role"],
-            theme=theme, weekly_retrospective=weekly_retro,
+            theme=theme, weekly_retrospective=weekly_retro, display_mode=display_mode,
         )
-    return row
+        return row
+    return None
 
 
 async def get_user_lang(user_id) -> str:
@@ -231,11 +234,44 @@ async def get_user_theme(user_id) -> str:
     return "default"
 
 
-async def get_user_theme_color(user_id) -> int:
-    """Async: return user's theme color int for Discord Embeds."""
-    from core.theme import get_theme_color
-    theme = await get_user_theme(user_id)
-    return get_theme_color(theme)
+async def get_user_theme_color(
+    user_id,
+    guild_id: Optional[str | int] = None,
+    status: str = "primary",
+) -> int:
+    """Async: return effective theme color int (custom user -> preset -> guild -> default)."""
+    from core.theme import resolve_user_palette
+    palette = await resolve_user_palette(user_id, guild_id=guild_id)
+    return palette.color_for(status)
+
+
+async def get_user_display_mode(user_id) -> str:
+    """Async: return user's display_mode ('standard' or 'compact', cache-first)."""
+    from core.database import db
+    uid = str(user_id)
+    cached = db.user_cache.get(uid)
+    if cached and hasattr(cached, "display_mode") and cached.display_mode:
+        return cached.display_mode
+    row = await _load_user_from_db_async(uid)
+    if row and row.get("display_mode") in ("standard", "compact"):
+        return row["display_mode"]
+    return "standard"
+
+
+async def set_user_display_mode(user_id, mode: str) -> str:
+    """Validate and persist display_mode ('standard' or 'compact')."""
+    clean_mode = (mode or "standard").strip().lower()
+    if clean_mode not in ("standard", "compact"):
+        raise ValueError("Display mode must be 'standard' or 'compact'.")
+    await save_user_settings(str(user_id), display_mode=clean_mode)
+    return clean_mode
+
+
+def format_user_display(user_id: Optional[str]) -> str:
+    """Format a user_id safely, displaying anonymized GDPR records without broken mentions."""
+    if not user_id or user_id in ("deleted_user", "[Deleted User]"):
+        return "[Deleted User]"
+    return f"<@{user_id}>"
 
 
 async def ensure_user(user_id, lang: Optional[str] = None,
@@ -289,6 +325,7 @@ async def save_user_settings(
     daily_digest: Optional[int] = None,
     theme: Optional[str] = None,
     weekly_retrospective: Optional[int] = None,
+    display_mode: Optional[str] = None,
 ) -> None:
     """Async: persist one or more user settings and invalidate cache.
     Builds a single UPDATE query dynamically — avoids multiple round-trips.
@@ -316,6 +353,8 @@ async def save_user_settings(
         sets.append(f"theme=${idx}"); values.append(theme); idx += 1
     if weekly_retrospective is not None:
         sets.append(f"weekly_retrospective=${idx}"); values.append(weekly_retrospective); idx += 1
+    if display_mode is not None:
+        sets.append(f"display_mode=${idx}"); values.append(display_mode); idx += 1
 
     if sets:
         values.append(uid)
@@ -336,6 +375,8 @@ async def save_user_settings(
             cached.theme = theme
         if weekly_retrospective is not None:
             cached.weekly_retrospective = weekly_retrospective
+        if display_mode is not None:
+            cached.display_mode = display_mode
     else:
         db.user_cache.invalidate(uid)
 
@@ -881,7 +922,7 @@ def _recurring_label(recurring: Optional[str], lang: str) -> str:
 
 def build_task_embed(row, lang: str, tz_name: str,
                      subtasks=None, category=None, checklists=None,
-                     custom_fields=None) -> discord.Embed:
+                     custom_fields=None, assignment_summary=None) -> discord.Embed:
     """
     Build a premium, visually hierarchical embed for a single task.
     Accepts pre-fetched subtasks/category to avoid blocking DB calls.
@@ -1066,6 +1107,25 @@ def build_task_embed(row, lang: str, tz_name: str,
             inline=False,
         )
 
+    # ── Multi-Assignees, Roles & Sign-off Mode (Feature 39) ──────────────────
+    if assignment_summary and (assignment_summary.user_ids or assignment_summary.role_ids):
+        parts = []
+        if assignment_summary.user_ids:
+            parts.append("👥 " + ", ".join(format_user_display(u) for u in assignment_summary.user_ids[:10]))
+        if assignment_summary.role_ids:
+            parts.append("🎭 " + ", ".join(f"<@&{rid}>" for rid in assignment_summary.role_ids[:5]))
+        mode_lbl = t("assign_mode_all" if assignment_summary.assignment_mode == "all_signoff" else "assign_mode_first", lang)
+        parts.append(f"⚙️ `{mode_lbl}`")
+        if assignment_summary.assignment_mode == "all_signoff":
+            parts.append(
+                f"✍️ {len(assignment_summary.signed_user_ids)}/{max(1, assignment_summary.total_required)}"
+            )
+        embed.add_field(
+            name=f"👥 {t('assign_embed_section', lang)}",
+            value="\n".join(parts)[:1024],
+            inline=False,
+        )
+
     def _fmt_ts(val) -> str:
         if not val:
             return ""
@@ -1104,16 +1164,40 @@ def build_task_embed(row, lang: str, tz_name: str,
     return embed
 
 
+def _compact_deadline_label(deadline_val, tz_name: str) -> str:
+    """Format deadline concisely for mobile compact view (e.g., Today 18:00 or 12/11)."""
+    if not deadline_val:
+        return "—"
+    try:
+        tz = pytz.timezone(tz_name)
+    except Exception:
+        tz = pytz.utc
+    try:
+        dt = deadline_val if isinstance(deadline_val, datetime) else datetime.fromisoformat(str(deadline_val))
+        if dt.tzinfo is None:
+            dt = pytz.utc.localize(dt)
+        local_dt = dt.astimezone(tz)
+        local_now = datetime.now(pytz.utc).astimezone(tz)
+        if local_dt.date() == local_now.date():
+            return local_dt.strftime("%H:%M")
+        return local_dt.strftime("%d/%m")
+    except Exception:
+        return "—"
+
+
 def build_task_list_embed(
     tasks, page: int, total_pages: int,
     lang: str, tz_name: str, filter_label: str,
     total_count: int = 0, overdue_count: int = 0,
+    display_mode: str = "standard",
 ) -> discord.Embed:
-    """Build a premium paginated task list embed with urgency indicators.
+    """Build a paginated task list embed supporting both standard and mobile compact modes.
 
     Dynamic embed colour: reflects the most urgent pending task in the list.
     Adds a summary line showing total tasks and overdue count.
     """
+    is_compact = (display_mode or "standard").lower() == "compact"
+
     # Compute dynamic colour from worst urgency in current page
     now = datetime.now(pytz.utc)
     worst_color = 0x5865F2  # default blurple
@@ -1131,7 +1215,7 @@ def build_task_list_embed(
                 worst_color = c
 
     embed = discord.Embed(
-        title=f"📋 {t('tasks_title', lang)}  ›  {filter_label}",
+        title=f"📋 {t('tasks_title', lang)} › {filter_label}" if is_compact else f"📋 {t('tasks_title', lang)}  ›  {filter_label}",
         color=worst_color,
     )
 
@@ -1144,13 +1228,15 @@ def build_task_list_embed(
 
         # Summary line at top
         if total_count > 0:
-            summary = t("tasks_summary", lang, total=total_count, overdue=overdue_count)
-            lines.append(f"――― {summary} ―――")
+            if is_compact:
+                lines.append(f"`{total_count}t · 🚨{overdue_count}`")
+            else:
+                summary = t("tasks_summary", lang, total=total_count, overdue=overdue_count)
+                lines.append(f"――― {summary} ―――")
 
         for row in tasks:
             tid  = row["task_id"]
             name = row["task"]
-            name_disp = (name[:48] + "…") if len(name) > 48 else name
 
             try:
                 dl_val = row["deadline"]
@@ -1175,23 +1261,30 @@ def build_task_list_embed(
             else:
                 status_icon = "⏳"
 
-            pin_icon = " 📌" if (row.get("is_pinned") if hasattr(row, "get") else False) else ""
-            dl_str   = format_deadline(row["deadline"], tz_name)
-            tl       = time_left_str(row["deadline"])
+            pin_icon = "📌" if (row.get("is_pinned") if hasattr(row, "get") else False) else ""
 
-            deadline_line = (
-                f"📅 `{dl_str}`  ·  ⏱️ `{tl}`"
-                if row["deadline"] else f"📅 {t('task_no_deadline', lang)}"
-            )
-            lines.append(
-                f"{status_icon}{prio_icon}{pin_icon} **#{tid}** {name_disp}\n"
-                f"   ╰ {deadline_line}"
-            )
+            if is_compact:
+                compact_name = (name[:28] + "…") if len(name) > 28 else name
+                short_dl = _compact_deadline_label(row["deadline"], tz_name)
+                lines.append(f"{status_icon}{prio_icon}{pin_icon}`#{tid}` {compact_name} · `{short_dl}`")
+            else:
+                name_disp = (name[:48] + "…") if len(name) > 48 else name
+                dl_str   = format_deadline(row["deadline"], tz_name)
+                tl       = time_left_str(row["deadline"])
+                pin_spaced = f" {pin_icon}" if pin_icon else ""
+                deadline_line = (
+                    f"📅 `{dl_str}`  ·  ⏱️ `{tl}`"
+                    if row["deadline"] else f"📅 {t('task_no_deadline', lang)}"
+                )
+                lines.append(
+                    f"{status_icon}{prio_icon}{pin_spaced} **#{tid}** {name_disp}\n"
+                    f"   ╰ {deadline_line}"
+                )
 
-        embed.description = "\n\n".join(lines)
+        embed.description = "\n".join(lines) if is_compact else "\n\n".join(lines)
 
-    page_str = f"📄 {page} / {total_pages}"
-    embed.set_footer(text=f"{page_str}  ·  {t('footer_text', lang)}")
+    page_str = f"📄 {page}/{total_pages}" if is_compact else f"📄 {page} / {total_pages}"
+    embed.set_footer(text=page_str if is_compact else f"{page_str}  ·  {t('footer_text', lang)}")
     return embed
 
 

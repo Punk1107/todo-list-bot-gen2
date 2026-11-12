@@ -107,7 +107,18 @@ class RealtimeDispatcher:
             return
 
         channel_id = project.get("notification_channel_id") or project.get("channel_id")
-        if not channel_id:
+        target_channels: list[int] = []
+        if channel_id:
+            target_channels.append(int(channel_id))
+        try:
+            from federation import service as fed_service
+            for sc in await fed_service.get_federated_sync_channels(project_id):
+                if int(sc) not in target_channels:
+                    target_channels.append(int(sc))
+        except Exception:
+            pass
+
+        if not target_channels:
             log.debug(
                 "No notification channel configured for project %d — skipping announcement.",
                 project_id,
@@ -147,7 +158,8 @@ class RealtimeDispatcher:
             lang=lang,
         )
 
-        await self._send_to_channel(int(channel_id), embed)
+        for target_cid in target_channels:
+            await self._send_to_channel(target_cid, embed)
 
 
     # ── Dashboard refresh ──────────────────────────────────────────────────────

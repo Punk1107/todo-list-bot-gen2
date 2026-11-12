@@ -54,3 +54,21 @@ class RoutineEventRule:
     is_active: bool
     created_by: str
     created_at: Optional[datetime] = None
+
+
+@dataclass
+class ChecklistTemplate:
+    """Reusable Definition of Done (DoD) checklist preset (Feature 45)."""
+    template_id: Optional[int]
+    name: str
+    owner_id: Optional[str]
+    guild_id: Optional[str] = None
+    description: Optional[str] = None
+    items: list[str] = field(default_factory=list)
+    is_shared: bool = False
+    usage_count: int = 0
+    created_at: Optional[datetime] = None
+
+    @property
+    def is_built_in(self) -> bool:
+        return self.owner_id is None and self.template_id is None

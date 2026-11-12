@@ -1204,6 +1204,22 @@ class TaskActionView(ui.View):
             )
             return
 
+        from assignments import service as assign_service
+        from assignments.cog import _resolve_role_member_ids
+
+        summary_pre = await assign_service.get_assignment_summary(self.task_id)
+        role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
+        signoff_res = await assign_service.handle_task_completion_attempt(
+            self.task_id, str(interaction.user.id), role_member_ids=role_members
+        )
+        if not signoff_res.completed:
+            waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
+            await interaction.followup.send(
+                f"✍️ {t('assign_signoff_pending', lang, done=len(signoff_res.signed_users), total=len(signoff_res.signed_users) + len(signoff_res.pending_users), waiting=waiting)}",
+                ephemeral=True,
+            )
+            return
+
         completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
         if completed is None:
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
@@ -1610,12 +1626,16 @@ class TaskListView(ui.View):
         lang: str,
         tz_name: str,
         filter_status: str = "Pending",
+        role_ids: Optional[list[int]] = None,
+        guild_id: Optional[str] = None,
     ) -> None:
         super().__init__(timeout=600)
         self.uid           = uid
         self.lang          = lang
         self.tz_name       = tz_name
         self.filter_status = filter_status
+        self.role_ids      = role_ids or []
+        self.guild_id      = guild_id
         self.page          = 1
         self._message: Optional[discord.Message] = None  # set by caller after send
         self._filter_select = TaskFilterSelect(lang, filter_status, row=0)
@@ -1639,9 +1659,14 @@ class TaskListView(ui.View):
         now = datetime.now(pytz.utc).isoformat()
         fs  = self.filter_status
 
+        owner_clauses = [
+            "owner_id=$1",
+            "EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=tasks.task_id AND ta.user_id=$1)",
+            "EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id=tasks.task_id AND ta2.user_id=$1)",
+        ]
         if fs == "overdue":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status='Pending' AND deadline<$2"
             params: list = [self.uid, now]
+            cond = "status='Pending' AND deadline<$2"
         elif fs == "today":
             try:
                 local_tz  = pytz.timezone(self.tz_name)
@@ -1652,17 +1677,29 @@ class TaskListView(ui.View):
                 # Fallback to UTC if timezone is invalid
                 today_start = datetime.now(pytz.utc).replace(hour=0,  minute=0,  second=0,  microsecond=0).isoformat()
                 today_end   = datetime.now(pytz.utc).replace(hour=23, minute=59, second=59).isoformat()
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status='Pending' AND deadline BETWEEN $2 AND $3"
             params = [self.uid, today_start, today_end]
+            cond = "status='Pending' AND deadline BETWEEN $2 AND $3"
         elif fs == "pinned":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND is_pinned=1"
             params = [self.uid]
+            cond = "is_pinned=1"
         elif fs == "all":
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE"
             params = [self.uid]
+            cond = "TRUE"
         else:
-            base   = "SELECT * FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE AND status=$2"
             params = [self.uid, fs]
+            cond = "status=$2"
+
+        if self.role_ids and self.guild_id:
+            gid_idx = len(params) + 1
+            rid_idx = len(params) + 2
+            params.extend([self.guild_id, self.role_ids])
+            owner_clauses.append(
+                f"EXISTS (SELECT 1 FROM task_role_assignments tra "
+                f"WHERE tra.task_id=tasks.task_id AND tra.guild_id=${gid_idx} AND tra.role_id=ANY(${rid_idx}::BIGINT[]))"
+            )
+
+        scope_sql = f"({' OR '.join(owner_clauses)})"
+        base = f"SELECT * FROM tasks WHERE {scope_sql} AND parent_task_id IS NULL AND is_deleted=FALSE AND {cond}"
 
         # COUNT uses a subquery so param indices are independent
         count_row   = await db.afetchone(f"SELECT COUNT(*) AS c FROM ({base}) sub", params)
@@ -1729,10 +1766,13 @@ class TaskListView(ui.View):
         )
         total_count   = total_row["c"]   if total_row   else 0
         overdue_count = overdue_row["c"] if overdue_row else 0
+        from utils.helpers import get_user_display_mode
+        display_mode  = await get_user_display_mode(self.uid)
 
         embed = build_task_list_embed(
             tasks, page, total_pages, self.lang, self.tz_name, filter_label,
             total_count=total_count, overdue_count=overdue_count,
+            display_mode=display_mode,
         )
         self._update_nav_buttons(page, total_pages)
         self._update_quickaction(tasks)
@@ -2081,6 +2121,22 @@ class _QuickActionButtons(ui.View):
             )
             return
 
+        from assignments import service as assign_service
+        from assignments.cog import _resolve_role_member_ids
+
+        summary_pre = await assign_service.get_assignment_summary(self.task_id)
+        role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
+        signoff_res = await assign_service.handle_task_completion_attempt(
+            self.task_id, str(interaction.user.id), role_member_ids=role_members
+        )
+        if not signoff_res.completed:
+            waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
+            await interaction.followup.send(
+                f"✍️ {t('assign_signoff_pending', lang, done=len(signoff_res.signed_users), total=len(signoff_res.signed_users) + len(signoff_res.pending_users), waiting=waiting)}",
+                ephemeral=True,
+            )
+            return
+
         completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
         if completed is None:
             await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
@@ -2197,11 +2253,13 @@ class TodayView(ui.View):
             await _safe_respond(interaction, t("permission_denied", self.lang))
             return
         await interaction.response.defer(ephemeral=True)
-        from utils.helpers import build_task_list_embed
+        from utils.helpers import build_task_list_embed, get_user_display_mode
         view = TaskListView(self.uid, self.lang, self.tz_name, "today")
         tasks, page, tot = await view._fetch_page()
+        display_mode = await get_user_display_mode(self.uid)
         embed = build_task_list_embed(tasks, page, tot, self.lang, self.tz_name,
-                                      t("tasks_filter_today", self.lang))
+                                      t("tasks_filter_today", self.lang),
+                                      display_mode=display_mode)
         view._update_nav_buttons(page, tot)
         view._update_quickaction(tasks)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
@@ -2213,8 +2271,10 @@ class TodayView(ui.View):
 
 async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
     """Helper that (re-)builds the Today embed + TodayView."""
-    from utils.helpers import format_deadline, time_left_str
+    from utils.helpers import format_deadline, time_left_str, get_user_display_mode, _compact_deadline_label
     now_utc  = datetime.now(pytz.utc)
+    display_mode = await get_user_display_mode(uid)
+    is_compact = display_mode == "compact"
     try:
         local_tz = pytz.timezone(tz_name)
     except Exception:
@@ -2255,11 +2315,20 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
             except Exception:
                 is_overdue = False
             icon = "🚨" if is_overdue else "⏳"
-            tl   = time_left_str(r["deadline"])
-            dl   = format_deadline(r["deadline"], tz_name)
-            lines.append(f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{dl}`  ·  ⏱️ `{tl}`")
+            if is_compact:
+                short_dl = _compact_deadline_label(r["deadline"], tz_name)
+                lines.append(f"{icon} `#{r['task_id']}` {r['task'][:30]} · `{short_dl}`")
+            else:
+                tl   = time_left_str(r["deadline"])
+                dl   = format_deadline(r["deadline"], tz_name)
+                lines.append(f"{icon} `#{r['task_id']}` **{r['task'][:50]}**\n   ╰ 📅 `{dl}`  ·  ⏱️ `{tl}`")
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"{_t('today_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}")
+        footer_txt = (
+            f"{_t('today_footer_count', lang, count=len(tasks))}"
+            if is_compact
+            else f"{_t('today_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}"
+        )
+        embed.set_footer(text=footer_txt)
 
     view = TodayView(uid, lang, tz_name, list(tasks))
     return embed, view
@@ -2298,11 +2367,13 @@ class OverdueView(ui.View):
             await _safe_respond(interaction, t("permission_denied", self.lang))
             return
         await interaction.response.defer(ephemeral=True)
-        from utils.helpers import build_task_list_embed
+        from utils.helpers import build_task_list_embed, get_user_display_mode
         view = TaskListView(self.uid, self.lang, self.tz_name, "overdue")
         tasks, page, tot = await view._fetch_page()
+        display_mode = await get_user_display_mode(self.uid)
         embed = build_task_list_embed(tasks, page, tot, self.lang, self.tz_name,
-                                      t("tasks_filter_overdue", self.lang))
+                                      t("tasks_filter_overdue", self.lang),
+                                      display_mode=display_mode)
         view._update_nav_buttons(page, tot)
         view._update_quickaction(tasks)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
@@ -2314,8 +2385,10 @@ class OverdueView(ui.View):
 
 async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
     """Helper that (re-)builds the Overdue embed + OverdueView."""
-    from utils.helpers import format_deadline, time_left_str
+    from utils.helpers import format_deadline, time_left_str, get_user_display_mode, _compact_deadline_label
     from locales.i18n import t as _t
+    display_mode = await get_user_display_mode(uid)
+    is_compact = display_mode == "compact"
     now = datetime.now(pytz.utc).isoformat()
     tasks = await db.afetchall(
         "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2 ORDER BY deadline ASC",
@@ -2326,13 +2399,16 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
         embed.description = "> ✅ " + _t("overdue_none", lang)
     else:
         summary = _t("overdue_summary", lang, total=len(tasks))
-        note    = _t("overdue_note", lang)
-        lines   = [f"**{summary}**\n> *{note}*\n"]
+        lines   = [f"**{summary}**"] if is_compact else [f"**{summary}**\n> *{_t('overdue_note', lang)}*\n"]
         for r in tasks:
-            line = (
-                f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
-                f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
-            )
+            if is_compact:
+                short_dl = _compact_deadline_label(r["deadline"], tz_name)
+                line = f"🚨 `#{r['task_id']}` {r['task'][:30]} · `{short_dl}`"
+            else:
+                line = (
+                    f"🚨 `#{r['task_id']}` **{r['task'][:50]}**\n"
+                    f"   ╰─ 📅 `{format_deadline(r['deadline'], tz_name)}`  (⏱️ `{time_left_str(r['deadline'])}`)"
+                )
             current_len = sum(len(x) + 1 for x in lines)
             if current_len + len(line) + 30 > 3900:
                 remaining = len(tasks) - (len(lines) - 1)
@@ -2340,7 +2416,12 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
                 break
             lines.append(line)
         embed.description = "\n".join(lines)
-        embed.set_footer(text=f"{_t('overdue_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}")
+        footer_txt = (
+            f"{_t('overdue_footer_count', lang, count=len(tasks))}"
+            if is_compact
+            else f"{_t('overdue_footer_count', lang, count=len(tasks))}  |  {_t('footer_text', lang)}"
+        )
+        embed.set_footer(text=footer_txt)
     view = OverdueView(uid, lang, tz_name, list(tasks))
     return embed, view
 
