@@ -3,6 +3,7 @@ history_reporting/views.py — Discord UI Views for Task History and Weekly Retr
 """
 from __future__ import annotations
 
+import io
 import logging
 import math
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from discord import ui
 import pytz
 
 from core.database import db
-from history_reporting.models import TaskAuditHistory
+from history_reporting.models import TaskAuditHistory, TaskDiffResult
 from locales.i18n import t
 from utils.helpers import get_user_lang, get_user_timezone
 
@@ -138,6 +139,254 @@ class TaskHistoryView(ui.View):
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
         else:
             await interaction.response.send_message(t("task_not_found", self.lang, task_id=self.history.task_id), ephemeral=True)
+
+    @ui.button(label="🔀 Revision Diff", style=discord.ButtonStyle.secondary, row=0)
+    async def diff_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if interaction.user.id != int(self.user_id):
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from history_reporting import service as history_service
+
+        is_admin = bool(
+            interaction.user.guild_permissions.administrator
+            if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
+            else False
+        )
+        diff_res = await history_service.get_revision_diff(
+            task_id=self.history.task_id,
+            user_id=self.user_id,
+            is_guild_admin=is_admin,
+        )
+        if diff_res is None:
+            await interaction.followup.send(
+                t("history_not_found_or_denied", self.lang, task_id=self.history.task_id),
+                ephemeral=True,
+            )
+            return
+        diff_view = TaskRevisionDiffView(
+            diff_result=diff_res,
+            user_id=self.user_id,
+            lang=self.lang,
+            is_guild_admin=is_admin,
+        )
+        await interaction.followup.send(
+            embed=diff_view.make_embed(),
+            view=diff_view,
+            ephemeral=True,
+        )
+
+
+class _RevisionSelect(ui.Select):
+    """Dropdown to choose which historical description revision to diff/rollback."""
+
+    def __init__(self, parent_view: "TaskRevisionDiffView") -> None:
+        options = []
+        selected_id = parent_view.diff_result.selected_revision.revision_id if parent_view.diff_result.selected_revision else None
+        for rev in parent_view.diff_result.revisions[:25]:
+            ts = (
+                rev.created_at.strftime("%Y-%m-%d %H:%M")
+                if isinstance(rev.created_at, datetime)
+                else str(rev.created_at)[:16]
+            )
+            source_icon = "↩️" if rev.change_source == "rollback" else "✏️"
+            preview_snip = ((rev.previous_description or "(empty)").replace("\n", " "))[:45]
+            options.append(
+                discord.SelectOption(
+                    label=f"Rev #{rev.revision_id} · {ts}"[:100],
+                    value=str(rev.revision_id),
+                    description=f"{source_icon} {preview_snip}"[:100],
+                    default=(rev.revision_id == selected_id),
+                )
+            )
+        super().__init__(
+            placeholder=t("rev_select_placeholder", parent_view.lang)[:150],
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        )
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.parent_view.user_id:
+            await interaction.response.send_message(t("permission_denied", self.parent_view.lang), ephemeral=True)
+            return
+        from history_reporting import service as history_service
+
+        rev_id = int(self.values[0])
+        new_diff = await history_service.get_revision_diff(
+            task_id=self.parent_view.diff_result.task_id,
+            user_id=self.parent_view.user_id,
+            revision_id=rev_id,
+            is_guild_admin=self.parent_view.is_guild_admin,
+        )
+        if not new_diff:
+            await interaction.response.send_message(
+                t("history_not_found_or_denied", self.parent_view.lang, task_id=self.parent_view.diff_result.task_id),
+                ephemeral=True,
+            )
+            return
+        updated_view = TaskRevisionDiffView(
+            diff_result=new_diff,
+            user_id=self.parent_view.user_id,
+            lang=self.parent_view.lang,
+            is_guild_admin=self.parent_view.is_guild_admin,
+        )
+        await interaction.response.edit_message(embed=updated_view.make_embed(), view=updated_view)
+
+
+class TaskRevisionDiffView(ui.View):
+    """Interactive Git-diff viewer & one-click rollback UI for task description revisions."""
+
+    def __init__(
+        self,
+        diff_result: TaskDiffResult,
+        user_id: str,
+        lang: str = "th",
+        is_guild_admin: bool = False,
+    ) -> None:
+        super().__init__(timeout=180)
+        self.diff_result = diff_result
+        self.user_id = user_id
+        self.lang = lang
+        self.is_guild_admin = is_guild_admin
+
+        if diff_result.revisions:
+            self.add_item(_RevisionSelect(self))
+        self._sync_buttons()
+
+    def _sync_buttons(self) -> None:
+        has_sel = self.diff_result.selected_revision is not None
+        self.rollback_btn.disabled = not (has_sel and self.diff_result.can_rollback)
+        self.download_diff_btn.disabled = not has_sel
+
+    def make_embed(self) -> discord.Embed:
+        d = self.diff_result
+        embed = discord.Embed(
+            title=f"🔀 {t('rev_diff_title', self.lang, task_id=d.task_id)}",
+            color=0x5865F2 if d.selected_revision else 0x99AAB5,
+        )
+        if not d.selected_revision:
+            embed.description = (
+                f"**#{d.task_id} — {d.task_title}**\n\n"
+                f"> {t('rev_diff_empty', self.lang)}"
+            )
+            embed.set_footer(text=t("footer_text", self.lang))
+            return embed
+
+        rev = d.selected_revision
+        ts = (
+            rev.created_at.strftime("%Y-%m-%d %H:%M UTC")
+            if isinstance(rev.created_at, datetime)
+            else str(rev.created_at)[:16]
+        )
+        meta = (
+            f"**#{d.task_id} — {d.task_title}**\n"
+            f"📌 **Revision #{rev.revision_id}** (`{rev.change_source}`) · <@{rev.edited_by}> · `{ts}`\n"
+            f"`+{d.added_lines}` / `-{d.removed_lines}` · {t('rev_diff_count', self.lang, count=len(d.revisions))}"
+        )
+        diff_body = d.unified_diff_preview or "(no changes)"
+        embed.description = f"{meta}\n```diff\n{diff_body}\n```"
+        if d.truncated:
+            embed.add_field(
+                name="📎 Note",
+                value=t("rev_diff_truncated_hint", self.lang),
+                inline=False,
+            )
+        embed.set_footer(text=t("footer_text", self.lang))
+        return embed
+
+    @ui.button(label="↩️ Rollback", style=discord.ButtonStyle.danger, row=1)
+    async def rollback_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        rev = self.diff_result.selected_revision
+        if not rev:
+            await interaction.response.send_message(t("rev_not_found", self.lang), ephemeral=True)
+            return
+        from history_reporting import service as history_service
+
+        ok, msg_key = await history_service.rollback_task_description(
+            task_id=self.diff_result.task_id,
+            revision_id=rev.revision_id,
+            actor_id=self.user_id,
+            is_guild_admin=self.is_guild_admin,
+        )
+        if not ok:
+            await interaction.response.send_message(
+                t(msg_key, self.lang, task_id=self.diff_result.task_id),
+                ephemeral=True,
+            )
+            return
+
+        refreshed = await history_service.get_revision_diff(
+            task_id=self.diff_result.task_id,
+            user_id=self.user_id,
+            is_guild_admin=self.is_guild_admin,
+        )
+        if refreshed:
+            updated_view = TaskRevisionDiffView(
+                diff_result=refreshed,
+                user_id=self.user_id,
+                lang=self.lang,
+                is_guild_admin=self.is_guild_admin,
+            )
+            await interaction.response.edit_message(
+                content=t("rev_rollback_success", self.lang, revision_id=rev.revision_id, task_id=self.diff_result.task_id),
+                embed=updated_view.make_embed(),
+                view=updated_view,
+            )
+        else:
+            await interaction.response.send_message(
+                t("rev_rollback_success", self.lang, revision_id=rev.revision_id, task_id=self.diff_result.task_id),
+                ephemeral=True,
+            )
+
+    @ui.button(label="📄 Full .diff", style=discord.ButtonStyle.secondary, row=1)
+    async def download_diff_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        rev = self.diff_result.selected_revision
+        if not rev:
+            await interaction.response.send_message(t("rev_not_found", self.lang), ephemeral=True)
+            return
+        buf = io.BytesIO((self.diff_result.unified_diff_full or "").encode("utf-8"))
+        fname = f"task_{self.diff_result.task_id}_rev_{rev.revision_id}.diff"
+        await interaction.response.send_message(
+            file=discord.File(buf, filename=fname),
+            ephemeral=True,
+        )
+
+    @ui.button(label="🔄 Refresh", style=discord.ButtonStyle.primary, row=1)
+    async def refresh_diff_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        from history_reporting import service as history_service
+
+        rev_id = self.diff_result.selected_revision.revision_id if self.diff_result.selected_revision else None
+        refreshed = await history_service.get_revision_diff(
+            task_id=self.diff_result.task_id,
+            user_id=self.user_id,
+            revision_id=rev_id,
+            is_guild_admin=self.is_guild_admin,
+        )
+        if not refreshed:
+            await interaction.response.send_message(
+                t("history_not_found_or_denied", self.lang, task_id=self.diff_result.task_id),
+                ephemeral=True,
+            )
+            return
+        updated_view = TaskRevisionDiffView(
+            diff_result=refreshed,
+            user_id=self.user_id,
+            lang=self.lang,
+            is_guild_admin=self.is_guild_admin,
+        )
+        await interaction.response.edit_message(embed=updated_view.make_embed(), view=updated_view)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

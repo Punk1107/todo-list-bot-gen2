@@ -3,6 +3,7 @@ history_reporting/service.py — Core logic for Audit History, Offline HTML Expo
 """
 from __future__ import annotations
 
+import difflib
 import html
 import io
 import logging
@@ -14,7 +15,13 @@ import discord
 from discord.ext import commands
 
 from core.database import db
-from history_reporting.models import TaskAuditEvent, TaskAuditHistory, WeeklyRetrospectiveData
+from history_reporting.models import (
+    TaskAuditEvent,
+    TaskAuditHistory,
+    TaskDiffResult,
+    TaskRevision,
+    WeeklyRetrospectiveData,
+)
 from locales.i18n import t
 from utils.helpers import (
     format_deadline,
@@ -32,18 +39,15 @@ log = logging.getLogger(__name__)
 # 1. Task Audit Trail & Activity History
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def get_task_audit_history(
+async def _fetch_accessible_task_row(
     task_id: int,
     user_id: str,
     is_guild_admin: bool = False,
-) -> Optional[TaskAuditHistory]:
-    """
-    Retrieve full audit history for a task.
-    Enforces privacy: only owner, authorized project member, or guild admin can view.
-    """
+) -> Optional[Any]:
+    """Fetch a task row and verify the caller has view permission."""
     row = await db.afetchone(
         """SELECT t.task_id, t.task, t.owner_id, t.status, t.priority, t.deadline,
-                  t.is_deleted, t.created_at, t.project_id, t.guild_id,
+                  t.description, t.is_deleted, t.created_at, t.project_id, t.guild_id,
                   c.name AS category_name
            FROM tasks t
            LEFT JOIN categories c ON t.category_id = c.category_id
@@ -54,10 +58,9 @@ async def get_task_audit_history(
         return None
 
     task_owner = str(row["owner_id"])
-    t_proj_id = row.get("project_id")
-    t_guild_id = row.get("guild_id")
+    t_proj_id = row.get("project_id") if hasattr(row, "get") else None
+    t_guild_id = row.get("guild_id") if hasattr(row, "get") else None
 
-    # Permission verification
     if t_proj_id and t_guild_id:
         if not is_guild_admin and task_owner != user_id:
             try:
@@ -72,11 +75,55 @@ async def get_task_audit_history(
                         if not role:
                             return None
             except Exception as exc:
-                log.warning("Project permission check failed for task history %d: %s", task_id, exc)
+                log.warning("Project permission check failed for task %d: %s", task_id, exc)
                 return None
     else:
         if task_owner != user_id and not is_guild_admin:
             return None
+
+    return row
+
+
+async def _can_edit_task(
+    row: Any,
+    user_id: str,
+    is_guild_admin: bool = False,
+) -> bool:
+    """Return True if user_id is permitted to edit/rollback this task."""
+    if is_guild_admin or str(row["owner_id"]) == user_id:
+        return True
+    t_proj_id = row.get("project_id") if hasattr(row, "get") else None
+    t_guild_id = row.get("guild_id") if hasattr(row, "get") else None
+    if t_proj_id and t_guild_id:
+        try:
+            from collaboration import service as collab_service
+            if await collab_service.check_project_permission(
+                int(t_proj_id), user_id, "can_edit_tasks", is_guild_admin=is_guild_admin
+            ):
+                return True
+            proj = await collab_service.get_project(int(t_proj_id), str(t_guild_id))
+            if proj.owner_id == user_id:
+                return True
+            role = await collab_service.get_member_role(int(t_proj_id), user_id)
+            return role in ("lead", "member")
+        except Exception:
+            return False
+    return False
+
+
+async def get_task_audit_history(
+    task_id: int,
+    user_id: str,
+    is_guild_admin: bool = False,
+) -> Optional[TaskAuditHistory]:
+    """
+    Retrieve full audit history for a task.
+    Enforces privacy: only owner, authorized project member, or guild admin can view.
+    """
+    row = await _fetch_accessible_task_row(task_id, user_id, is_guild_admin=is_guild_admin)
+    if not row:
+        return None
+    task_owner = str(row["owner_id"])
 
     # Fetch audit log records for this task (using migration 26 index idx_audit_target_created)
     audit_rows = await db.afetchall(
@@ -1069,3 +1116,235 @@ async def send_weekly_retrospective_dm(
     )
     log.info("Sent weekly retrospective to user %s for week %s", user_id, retro_data.week_str)
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Task Revision Snapshots, Unified Diff & One-Click Rollback (Feature 35)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DIFF_EMBED_PREVIEW_LIMIT = 1750
+
+
+def compute_unified_diff(
+    old_text: Optional[str],
+    new_text: Optional[str],
+    from_label: str = "revision",
+    to_label: str = "current",
+    max_preview_chars: int = _DIFF_EMBED_PREVIEW_LIMIT,
+) -> Tuple[str, int, int, str, bool]:
+    """Compute a Git-style unified diff using Python stdlib difflib.
+
+    Returns ``(preview_diff, added_lines, removed_lines, full_diff, truncated)``.
+    """
+    old_lines = (old_text or "").splitlines()
+    new_lines = (new_text or "").splitlines()
+    diff_lines = list(
+        difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=from_label,
+            tofile=to_label,
+            lineterm="",
+            n=3,
+        )
+    )
+    if not diff_lines:
+        return "(no changes)", 0, 0, "(no changes)", False
+
+    added = sum(1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++"))
+    removed = sum(1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---"))
+    full_diff = "\n".join(diff_lines)
+    if len(full_diff) <= max_preview_chars:
+        return full_diff, added, removed, full_diff, False
+
+    clipped_lines: List[str] = []
+    acc = 0
+    for ln in diff_lines:
+        extra = len(ln) + 1
+        if acc + extra > max_preview_chars - 24:
+            break
+        clipped_lines.append(ln)
+        acc += extra
+    preview = "\n".join(clipped_lines) + "\n... (diff truncated)"
+    return preview, added, removed, full_diff, True
+
+
+async def record_task_revision(
+    task_id: int,
+    edited_by: str,
+    previous_description: Optional[str],
+    new_description: Optional[str] = None,
+    change_source: str = "edit",
+) -> Optional[int]:
+    """Persist an immutable description snapshot into ``task_revisions`` when text changed."""
+    if (previous_description or "") == (new_description or ""):
+        return None
+
+    source = change_source if change_source in ("edit", "rollback") else "edit"
+    from utils.helpers import ensure_user
+    await ensure_user(str(edited_by))
+
+    row = await db.afetchone(
+        """INSERT INTO task_revisions
+               (task_id, edited_by, previous_description, new_description, change_source)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING revision_id""",
+        (task_id, str(edited_by), previous_description, new_description, source),
+    )
+    db.query_cache.invalidate_table("task_revisions")
+    return int(row["revision_id"]) if row and "revision_id" in row else None
+
+
+def _parse_revision_row(r: Any) -> TaskRevision:
+    created_dt = r.get("created_at") if hasattr(r, "get") else r["created_at"]
+    if isinstance(created_dt, str):
+        try:
+            created_dt = datetime.fromisoformat(created_dt)
+        except Exception:
+            created_dt = datetime.now(timezone.utc)
+    elif created_dt is None:
+        created_dt = datetime.now(timezone.utc)
+    return TaskRevision(
+        revision_id=int(r["revision_id"]),
+        task_id=int(r["task_id"]),
+        edited_by=str(r.get("edited_by") or "0") if hasattr(r, "get") else str(r["edited_by"]),
+        previous_description=r.get("previous_description") if hasattr(r, "get") else r["previous_description"],
+        new_description=r.get("new_description") if hasattr(r, "get") else None,
+        change_source=(r.get("change_source") or "edit") if hasattr(r, "get") else "edit",
+        created_at=created_dt,
+    )
+
+
+async def get_task_revisions(
+    task_id: int,
+    user_id: str,
+    is_guild_admin: bool = False,
+    limit: int = 25,
+) -> Optional[Tuple[Any, List[TaskRevision]]]:
+    """Fetch revision history for an accessible task (up to ``limit`` newest snapshots)."""
+    task_row = await _fetch_accessible_task_row(task_id, user_id, is_guild_admin=is_guild_admin)
+    if not task_row:
+        return None
+
+    rows = await db.afetchall(
+        """SELECT revision_id, task_id, edited_by, previous_description,
+                  new_description, change_source, created_at
+           FROM task_revisions
+           WHERE task_id = $1
+           ORDER BY created_at DESC, revision_id DESC
+           LIMIT $2""",
+        (task_id, max(1, min(limit, 50))),
+    )
+    revisions = [_parse_revision_row(r) for r in (rows or [])]
+    return task_row, revisions
+
+
+async def get_revision_diff(
+    task_id: int,
+    user_id: str,
+    revision_id: Optional[int] = None,
+    is_guild_admin: bool = False,
+) -> Optional[TaskDiffResult]:
+    """Load task revisions and build a unified diff for ``revision_id`` (defaults to latest)."""
+    fetched = await get_task_revisions(task_id, user_id, is_guild_admin=is_guild_admin)
+    if fetched is None:
+        return None
+    task_row, revisions = fetched
+
+    current_desc = (task_row.get("description") if hasattr(task_row, "get") else task_row["description"]) or ""
+    can_rollback = await _can_edit_task(task_row, user_id, is_guild_admin=is_guild_admin)
+
+    selected: Optional[TaskRevision] = None
+    if revisions:
+        if revision_id is not None:
+            for rev in revisions:
+                if rev.revision_id == revision_id:
+                    selected = rev
+                    break
+        if selected is None:
+            selected = revisions[0]
+
+    if selected is None:
+        return TaskDiffResult(
+            task_id=task_id,
+            task_title=str(task_row["task"]),
+            current_description=current_desc,
+            revisions=[],
+            selected_revision=None,
+            can_rollback=can_rollback,
+        )
+
+    preview, added, removed, full_diff, truncated = compute_unified_diff(
+        selected.previous_description or "",
+        current_desc,
+        from_label=f"rev#{selected.revision_id}",
+        to_label="current",
+    )
+    return TaskDiffResult(
+        task_id=task_id,
+        task_title=str(task_row["task"]),
+        current_description=current_desc,
+        revisions=revisions,
+        selected_revision=selected,
+        unified_diff_preview=preview,
+        unified_diff_full=full_diff,
+        added_lines=added,
+        removed_lines=removed,
+        truncated=truncated,
+        can_rollback=can_rollback,
+    )
+
+
+async def rollback_task_description(
+    task_id: int,
+    revision_id: int,
+    actor_id: str,
+    is_guild_admin: bool = False,
+) -> Tuple[bool, str]:
+    """Restore ``tasks.description`` to ``revision.previous_description`` safely.
+
+    Records the current description as a compensating ``rollback`` snapshot before writing,
+    making every rollback non-destructive and reversible.
+    Returns ``(success, message_key_or_text)``.
+    """
+    task_row = await _fetch_accessible_task_row(task_id, actor_id, is_guild_admin=is_guild_admin)
+    if not task_row:
+        return False, "history_not_found_or_denied"
+    if task_row.get("is_deleted") if hasattr(task_row, "get") else False:
+        return False, "task_already_in_trash"
+    if not await _can_edit_task(task_row, actor_id, is_guild_admin=is_guild_admin):
+        return False, "permission_denied"
+
+    rev_row = await db.afetchone(
+        """SELECT revision_id, task_id, previous_description
+           FROM task_revisions
+           WHERE revision_id = $1 AND task_id = $2""",
+        (revision_id, task_id),
+    )
+    if not rev_row:
+        return False, "rev_not_found"
+
+    current_desc = (task_row.get("description") if hasattr(task_row, "get") else task_row["description"]) or None
+    target_desc = rev_row.get("previous_description") if hasattr(rev_row, "get") else rev_row["previous_description"]
+
+    if (current_desc or "") == (target_desc or ""):
+        return False, "rev_already_matches"
+
+    await record_task_revision(
+        task_id=task_id,
+        edited_by=actor_id,
+        previous_description=current_desc,
+        new_description=target_desc,
+        change_source="rollback",
+    )
+    await db.aexecute(
+        """UPDATE tasks
+              SET description = $1,
+                  updated_at = NOW()
+            WHERE task_id = $2 AND is_deleted = FALSE""",
+        (target_desc, task_id),
+    )
+    db.query_cache.invalidate_tables(["tasks", "task_revisions"])
+    await db.alog_action(actor_id, "task_description_rollback", str(task_id), f"rev={revision_id}")
+    db.invalidate_stats(str(task_row["owner_id"]))
+    return True, "rev_rollback_success"

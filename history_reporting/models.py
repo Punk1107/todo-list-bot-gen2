@@ -33,6 +33,7 @@ class TaskAuditEvent:
             "task_restored": "♻️",
             "task_recurring_set": "🔁",
             "template_used": "📋",
+            "task_description_rollback": "↩️",
         }
         return icon_map.get(self.action, "📜")
 
@@ -71,6 +72,8 @@ class TaskAuditEvent:
             return f"Recurrence set: {detail_str}"
         elif self.action == "template_used":
             return f"Created from template: {detail_str}"
+        elif self.action == "task_description_rollback":
+            return f"Rolled back description ({detail_str})" if detail_str else "Rolled back description"
         return detail_str if detail_str else self.action
 
 
@@ -105,3 +108,32 @@ class WeeklyRetrospectiveData:
     overdue_carryover_tasks: List[Dict[str, Any]] = field(default_factory=list)
     coaching_tip: str = ""
     kudos_received: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class TaskRevision:
+    """Immutable snapshot of a task description prior to an edit or rollback."""
+    revision_id: int
+    task_id: int
+    edited_by: str
+    previous_description: Optional[str]
+    new_description: Optional[str]
+    change_source: str
+    created_at: datetime
+
+
+@dataclass
+class TaskDiffResult:
+    """Unified Git-style diff between a historical snapshot and current task description."""
+    task_id: int
+    task_title: str
+    current_description: str
+    revisions: List[TaskRevision] = field(default_factory=list)
+    selected_revision: Optional[TaskRevision] = None
+    unified_diff_preview: str = ""
+    unified_diff_full: str = ""
+    added_lines: int = 0
+    removed_lines: int = 0
+    truncated: bool = False
+    can_rollback: bool = False
+

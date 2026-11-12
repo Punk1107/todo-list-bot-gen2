@@ -58,12 +58,14 @@ class Project:
     notification_channel_id: Optional[int] = None
     budget: float = 0.0
     currency: str = "THB"
+    release_channel_id: Optional[int] = None
 
     @classmethod
     def from_record(cls, row) -> "Project":
         priority = 0
         manual_progress = None
         notification_channel_id = None
+        release_channel_id = None
         budget = 0.0
         currency = "THB"
         try:
@@ -96,6 +98,12 @@ class Project:
                 notification_channel_id = int(val)
         except (KeyError, TypeError, IndexError):
             pass
+        try:
+            val = row["release_channel_id"]
+            if val is not None:
+                release_channel_id = int(val)
+        except (KeyError, TypeError, IndexError):
+            pass
 
         return cls(
             project_id      = row["project_id"],
@@ -115,6 +123,7 @@ class Project:
             notification_channel_id = notification_channel_id,
             budget          = budget,
             currency        = currency,
+            release_channel_id = release_channel_id,
         )
 
     @property

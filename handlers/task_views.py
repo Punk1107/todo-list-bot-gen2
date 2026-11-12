@@ -372,6 +372,7 @@ class EditTaskModal(ui.Modal):
         current_dl = format_deadline(task_row["deadline"], tz_name) if task_row["deadline"] else ""
         self._initial_deadline_str = current_dl
         self._initial_deadline_raw = task_row["deadline"]
+        self._initial_description  = task_row["description"]
 
         self.task_name = ui.TextInput(
             label=t("task_name_label", lang),
@@ -503,6 +504,15 @@ class EditTaskModal(ui.Modal):
                      description, tags, self.task_id, uid),
                 )
             await db.alog_action(uid, "task_edited", str(self.task_id), name_or_err)
+            if (self._initial_description or "") != (description or ""):
+                from history_reporting.service import record_task_revision
+                await record_task_revision(
+                    task_id=self.task_id,
+                    edited_by=uid,
+                    previous_description=self._initial_description,
+                    new_description=description,
+                    change_source="edit",
+                )
             db.invalidate_stats(uid)
         except Exception as exc:
             log.error("Task edit failed: %s", exc)
@@ -1500,6 +1510,39 @@ class TaskActionView(ui.View):
             view=view,
             ephemeral=True,
         )
+
+    @ui.button(label="🧩 Fields", style=discord.ButtonStyle.secondary, row=4, custom_id="custom_fields")
+    async def view_custom_fields(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        row = await db.afetchone(
+            "SELECT task_id, task, project_id, guild_id, custom_fields, is_deleted FROM tasks WHERE task_id=$1",
+            (self.task_id,),
+        )
+        if not row or row.get("is_deleted"):
+            await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
+            return
+        proj_id = row.get("project_id")
+        guild_id = row.get("guild_id")
+        if not proj_id or not guild_id:
+            await interaction.followup.send(t("field_project_task_required", lang), ephemeral=True)
+            return
+        from custom_fields import service as field_service
+        from custom_fields.models import parse_custom_fields_json
+        from custom_fields.views import TaskCustomFieldsView
+
+        defs = await field_service.list_field_definitions(int(proj_id), str(guild_id))
+        panel = TaskCustomFieldsView(
+            task_id=self.task_id,
+            task_title=str(row["task"]),
+            project_id=int(proj_id),
+            guild_id=str(guild_id),
+            field_defs=defs,
+            current_values=parse_custom_fields_json(row.get("custom_fields")),
+            lang=lang,
+        )
+        await interaction.followup.send(embed=panel.make_embed(), view=panel, ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

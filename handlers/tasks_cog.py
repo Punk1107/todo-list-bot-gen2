@@ -63,9 +63,20 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
         subtasks = await subtasks_coro
         category = None
 
+    raw_cf = row.get("custom_fields") if hasattr(row, "get") else None
+    proj_id = row.get("project_id") if hasattr(row, "get") else None
+    guild_id = row.get("guild_id") if hasattr(row, "get") else None
+    cf_pairs = None
+    if raw_cf:
+        from custom_fields import service as field_service
+        cf_pairs = await field_service.get_task_custom_fields_for_embed(
+            proj_id, guild_id, raw_cf
+        )
+
     return build_task_embed(row, lang, tz_name,
                             subtasks=subtasks or None,
-                            category=category)
+                            category=category,
+                            custom_fields=cf_pairs or None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
