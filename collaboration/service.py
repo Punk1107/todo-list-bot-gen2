@@ -13,6 +13,7 @@ KEY DESIGN RULES (enforced in EVERY query):
 """
 from __future__ import annotations
 
+import inspect
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -241,9 +242,15 @@ async def set_project_role_permission(
 
 async def get_project_wip_limit(project_id: int, guild_id: str) -> Optional[int]:
     """Retrieve the Work-In-Progress (WIP) limit for In_Progress tasks in a project."""
-    val = await db.get_guild_setting(guild_id, f"proj_wip_{project_id}")
-    if val and val.isdigit():
+    getter = getattr(db, "get_guild_setting", None)
+    if getter is None or not callable(getter):
+        return None
+    res = getter(guild_id, f"proj_wip_{project_id}")
+    val = await res if inspect.isawaitable(res) else None
+    if isinstance(val, str) and val.isdigit():
         return int(val)
+    if isinstance(val, int) and val > 0:
+        return val
     return None
 
 
@@ -308,11 +315,22 @@ async def create_project(
 
 async def get_project(project_id: int, guild_id: str) -> Project:
     """
-    Fetch a single project. ALWAYS scoped to guild_id to prevent cross-guild access.
-    Raises ProjectNotFound if not found or wrong guild.
+    Fetch a single project accessible by `guild_id` (home guild or active federation).
+    Raises ProjectNotFound if not found or if `guild_id` is neither home nor federated.
     """
     row = await db.fetchone(
-        "SELECT * FROM projects WHERE project_id=$1 AND guild_id=$2",
+        """SELECT p.*
+           FROM projects p
+           WHERE p.project_id = $1
+             AND (
+                 p.guild_id = $2
+                 OR EXISTS (
+                     SELECT 1 FROM project_federation_guilds f
+                     WHERE f.project_id = p.project_id
+                       AND f.guild_id = $2
+                       AND f.status = 'active'
+                 )
+             )""",
         (project_id, guild_id),
     )
     if not row:
@@ -322,17 +340,21 @@ async def get_project(project_id: int, guild_id: str) -> Project:
 
 async def get_guild_projects(guild_id: str, status: Optional[str] = "active") -> list[Project]:
     """
-    Fetch all projects for a guild. Optionally filtered by status.
-    ALL rows are guaranteed to belong to guild_id (enforced in WHERE clause).
+    Fetch all projects hosted in `guild_id` or actively federated into `guild_id`.
     """
+    fed_filter = (
+        "(guild_id=$1 OR EXISTS ("
+        "SELECT 1 FROM project_federation_guilds f "
+        "WHERE f.project_id = projects.project_id AND f.guild_id=$1 AND f.status='active'))"
+    )
     if status:
         rows = await db.fetchall(
-            "SELECT * FROM projects WHERE guild_id=$1 AND status=$2 ORDER BY priority DESC, updated_at DESC",
+            f"SELECT * FROM projects WHERE {fed_filter} AND status=$2 ORDER BY priority DESC, updated_at DESC",
             (guild_id, status),
         )
     else:
         rows = await db.fetchall(
-            "SELECT * FROM projects WHERE guild_id=$1 ORDER BY priority DESC, updated_at DESC",
+            f"SELECT * FROM projects WHERE {fed_filter} ORDER BY priority DESC, updated_at DESC",
             (guild_id,),
         )
     return [Project.from_record(r) for r in rows] if rows else []
@@ -765,13 +787,23 @@ async def get_project_task(
     actor_id: Optional[str] = None, is_guild_admin: bool = False,
 ) -> ProjectTask:
     """
-    Fetch a single project task. ALWAYS validates both project_id AND guild_id.
+    Fetch a single project task after verifying `guild_id` owns or is federated into `project_id`.
     Filters out soft-deleted tasks.
     If is_private=True, enforces that only task owner or lead/admin can view.
-    Raises TaskNotFound if not found or if task doesn't belong to this project/guild.
+    Raises TaskNotFound if not found or if task doesn't belong to this project/federation.
     """
     row = await db.fetchone(
-        "SELECT * FROM tasks WHERE task_id=$1 AND project_id=$2 AND guild_id=$3 AND is_deleted=FALSE",
+        """SELECT t.* FROM tasks t
+           LEFT JOIN projects p ON p.project_id = t.project_id
+           WHERE t.task_id=$1 AND t.project_id=$2 AND t.is_deleted=FALSE
+             AND (
+                 t.guild_id=$3
+                 OR p.guild_id=$3
+                 OR EXISTS (
+                     SELECT 1 FROM project_federation_guilds f
+                     WHERE f.project_id=$2 AND f.guild_id=$3 AND f.status='active'
+                 )
+             )""",
         (task_id, project_id, guild_id),
     )
     if not row:
@@ -1102,7 +1134,7 @@ async def claim_task(
     # Move to In_Progress if still Pending
     if task.status == "Pending":
         wip_limit = await get_project_wip_limit(project_id, guild_id)
-        if wip_limit > 0:
+        if wip_limit is not None and wip_limit > 0:
             row = await db.fetchone(
                 "SELECT COUNT(*) AS cnt FROM tasks WHERE project_id=$1 AND guild_id=$2 AND status='In_Progress' AND is_deleted=FALSE",
                 (project_id, guild_id),
@@ -1248,6 +1280,15 @@ async def update_task_status(
 
     if new_status == "Completed":
         if task.status != "Completed":
+            if getattr(task, "assignment_mode", "first_wins") == "all_signoff":
+                from assignments import service as assign_service
+                signoff = await assign_service.handle_task_completion_attempt(task_id, actor_id)
+                if not signoff.completed:
+                    await log_activity(
+                        project_id, guild_id, actor_id, "task_signoff",
+                        f"#{task_id} ({len(signoff.signed_users)}/{len(signoff.signed_users) + len(signoff.pending_users)})",
+                    )
+                    return await get_project_task(task_id, project_id, guild_id)
             completed = await gamification_service.complete_shared_task(
                 task_id, project_id, guild_id, actor_id
             )
@@ -1301,9 +1342,16 @@ async def get_project_board(
     project = await get_project(project_id, guild_id)
     rows = await db.fetchall(
         """SELECT * FROM tasks
-           WHERE project_id=$1 AND guild_id=$2 AND is_deleted=FALSE
+           WHERE project_id=$1 AND is_deleted=FALSE
+             AND (
+                 guild_id=$2 OR guild_id=$3
+                 OR EXISTS (
+                     SELECT 1 FROM project_federation_guilds f
+                     WHERE f.project_id=$1 AND f.guild_id=tasks.guild_id AND f.status='active'
+                 )
+             )
            ORDER BY priority DESC, deadline ASC""",
-        (project_id, guild_id),
+        (project_id, guild_id, project.guild_id),
     )
 
     if actor_id and rows:
@@ -1410,8 +1458,13 @@ async def get_project_stats(project_id: int, guild_id: str) -> ProjectStats:
             SUM(CASE WHEN status='Completed'   THEN 1 ELSE 0 END) AS completed,
             SUM(CASE WHEN status='Cancelled'   THEN 1 ELSE 0 END) AS cancelled,
             SUM(CASE WHEN status='Pending' AND deadline < $1 THEN 1 ELSE 0 END) AS overdue
-           FROM tasks WHERE project_id=$2 AND guild_id=$3 AND is_deleted=FALSE""",
-        (now_iso, project_id, guild_id),
+           FROM tasks
+           WHERE project_id=$2 AND is_deleted=FALSE
+             AND (guild_id=$3 OR guild_id=$4 OR EXISTS (
+                 SELECT 1 FROM project_federation_guilds f
+                 WHERE f.project_id=$2 AND f.guild_id=tasks.guild_id AND f.status='active'
+             ))""",
+        (now_iso, project_id, guild_id, project.guild_id),
     )
     totals = {k: int(count_row[k] or 0) for k in
               ("total", "pending", "in_progress", "completed", "cancelled", "overdue")} \

@@ -285,6 +285,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.daily_digest_loop.start()
         self.deadline_dm_loop.start()
         self.weekly_retrospective_loop.start()
+        self.janitor_loop.start()
 
         log.info(
             "RemindersCog started — reminder=%dmin recurring=%dmin dm_reminder=%dmin",
@@ -300,6 +301,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
         self.daily_digest_loop.cancel()
         self.deadline_dm_loop.cancel()
         self.weekly_retrospective_loop.cancel()
+        self.janitor_loop.cancel()
 
     # ── Reminder loop ─────────────────────────────────────────────────────────
 
@@ -687,6 +689,24 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
     @cleanup_loop.before_loop
     async def before_cleanup(self) -> None:
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(hours=24)
+    async def janitor_loop(self) -> None:
+        """Daily Self-Healing Janitor: archive >90d tasks, purge >30d trash, compact >180d audit logs."""
+        try:
+            from recovery import janitor
+            report = await janitor.run_janitor_cycle(archive_days=90, trash_days=30, audit_days=180)
+            if report.archived_tasks or report.purged_trash or report.compacted_audit_logs:
+                log.info(
+                    "Janitor daily cycle complete: archived=%d purged_trash=%d compacted_audit=%d",
+                    report.archived_tasks, report.purged_trash, report.compacted_audit_logs,
+                )
+        except Exception as exc:
+            log.error("Unexpected error in janitor_loop: %s", exc, exc_info=True)
+
+    @janitor_loop.before_loop
+    async def before_janitor(self) -> None:
         await self.bot.wait_until_ready()
 
     # ── Deadline DM Reminder loop ────────────────────────────────────────────

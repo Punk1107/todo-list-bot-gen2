@@ -12,7 +12,11 @@ from core.database import db
 from core.security import rate_limit_check
 from locales.i18n import t
 from routine_workflows import service
-from routine_workflows.views import TemplateCreateModal
+from routine_workflows.views import (
+    ChecklistTemplateCreateModal,
+    TaskChecklistView,
+    TemplateCreateModal,
+)
 from utils.helpers import ensure_user, get_user_lang, get_user_timezone
 
 log = logging.getLogger(__name__)
@@ -34,6 +38,204 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
         description="🔔 Manage automated routine workflows and event-driven tasks",
         default_permissions=discord.Permissions(manage_guild=True),
     )
+
+    checklist_group = app_commands.Group(
+        name="checklist",
+        description="☑️ จัดการเช็กลิสต์ DoD และเทมเพลตมาตรฐาน / Definition of Done checklists & templates",
+    )
+
+    async def _checklist_template_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        uid = str(interaction.user.id)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        try:
+            templates = await service.list_checklist_templates(owner_id=uid, guild_id=gid)
+            q = current.strip().lower()
+            matches = [
+                app_commands.Choice(
+                    name=f"{'⭐ ' if tpl.is_built_in else '☑️ '}{tpl.name} ({len(tpl.items)})"[:100],
+                    value=tpl.name,
+                )
+                for tpl in templates
+                if q in tpl.name.lower() or (tpl.description and q in tpl.description.lower())
+            ]
+            return matches[:25]
+        except Exception:
+            return []
+
+    @checklist_group.command(
+        name="add",
+        description="➕ เพิ่มรายการ DoD Checklist ให้กับงาน / Add a checklist item to a task",
+    )
+    @app_commands.describe(task_id="รหัสงาน / Task ID", title="รายการเช็กลิสต์ / Checklist item text")
+    @rate_limit_check("command")
+    async def checklist_add(self, interaction: discord.Interaction, task_id: int, title: str) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True)
+        item = await service.add_checklist_item(task_id, title)
+        if not item:
+            await interaction.followup.send(f"❌ {t('err_generic', lang)}", ephemeral=True)
+            return
+        await interaction.followup.send(
+            f"✅ {t('dod_item_added', lang, task_id=task_id, item=item.title)}",
+            ephemeral=True,
+        )
+
+    @checklist_group.command(
+        name="view",
+        description="☑️ เปิดหน้าต่างติ๊กเช็กลิสต์ของงาน / Open interactive DoD checklist for a task",
+    )
+    @app_commands.describe(task_id="รหัสงาน / Task ID")
+    @rate_limit_check("command")
+    async def checklist_view(self, interaction: discord.Interaction, task_id: int) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True)
+        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
+        if not row:
+            await interaction.followup.send(t("task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        items = await service.get_checklists(task_id)
+        view = TaskChecklistView(task_id=task_id, task_name=row["task"], user_id=uid, lang=lang, items=items)
+        await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
+
+    @checklist_group.command(
+        name="save-template",
+        description="💾 บันทึกชุดเช็กลิสต์ DoD เพื่อใช้ซ้ำ / Save a reusable DoD checklist template",
+    )
+    @app_commands.describe(
+        name="ชื่อเทมเพลต (เช่น Code Review DoD) / Template name",
+        task_id="ดึงรายการเช็กลิสต์จาก Task ID ที่มีอยู่ (ถ้าไม่ระบุจะเปิด Modal)",
+        items="รายการเช็กลิสต์คั่นด้วยเครื่องหมาย ; หรือขึ้นบรรทัดใหม่",
+        shared="แชร์ให้สมาชิกในเซิร์ฟเวอร์ใช้ร่วมกัน / Share with server",
+    )
+    @rate_limit_check("command")
+    async def checklist_save_template(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        task_id: Optional[int] = None,
+        items: Optional[str] = None,
+        shared: bool = False,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+
+        if task_id is None and not items:
+            modal = ChecklistTemplateCreateModal(
+                user_id=uid, lang=lang, guild_id=gid, default_name=name, is_shared=shared
+            )
+            await interaction.response.send_modal(modal)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            if task_id is not None:
+                tpl = await service.save_checklist_template_from_task(
+                    task_id=task_id, name=name, owner_id=uid, guild_id=gid, is_shared=shared
+                )
+            else:
+                parsed = [
+                    part.strip()
+                    for chunk in (items or "").replace(";", "\n").splitlines()
+                    for part in [chunk]
+                    if part.strip()
+                ]
+                tpl = await service.create_checklist_template(
+                    name=name, items=parsed, owner_id=uid, guild_id=gid, is_shared=shared
+                )
+        except ValueError as exc:
+            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            f"✅ {t('dod_tpl_saved', lang, name=tpl.name, count=len(tpl.items))}",
+            ephemeral=True,
+        )
+
+    @checklist_group.command(
+        name="apply",
+        description="📥 นำเทมเพลต DoD Checklist ไปใส่ในงานทันที / Apply a DoD template to a task",
+    )
+    @app_commands.describe(task_id="รหัสงาน / Task ID", template="ชื่อเทมเพลต / Checklist template name")
+    @app_commands.autocomplete(template=_checklist_template_autocomplete)
+    @rate_limit_check("command")
+    async def checklist_apply(
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+        template: str,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        is_admin = bool(
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            tpl, added = await service.apply_checklist_template(
+                task_id=task_id,
+                template_name=template,
+                actor_id=uid,
+                guild_id=gid,
+                is_guild_admin=is_admin,
+            )
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
+        except ValueError as exc:
+            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            f"✅ {t('dod_tpl_applied', lang, template=tpl.name, task_id=task_id, count=added)}",
+            ephemeral=True,
+        )
+
+    @checklist_group.command(
+        name="templates",
+        description="📚 ดูรายการเทมเพลต DoD Checklist ทั้งหมด / List saved & built-in DoD templates",
+    )
+    @rate_limit_check("command")
+    async def checklist_templates_list(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        await interaction.response.defer(ephemeral=True)
+
+        templates = await service.list_checklist_templates(owner_id=uid, guild_id=gid)
+        embed = discord.Embed(title=t("dod_tpl_list_title", lang), color=0x5865F2)
+        lines = []
+        for tpl in templates[:20]:
+            tag = "⭐" if tpl.is_built_in else ("🌐" if tpl.is_shared else "🔒")
+            lines.append(f"{tag} **{tpl.name}** ({len(tpl.items)} items) — uses: `{tpl.usage_count}`")
+        embed.description = "\n".join(lines) or t("cat_empty", lang)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @checklist_group.command(
+        name="delete-template",
+        description="🗑️ ลบเทมเพลต DoD Checklist ส่วนตัว / Delete your saved checklist template",
+    )
+    @app_commands.describe(name="ชื่อเทมเพลต / Template name")
+    @app_commands.autocomplete(name=_checklist_template_autocomplete)
+    @rate_limit_check("command")
+    async def checklist_delete_template(self, interaction: discord.Interaction, name: str) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True)
+        deleted = await service.delete_checklist_template(name, uid)
+        if not deleted:
+            await interaction.followup.send(t("template_not_found", lang, name=name), ephemeral=True)
+            return
+        await interaction.followup.send(f"🗑️ {t('dod_tpl_deleted', lang, name=name)}", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Autocomplete for Template Names

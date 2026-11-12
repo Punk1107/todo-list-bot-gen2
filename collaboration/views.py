@@ -1215,6 +1215,28 @@ class ProjectDashboardView(ui.View):
         view = ChangelogPreviewView(changelog=gen, user_id=uid, lang=lang)
         await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
 
+    @ui.button(label="🌐 Federation", style=discord.ButtonStyle.secondary, custom_id="proj_dash_federation", row=2)
+    async def btn_federation(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        from federation import service as fed_service
+
+        links = await fed_service.get_project_federation_links(self.project_id)
+        embed = discord.Embed(
+            title=t("fed_list_title", lang, project_id=self.project_id),
+            color=0x5865F2,
+        )
+        if not links:
+            embed.description = t("fed_list_empty", lang)
+        else:
+            lines = [
+                f"• **Guild `{lk.guild_id}`** (`{lk.role_scope}`) · 📢 "
+                f"{f'<#{lk.sync_channel_id}>' if lk.sync_channel_id else '—'}"
+                for lk in links
+            ]
+            embed.description = "\n".join(lines)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 
 
 class BoardColumnSelect(ui.Select):

@@ -384,3 +384,57 @@ class TemplateCreateModal(ui.Modal):
         except Exception as exc:
             log.error("Failed to create template: %s", exc)
             await interaction.followup.send(t("err_generic", self.lang), ephemeral=True)
+
+
+class ChecklistTemplateCreateModal(ui.Modal):
+    """Modal for saving a reusable Definition of Done (DoD) checklist template (Feature 45)."""
+
+    def __init__(self, user_id: str, lang: str, guild_id: Optional[str], default_name: str = "", is_shared: bool = False) -> None:
+        super().__init__(title=t("dod_tpl_modal_title", lang)[:45])
+        self.user_id = user_id
+        self.lang = lang
+        self.guild_id = guild_id
+        self.is_shared = is_shared
+
+        self.name_input = ui.TextInput(
+            label=t("dod_tpl_name_label", lang)[:45],
+            default=default_name[:60],
+            placeholder="Code Review DoD",
+            required=True,
+            max_length=60,
+        )
+        self.desc_input = ui.TextInput(
+            label=t("dod_tpl_desc_label", lang)[:45],
+            required=False,
+            max_length=150,
+        )
+        self.items_input = ui.TextInput(
+            label=t("dod_tpl_items_label", lang)[:45],
+            style=discord.TextStyle.paragraph,
+            placeholder="Tests pass\nLinter 0 warnings\nDocs updated",
+            required=True,
+            max_length=1200,
+        )
+        self.add_item(self.name_input)
+        self.add_item(self.desc_input)
+        self.add_item(self.items_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        lines = [ln.strip() for ln in (self.items_input.value or "").splitlines() if ln.strip()]
+        try:
+            tpl = await service.create_checklist_template(
+                name=self.name_input.value,
+                items=lines,
+                owner_id=self.user_id,
+                guild_id=self.guild_id,
+                description=self.desc_input.value.strip() or None,
+                is_shared=self.is_shared,
+            )
+        except ValueError as exc:
+            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+            return
+        await interaction.followup.send(
+            f"✅ {t('dod_tpl_saved', self.lang, name=tpl.name, count=len(tpl.items))}",
+            ephemeral=True,
+        )

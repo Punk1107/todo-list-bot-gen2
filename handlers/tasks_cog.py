@@ -24,7 +24,7 @@ from core.security import rate_limit_check, rate_limiter, validator
 from core.config import config
 from locales.i18n import t
 from utils.helpers import (
-    get_user_lang, get_user_timezone, ensure_user,
+    get_user_lang, get_user_timezone, get_user_display_mode, ensure_user,
     build_task_embed, build_task_list_embed, build_stats_embed, build_csv_export,
     format_deadline, time_left_str, build_task_stats_embed,
 )
@@ -73,10 +73,18 @@ async def _async_build_task_embed(row, lang: str, tz_name: str) -> discord.Embed
             proj_id, guild_id, raw_cf
         )
 
+    assign_summary = None
+    try:
+        from assignments import service as assign_service
+        assign_summary = await assign_service.get_assignment_summary(task_id)
+    except Exception:
+        assign_summary = None
+
     return build_task_embed(row, lang, tz_name,
                             subtasks=subtasks or None,
                             category=category,
-                            custom_fields=cf_pairs or None)
+                            custom_fields=cf_pairs or None,
+                            assignment_summary=assign_summary)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,7 +344,14 @@ class TasksCog(commands.Cog, name="Tasks"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        view             = TaskListView(uid, lang, tz_name, "Pending")
+        view = TaskListView(
+            uid,
+            lang,
+            tz_name,
+            "Pending",
+            role_ids=[r.id for r in getattr(interaction.user, "roles", [])] or None,
+            guild_id=str(interaction.guild_id) if interaction.guild_id else None,
+        )
         tasks, page, tot = await view._fetch_page()
         filter_label     = t("tasks_filter_Pending", lang)
 
@@ -345,15 +360,21 @@ class TasksCog(commands.Cog, name="Tasks"):
             """SELECT COUNT(*) AS total_count,
                       COUNT(*) FILTER (WHERE status='Pending' AND deadline < NOW()) AS overdue_count
                FROM tasks
-               WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE""",
+               WHERE (
+                   owner_id=$1
+                   OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=tasks.task_id AND ta.user_id=$1)
+                   OR EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id=tasks.task_id AND ta2.user_id=$1)
+               ) AND parent_task_id IS NULL AND is_deleted=FALSE""",
             (uid,),
         )
         total_count   = stats_row["total_count"]   if stats_row else 0
         overdue_count = stats_row["overdue_count"] if stats_row else 0
+        display_mode  = await get_user_display_mode(uid)
 
         embed = build_task_list_embed(
             tasks, page, tot, lang, tz_name, filter_label,
             total_count=total_count, overdue_count=overdue_count,
+            display_mode=display_mode,
         )
         view._update_nav_buttons(page, tot)
         view._update_quickaction(tasks)
@@ -412,8 +433,11 @@ class TasksCog(commands.Cog, name="Tasks"):
             )
             return
         if row["owner_id"] != uid:
-            await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
-            return
+            from assignments import service as assign_service
+            actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
+            if not await assign_service.is_user_assigned_to_task(task_id, uid, actor_roles):
+                await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
+                return
         if row.get("is_deleted"):
             await interaction.followup.send(
                 t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
@@ -456,8 +480,11 @@ class TasksCog(commands.Cog, name="Tasks"):
             )
             return
         if row["owner_id"] != uid:
-            await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
-            return
+            from assignments import service as assign_service
+            actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
+            if not await assign_service.is_user_assigned_to_task(task_id, uid, actor_roles):
+                await interaction.followup.send(t("task_not_owned", lang), ephemeral=True)
+                return
         if row.get("is_deleted"):
             await interaction.followup.send(
                 t("task_already_in_trash", lang, task_id=task_id), ephemeral=True
@@ -489,6 +516,22 @@ class TasksCog(commands.Cog, name="Tasks"):
                     ephemeral=True,
                 )
                 return
+
+        from assignments import service as assign_service
+        from assignments.cog import _resolve_role_member_ids
+
+        summary_pre = await assign_service.get_assignment_summary(task_id)
+        role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
+        signoff_res = await assign_service.handle_task_completion_attempt(
+            task_id, uid, role_member_ids=role_members, force=force
+        )
+        if not signoff_res.completed:
+            waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
+            await interaction.followup.send(
+                f"✍️ {t('assign_signoff_pending', lang, done=len(signoff_res.signed_users), total=len(signoff_res.signed_users) + len(signoff_res.pending_users), waiting=waiting)}",
+                ephemeral=True,
+            )
+            return
 
         awarded = await gamification_service.complete_personal_task(task_id, uid)
         if awarded is None:
@@ -750,22 +793,79 @@ class TasksCog(commands.Cog, name="Tasks"):
 
     @app_commands.command(
         name="export",
-        description="📤 ส่งออก Task เป็น Interactive HTML หรือ CSV / Export tasks as Interactive HTML or CSV",
+        description="📤 ส่งออก Task เป็น HTML, CSV หรือ Full Backup (.zip) / Export tasks & archive bundle",
     )
-    @app_commands.describe(format="รูปแบบไฟล์ที่ต้องการส่งออก / Export file format (html, csv)")
+    @app_commands.describe(
+        format="รูปแบบไฟล์ที่ต้องการส่งออก / Export file format (html, csv, backup)",
+        scope="ขอบเขตสำรองข้อมูล (เฉพาะเมื่อเลือก Full Backup .zip) / Backup scope",
+    )
     @app_commands.choices(format=[
         app_commands.Choice(name="📄 Interactive HTML (Dashboard ออฟไลน์ ติ๊กถูกได้)", value="html"),
         app_commands.Choice(name="📊 CSV (Spreadsheet / Excel)", value="csv"),
+        app_commands.Choice(name="📦 Full Backup Bundle (.zip: JSON+CSV+Wiki+Files+HTML)", value="backup"),
+    ])
+    @app_commands.choices(scope=[
+        app_commands.Choice(name="👤 Personal (เฉพาะงานของคุณ)", value="me"),
+        app_commands.Choice(name="🏰 Server Archive (ทั้งเซิร์ฟเวอร์ — Admin เท่านั้น)", value="server"),
     ])
     @rate_limit_check("export")
     async def export(
         self,
         interaction: discord.Interaction,
         format: Optional[app_commands.Choice[str]] = None,
+        scope: Optional[app_commands.Choice[str]] = None,
     ) -> None:
         uid     = str(interaction.user.id)
         lang    = await get_user_lang(uid)
         tz_name = await get_user_timezone(uid)
+
+        export_format = format.value if format else "html"
+        export_scope = scope.value if scope else "me"
+
+        if export_format == "backup":
+            if export_scope == "server":
+                if not interaction.guild_id:
+                    await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+                    return
+                is_admin = isinstance(interaction.user, discord.Member) and (
+                    interaction.user.guild_permissions.administrator
+                    or interaction.user.guild_permissions.manage_guild
+                )
+                if not is_admin:
+                    await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+                    return
+
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            from history_reporting.backup import build_backup_bundle
+            guild_limit = (
+                getattr(interaction.guild, "filesize_limit", 24 * 1024 * 1024)
+                if interaction.guild else 24 * 1024 * 1024
+            )
+            bundle = await build_backup_bundle(
+                uid,
+                guild_id=str(interaction.guild_id) if interaction.guild_id else None,
+                scope=export_scope,
+                tz_name=tz_name,
+                lang=lang,
+                max_zip_bytes=max(1024 * 1024, guild_limit - 512 * 1024),
+            )
+            if bundle.task_count == 0 and bundle.doc_count == 0:
+                await interaction.followup.send(t("export_empty", lang), ephemeral=True)
+                return
+            await db.alog_action(uid, "task_exported", detail=f"{bundle.task_count} tasks (zip:{bundle.scope})")
+            await interaction.followup.send(
+                t(
+                    "backup_bundle_ready",
+                    lang,
+                    filename=bundle.filename,
+                    tasks=bundle.task_count,
+                    docs=bundle.doc_count,
+                    files=bundle.attachment_files_included,
+                ),
+                file=discord.File(bundle.zip_bytes, filename=bundle.filename),
+                ephemeral=True,
+            )
+            return
 
         tasks = await db.afetchall(
             "SELECT * FROM tasks WHERE owner_id=$1 AND is_deleted=FALSE ORDER BY created_at DESC", (uid,)
@@ -773,8 +873,6 @@ class TasksCog(commands.Cog, name="Tasks"):
         if not tasks:
             await interaction.response.send_message(t("export_empty", lang), ephemeral=True)
             return
-
-        export_format = format.value if format else "html"
 
         if export_format == "csv":
             csv_bytes = build_csv_export(tasks, tz_name)

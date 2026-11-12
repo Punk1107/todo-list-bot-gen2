@@ -23,9 +23,26 @@ from core.config import config
 from locales.i18n import t, SUPPORTED_LANGS
 from utils.helpers import (
     get_user_lang, get_user_timezone, get_user_role, get_user_theme,
+    get_user_display_mode, set_user_display_mode,
     ensure_user, save_user_settings,
 )
-from core.theme import get_theme, list_themes, set_user_theme, THEMES
+from core.theme import (
+    EMOJI_PRESETS,
+    THEMES,
+    VALID_PROGRESS_STYLES,
+    activate_user_custom_theme,
+    delete_user_custom_theme,
+    get_theme,
+    hex_to_int,
+    list_themes,
+    list_user_custom_themes,
+    normalize_hex_color,
+    render_progress_bar,
+    resolve_user_palette,
+    save_guild_theme,
+    save_user_custom_theme,
+    set_user_theme,
+)
 from handlers.task_views import LanguageView
 
 log = logging.getLogger(__name__)
@@ -383,6 +400,210 @@ class ThemeSelectView(discord.ui.View):
         )
 
 
+class CustomThemeBuilderView(discord.ui.View):
+    """Interactive Progress Bar Style & Emoji Set selector after hex palette input (Feature 43)."""
+
+    def __init__(
+        self,
+        *,
+        user_id: str,
+        lang: str,
+        guild_id: Optional[str],
+        is_guild_scope: bool,
+        name: str,
+        primary_color: str,
+        success_color: str,
+        warning_color: str,
+        danger_color: str,
+    ) -> None:
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.lang = lang
+        self.guild_id = guild_id
+        self.is_guild_scope = is_guild_scope
+        self.theme_name = name
+        self.primary_color = primary_color
+        self.success_color = success_color
+        self.warning_color = warning_color
+        self.danger_color = danger_color
+        self.progress_style = "neon"
+        self.emoji_preset = "classic"
+        self._build_controls()
+
+    def _build_controls(self) -> None:
+        self.clear_items()
+        style_opts = [
+            discord.SelectOption(label="✨ Neon (▰▰▱▱)", value="neon", default=(self.progress_style == "neon")),
+            discord.SelectOption(label="🕹️ Retro ([##--])", value="retro", default=(self.progress_style == "retro")),
+            discord.SelectOption(label="⚪ Minimal (●●○○)", value="minimal", default=(self.progress_style == "minimal")),
+            discord.SelectOption(label="🟩 Blocks (🟩🟩⬜⬜)", value="blocks", default=(self.progress_style == "blocks")),
+        ]
+        s_select = discord.ui.Select(placeholder=t("theme_style_placeholder", self.lang), options=style_opts, row=0)
+        s_select.callback = self._on_style_change
+        self.add_item(s_select)
+
+        emoji_opts = [
+            discord.SelectOption(label="Classic (⏳🔄✅🚨)", value="classic", default=(self.emoji_preset == "classic")),
+            discord.SelectOption(label="Neon (🔮⚡💎💥)", value="neon", default=(self.emoji_preset == "neon")),
+            discord.SelectOption(label="Retro (🕹️⚙️🏆👾)", value="retro", default=(self.emoji_preset == "retro")),
+            discord.SelectOption(label="Minimal (○◐●!)", value="minimal", default=(self.emoji_preset == "minimal")),
+        ]
+        e_select = discord.ui.Select(placeholder=t("theme_emoji_placeholder", self.lang), options=emoji_opts, row=1)
+        e_select.callback = self._on_emoji_change
+        self.add_item(e_select)
+
+        btn_save = discord.ui.Button(label=t("confirm", self.lang), emoji="🎨", style=discord.ButtonStyle.success, row=2)
+        btn_save.callback = self._on_save
+        self.add_item(btn_save)
+
+    def make_preview_embed(self) -> discord.Embed:
+        bar = render_progress_bar(70, self.progress_style, width=10)
+        emojis = EMOJI_PRESETS.get(self.emoji_preset, EMOJI_PRESETS["classic"])
+        embed = discord.Embed(
+            title=f"🎨 {self.theme_name}",
+            description=(
+                f"`Primary` `{self.primary_color}` · `Success` `{self.success_color}`\n"
+                f"`Warning` `{self.warning_color}` · `Danger` `{self.danger_color}`\n\n"
+                f"**Progress ({self.progress_style})**: {bar} `70%`\n"
+                f"**Icons**: {emojis['pending']} Pending · {emojis['in_progress']} Active · "
+                f"{emojis['done']} Done · {emojis['overdue']} Overdue"
+            ),
+            color=hex_to_int(self.primary_color, 0x5865F2),
+        )
+        embed.set_footer(text=t("footer_text", self.lang))
+        return embed
+
+    async def _on_style_change(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        self.progress_style = interaction.data["values"][0]  # type: ignore[index]
+        self._build_controls()
+        await interaction.response.edit_message(embed=self.make_preview_embed(), view=self)
+
+    async def _on_emoji_change(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        self.emoji_preset = interaction.data["values"][0]  # type: ignore[index]
+        self._build_controls()
+        await interaction.response.edit_message(embed=self.make_preview_embed(), view=self)
+
+    async def _on_save(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
+        emojis = EMOJI_PRESETS.get(self.emoji_preset, EMOJI_PRESETS["classic"])
+        if self.is_guild_scope and self.guild_id:
+            palette = await save_guild_theme(
+                self.guild_id,
+                self.user_id,
+                name=self.theme_name,
+                primary_color=self.primary_color,
+                success_color=self.success_color,
+                warning_color=self.warning_color,
+                danger_color=self.danger_color,
+                progress_style=self.progress_style,
+                emoji_set=emojis,
+            )
+        else:
+            palette = await save_user_custom_theme(
+                self.user_id,
+                self.theme_name,
+                primary_color=self.primary_color,
+                success_color=self.success_color,
+                warning_color=self.warning_color,
+                danger_color=self.danger_color,
+                progress_style=self.progress_style,
+                emoji_set=emojis,
+                activate=True,
+            )
+        await interaction.response.edit_message(
+            content=f"✅ {t('theme_custom_saved', self.lang, name=palette.name)}",
+            embed=self.make_preview_embed(),
+            view=None,
+        )
+
+
+class CustomThemeModal(discord.ui.Modal):
+    """Modal collecting hex colors (#RRGGBB) for Custom Theme Creator (Feature 43)."""
+
+    def __init__(
+        self,
+        *,
+        user_id: str,
+        lang: str,
+        guild_id: Optional[str] = None,
+        is_guild_scope: bool = False,
+    ) -> None:
+        super().__init__(title=t("theme_modal_title", lang)[:45])
+        self.user_id = user_id
+        self.lang = lang
+        self.guild_id = guild_id
+        self.is_guild_scope = is_guild_scope
+
+        self.theme_name = discord.ui.TextInput(
+            label=t("theme_modal_name_label", lang)[:45],
+            default="Server Theme" if is_guild_scope else "My Custom Palette",
+            required=True,
+            max_length=40,
+        )
+        self.primary_hex = discord.ui.TextInput(
+            label="Primary Hex (#5865F2)",
+            default="#5865F2",
+            required=True,
+            max_length=7,
+        )
+        self.success_hex = discord.ui.TextInput(
+            label="Success Hex (#57F287)",
+            default="#57F287",
+            required=True,
+            max_length=7,
+        )
+        self.warning_hex = discord.ui.TextInput(
+            label="Warning Hex (#FEE75C)",
+            default="#FEE75C",
+            required=True,
+            max_length=7,
+        )
+        self.danger_hex = discord.ui.TextInput(
+            label="Danger Hex (#ED4245)",
+            default="#ED4245",
+            required=True,
+            max_length=7,
+        )
+        self.add_item(self.theme_name)
+        self.add_item(self.primary_hex)
+        self.add_item(self.success_hex)
+        self.add_item(self.warning_hex)
+        self.add_item(self.danger_hex)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            p_hex = normalize_hex_color(self.primary_hex.value)
+            s_hex = normalize_hex_color(self.success_hex.value)
+            w_hex = normalize_hex_color(self.warning_hex.value)
+            d_hex = normalize_hex_color(self.danger_hex.value)
+        except ValueError as exc:
+            await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
+            return
+
+        builder = CustomThemeBuilderView(
+            user_id=self.user_id,
+            lang=self.lang,
+            guild_id=self.guild_id,
+            is_guild_scope=self.is_guild_scope,
+            name=self.theme_name.value.strip() or "Custom",
+            primary_color=p_hex,
+            success_color=s_hex,
+            warning_color=w_hex,
+            danger_color=d_hex,
+        )
+        await interaction.response.send_message(
+            embed=builder.make_preview_embed(), view=builder, ephemeral=True
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Settings Cog
 # ─────────────────────────────────────────────────────────────────────────────
@@ -494,7 +715,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         view._message = await interaction.original_response()
 
 
-    # ── /theme & /settings theme ──────────────────────────────────────────────
+    # ── /theme group & /settings theme + /settings display ────────────────────
 
     settings_group = app_commands.Group(
         name="settings",
@@ -509,13 +730,119 @@ class SettingsCog(commands.Cog, name="Settings"):
     ) -> None:
         await self._handle_theme_cmd(interaction, theme)
 
-    @app_commands.command(name="theme", description="🎨 ปรับแต่งสี Embed / Personalize embed theme")
-    @app_commands.describe(theme="เลือกธีมสีประจำตัว / Choose embed theme")
+    @settings_group.command(
+        name="display",
+        description="📱 สลับโหมดแสดงผล (Standard / Compact สำหรับมือถือ) / Toggle display view mode",
+    )
+    @app_commands.describe(mode="เลือกรูปแบบการแสดงผลรายการงาน / Task list display density")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="🖥️ Standard (แบบเต็ม พร้อมวันเวลาละเอียด)", value="standard"),
+        app_commands.Choice(name="📱 Compact (1 บรรทัดต่องาน ประหยัดพื้นที่มือถือ)", value="compact"),
+    ])
     @rate_limit_check("command")
-    async def theme_cmd(
+    async def settings_display(
+        self, interaction: discord.Interaction, mode: Optional[str] = None
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+
+        if mode is None:
+            current = await get_user_display_mode(uid)
+            await interaction.response.send_message(
+                t("display_mode_current", lang, mode=current), ephemeral=True
+            )
+            return
+
+        saved = await set_user_display_mode(uid, mode)
+        await interaction.response.send_message(
+            f"✅ {t('display_mode_updated', lang, mode=saved)}", ephemeral=True
+        )
+
+    theme_group = app_commands.Group(
+        name="theme",
+        description="🎨 ปรับแต่งสี ธีม และสร้างจานสี Hex ประจำตัว / Personalize & create custom palettes",
+    )
+
+    @theme_group.command(name="select", description="🎨 เลือกใช้ธีมสีที่บันทึกไว้ / Select preset or custom theme")
+    @app_commands.describe(theme="ชื่อธีม / Theme key or custom palette name")
+    @rate_limit_check("command")
+    async def theme_select(
         self, interaction: discord.Interaction, theme: Optional[str] = None
     ) -> None:
         await self._handle_theme_cmd(interaction, theme)
+
+    @theme_group.command(name="create", description="🖌️ สร้างจานสี Hex & สไตล์ Progress Bar เอง / Create custom theme")
+    @rate_limit_check("command")
+    async def theme_create(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+        modal = CustomThemeModal(user_id=uid, lang=lang, is_guild_scope=False)
+        await interaction.response.send_modal(modal)
+
+    @theme_group.command(
+        name="guild",
+        description="🏰 กำหนดธีมสีประจำเซิร์ฟเวอร์ (Admin) / Set server-wide custom palette",
+    )
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @rate_limit_check("command")
+    async def theme_guild(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+        modal = CustomThemeModal(
+            user_id=uid,
+            lang=lang,
+            guild_id=str(interaction.guild_id),
+            is_guild_scope=True,
+        )
+        await interaction.response.send_modal(modal)
+
+    @theme_group.command(name="list", description="🗂️ ดูรายการธีมสีของคุณและเซิร์ฟเวอร์ / List active & saved palettes")
+    @rate_limit_check("command")
+    async def theme_list(self, interaction: discord.Interaction) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        await interaction.response.defer(ephemeral=True)
+
+        palette = await resolve_user_palette(uid, guild_id=gid)
+        custom_rows = await list_user_custom_themes(uid)
+        lines = [
+            f"**{t('theme_active_label', lang)}**: `{palette.name}` (`{palette.primary_color}`, `{palette.progress_style}`, source: `{palette.source}`)",
+            "",
+        ]
+        if custom_rows:
+            lines.append(f"**{t('theme_custom_section', lang)}**:")
+            for row in custom_rows:
+                mark = "✅" if row.get("is_active") else "▫️"
+                lines.append(
+                    f"{mark} **{row['name']}** — `{row['primary_color']}` / `{row['success_color']}` ({row['progress_style']})"
+                )
+        else:
+            lines.append(t("theme_custom_empty", lang))
+
+        embed = discord.Embed(
+            title=t("theme_list_title", lang),
+            description="\n".join(lines),
+            color=palette.primary_int,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @theme_group.command(name="delete", description="🗑️ ลบธีมสีส่วนตัวที่สร้างไว้ / Delete one of your custom themes")
+    @app_commands.describe(name="ชื่อธีมส่วนตัว / Custom theme name")
+    @rate_limit_check("command")
+    async def theme_delete(self, interaction: discord.Interaction, name: str) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await interaction.response.defer(ephemeral=True)
+        deleted = await delete_user_custom_theme(uid, name)
+        if not deleted:
+            await interaction.followup.send(t("theme_not_found_custom", lang, name=name), ephemeral=True)
+            return
+        await interaction.followup.send(f"🗑️ {t('theme_custom_deleted', lang, name=name)}", ephemeral=True)
 
     async def _handle_theme_cmd(
         self, interaction: discord.Interaction, theme: Optional[str] = None
@@ -535,10 +862,17 @@ class SettingsCog(commands.Cog, name="Settings"):
                     content=f"✅ {success_msg}", embed=embed, ephemeral=True
                 )
                 return
-            else:
+            custom = await activate_user_custom_theme(uid, theme.strip())
+            if custom:
                 await interaction.response.send_message(
-                    f"❌ Unknown theme '{theme}'. Use the dropdown below to browse.", ephemeral=True
+                    content=f"✅ {t('theme_updated_success', lang, theme=custom.name)}",
+                    ephemeral=True,
                 )
+                return
+            await interaction.response.send_message(
+                f"❌ Unknown theme '{theme}'. Use the dropdown below to browse.", ephemeral=True
+            )
+            return
 
         current_theme = await get_user_theme(uid)
         embed = build_theme_preview_embed(current_theme, lang)
@@ -547,17 +881,27 @@ class SettingsCog(commands.Cog, name="Settings"):
         view._message = await interaction.original_response()
 
     @settings_theme.autocomplete("theme")
-    @theme_cmd.autocomplete("theme")
+    @theme_select.autocomplete("theme")
     async def theme_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         choices = []
+        uid = str(interaction.user.id)
         for th in list_themes():
             if not current or current.lower() in th.name.lower() or current.lower() in th.key.lower():
                 choices.append(app_commands.Choice(name=f"{th.emoji} {th.name}", value=th.key))
-            if len(choices) >= 25:
+            if len(choices) >= 20:
                 break
-        return choices
+        try:
+            for row in await list_user_custom_themes(uid):
+                rname = str(row["name"])
+                if not current or current.lower() in rname.lower():
+                    choices.append(app_commands.Choice(name=f"🎨 {rname}", value=rname))
+                if len(choices) >= 25:
+                    break
+        except Exception:
+            pass
+        return choices[:25]
 
     # ── /category group ───────────────────────────────────────────────────────
 
@@ -717,6 +1061,71 @@ class SettingsCog(commands.Cog, name="Settings"):
         await interaction.response.send_message(
             f"✅ Purged {removed} expired cache entries.", ephemeral=True
         )
+
+    @admin_group.command(
+        name="janitor",
+        description="🧹 บำรุงรักษาฐานข้อมูล (Archive >90d, Purge Trash >30d, Compact Audit >180d)",
+    )
+    @app_commands.describe(
+        action="สถานะ หรือ สั่งทำงานทันที / Action to perform",
+        archive_days="Archive completed tasks older than N days (default 90)",
+        trash_days="Purge recycle bin older than N days (default 30)",
+        audit_days="Compact audit_log older than N days (default 180)",
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="🧹 Run Now (ทำความสะอาดทันที)", value="run_now"),
+        app_commands.Choice(name="📊 Status (ดูสถานะข้อมูลรอจัดการ)", value="status"),
+        app_commands.Choice(name="🔎 Dry Run (จำลองผลโดยไม่ลบ)", value="dry_run"),
+    ])
+    async def admin_janitor(
+        self,
+        interaction: discord.Interaction,
+        action: str = "run_now",
+        archive_days: int = 90,
+        trash_days: int = 30,
+        audit_days: int = 180,
+    ) -> None:
+        lang = await get_user_lang(str(interaction.user.id))
+        if not _is_owner(interaction.user.id):
+            await interaction.response.send_message(t("err_owner_only", lang), ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        from recovery import janitor
+
+        if action == "status":
+            stats = await janitor.get_janitor_stats(
+                archive_days=archive_days, trash_days=trash_days, audit_days=audit_days
+            )
+            embed = discord.Embed(title=t("janitor_status_title", lang), color=0x5865F2)
+            embed.add_field(name=t("janitor_archived_total", lang), value=str(stats["tasks_archive_total"]), inline=True)
+            embed.add_field(name=t("janitor_eligible_archive", lang), value=str(stats["eligible_archive"]), inline=True)
+            embed.add_field(name=t("janitor_eligible_trash", lang), value=str(stats["eligible_trash"]), inline=True)
+            embed.add_field(name=t("janitor_eligible_audit", lang), value=str(stats["eligible_audit"]), inline=True)
+            embed.add_field(name=t("janitor_compacted_total", lang), value=str(stats["compacted_audit_total"]), inline=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        is_dry = (action == "dry_run")
+        report = await janitor.run_janitor_cycle(
+            archive_days=archive_days,
+            trash_days=trash_days,
+            audit_days=audit_days,
+            dry_run=is_dry,
+        )
+        title_key = "janitor_dryrun_title" if is_dry else "janitor_done_title"
+        embed = discord.Embed(
+            title=t(title_key, lang),
+            description=t(
+                "janitor_report_desc",
+                lang,
+                archived=report.archived_tasks,
+                purged=report.purged_trash,
+                compacted=report.compacted_audit_logs,
+            ),
+            color=0xFEE75C if is_dry else 0x57F287,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
