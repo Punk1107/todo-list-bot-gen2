@@ -31,7 +31,7 @@ from core.config import config
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 42   # bump when adding migrations below
+SCHEMA_VERSION = 43   # bump when adding migrations below
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +195,8 @@ _KNOWN_TABLES = {
     "active_time_timers", "user_workload_capacities",
     "task_escalations", "project_sla_policies", "task_sla_tracking",
     "guild_quests", "guild_quest_participants", "peer_kudos",
+    # Gen 5.0 Pillar 9
+    "project_custom_fields",
 }
 
 def _detect_tables(sql: str) -> set[str]:
@@ -1493,6 +1495,68 @@ MIGRATIONS: list[tuple[int, str]] = [
     CREATE INDEX IF NOT EXISTS idx_peer_kudos_created ON peer_kudos(created_at);
 
     INSERT INTO schema_version VALUES (42) ON CONFLICT (version) DO UPDATE SET version=42;
+    """),
+
+    # ── v43: Gen 5.0 Pillar 9 — Knowledge Base, Revisions, Custom Fields & Changelogs ──
+    (43, """
+    -- Feature 34: Enrich project_documents (created as skeleton in v33) with guild/task scope, doc_type, slug & FTS
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS guild_id   TEXT;
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS task_id    INTEGER REFERENCES tasks(task_id) ON DELETE SET NULL;
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS doc_type   TEXT NOT NULL DEFAULT 'general'
+        CHECK (doc_type IN ('requirement', 'design', 'sop', 'general'));
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS slug       TEXT;
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+    UPDATE project_documents pd
+       SET guild_id = p.guild_id
+      FROM projects p
+     WHERE pd.project_id = p.project_id
+       AND pd.guild_id IS NULL;
+
+    ALTER TABLE project_documents ADD COLUMN IF NOT EXISTS search_vector tsvector
+        GENERATED ALWAYS AS (
+            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(content_markdown, '')), 'B')
+        ) STORED;
+
+    CREATE INDEX IF NOT EXISTS idx_project_docs_fts
+        ON project_documents USING GIN (search_vector);
+    CREATE INDEX IF NOT EXISTS idx_project_docs_scope
+        ON project_documents (guild_id, project_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_project_docs_task
+        ON project_documents (task_id) WHERE task_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_project_docs_scope_slug
+        ON project_documents (COALESCE(guild_id, ''), COALESCE(project_id, 0), LOWER(slug))
+        WHERE slug IS NOT NULL;
+
+    -- Feature 35: Enrich task_revisions (created as skeleton in v33)
+    ALTER TABLE task_revisions ADD COLUMN IF NOT EXISTS new_description TEXT;
+    ALTER TABLE task_revisions ADD COLUMN IF NOT EXISTS change_source   TEXT NOT NULL DEFAULT 'edit'
+        CHECK (change_source IN ('edit', 'rollback'));
+    CREATE INDEX IF NOT EXISTS idx_task_revisions_task_time
+        ON task_revisions (task_id, created_at DESC, revision_id DESC);
+
+    -- Feature 36: Project Custom Dynamic Meta-Fields Schema Registry (values live in tasks.custom_fields JSONB)
+    CREATE TABLE IF NOT EXISTS project_custom_fields (
+        field_id     SERIAL PRIMARY KEY,
+        project_id   INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+        guild_id     TEXT    NOT NULL,
+        field_key    TEXT    NOT NULL,
+        field_label  TEXT    NOT NULL,
+        field_type   TEXT    NOT NULL CHECK (field_type IN ('select', 'text', 'number', 'date')),
+        options_json JSONB   NOT NULL DEFAULT '[]'::jsonb,
+        is_required  BOOLEAN NOT NULL DEFAULT FALSE,
+        created_by   TEXT    REFERENCES users(user_id),
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (project_id, field_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_custom_fields_proj
+        ON project_custom_fields (project_id, guild_id);
+
+    -- Feature 37: Per-project release notes announcement channel
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS release_channel_id BIGINT;
+
+    INSERT INTO schema_version VALUES (43) ON CONFLICT (version) DO UPDATE SET version=43;
     """),
 ]
 

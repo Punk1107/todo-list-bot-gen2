@@ -12,29 +12,94 @@ from discord.ext import commands
 
 from core.database import db
 from core.security import rate_limit_check
-from handlers.tasks_cog import task_autocomplete
 from history_reporting import service as history_service
-from history_reporting.views import TaskHistoryView, WeeklyRetrospectiveView
+from history_reporting.views import TaskHistoryView, TaskRevisionDiffView, WeeklyRetrospectiveView
 from locales.i18n import t
 from utils.helpers import ensure_user, get_user_lang, progress_bar
 
 log = logging.getLogger(__name__)
 
 
+async def _history_task_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[int]]:
+    """Autocomplete user or guild project tasks for /history log and /history diff."""
+    uid = str(interaction.user.id)
+    gid = str(interaction.guild.id) if interaction.guild else None
+    try:
+        if current:
+            if gid:
+                rows = await db.afetchall(
+                    """SELECT task_id, task, status
+                       FROM tasks
+                       WHERE is_deleted = FALSE
+                         AND (owner_id = $1 OR guild_id = $2)
+                         AND (task ILIKE $3 OR CAST(task_id AS TEXT) ILIKE $3)
+                       ORDER BY updated_at DESC
+                       LIMIT 25""",
+                    (uid, gid, f"%{current}%"),
+                )
+            else:
+                rows = await db.afetchall(
+                    """SELECT task_id, task, status
+                       FROM tasks
+                       WHERE is_deleted = FALSE
+                         AND owner_id = $1
+                         AND (task ILIKE $2 OR CAST(task_id AS TEXT) ILIKE $2)
+                       ORDER BY updated_at DESC
+                       LIMIT 25""",
+                    (uid, f"%{current}%"),
+                )
+        else:
+            if gid:
+                rows = await db.afetchall(
+                    """SELECT task_id, task, status
+                       FROM tasks
+                       WHERE is_deleted = FALSE AND (owner_id = $1 OR guild_id = $2)
+                       ORDER BY updated_at DESC
+                       LIMIT 25""",
+                    (uid, gid),
+                )
+            else:
+                rows = await db.afetchall(
+                    """SELECT task_id, task, status
+                       FROM tasks
+                       WHERE is_deleted = FALSE AND owner_id = $1
+                       ORDER BY updated_at DESC
+                       LIMIT 25""",
+                    (uid,),
+                )
+        return [
+            app_commands.Choice(
+                name=f"#{r['task_id']} — {str(r['task'])[:65]} ({r['status']})"[:100],
+                value=int(r["task_id"]),
+            )
+            for r in (rows or [])
+        ]
+    except Exception:
+        return []
+
+
 class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
-    """Audit Trail, Activity History, and Weekly Retrospective commands."""
+    """Audit Trail, Revision Diff & Rollback, and Weekly Retrospective commands."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(
+    history = app_commands.Group(
         name="history",
+        description="📜 ประวัติการแก้ไขงานและเปรียบเทียบเวอร์ชัน / Task audit history & revision diff",
+    )
+
+    @history.command(
+        name="log",
         description="📜 ดูประวัติการแก้ไขและกิจกรรมของ Task / View task audit trail & history",
     )
     @app_commands.describe(task_id="รหัสงาน / Task ID number")
-    @app_commands.autocomplete(task_id=task_autocomplete)
+    @app_commands.autocomplete(task_id=_history_task_autocomplete)
     @rate_limit_check("command")
-    async def history_cmd(self, interaction: discord.Interaction, task_id: int) -> None:
+    async def history_log_cmd(self, interaction: discord.Interaction, task_id: int) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
         await ensure_user(uid, lang)
@@ -55,6 +120,54 @@ class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
             return
 
         view = TaskHistoryView(history=history, user_id=uid, lang=lang)
+        await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
+
+    @history.command(
+        name="diff",
+        description="🔀 เปรียบเทียบคำอธิบายงานแบบ Git Diff และย้อนเวอร์ชัน / Diff & rollback task description",
+    )
+    @app_commands.describe(
+        task_id="รหัสงาน / Task ID number",
+        revision_id="หมายเลข Revision (ไม่ระบุ = ล่าสุด) / Revision ID (optional, defaults to latest)",
+    )
+    @app_commands.autocomplete(task_id=_history_task_autocomplete)
+    @rate_limit_check("command")
+    async def history_diff_cmd(
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+        revision_id: Optional[int] = None,
+    ) -> None:
+        uid = str(interaction.user.id)
+        lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
+        await interaction.response.defer(ephemeral=True)
+
+        is_admin = bool(
+            interaction.user.guild_permissions.administrator
+            if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
+            else False
+        )
+
+        diff_res = await history_service.get_revision_diff(
+            task_id=task_id,
+            user_id=uid,
+            revision_id=revision_id,
+            is_guild_admin=is_admin,
+        )
+        if diff_res is None:
+            await interaction.followup.send(
+                t("history_not_found_or_denied", lang, task_id=task_id),
+                ephemeral=True,
+            )
+            return
+
+        view = TaskRevisionDiffView(
+            diff_result=diff_res,
+            user_id=uid,
+            lang=lang,
+            is_guild_admin=is_admin,
+        )
         await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
 
     @app_commands.command(

@@ -1154,6 +1154,67 @@ class ProjectDashboardView(ui.View):
         view = ProjectPermissionsView(project, lang, self.user, role="member", permissions=perms)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @ui.button(label="📚 Docs", style=discord.ButtonStyle.secondary, custom_id="proj_dash_docs", row=2)
+    async def btn_docs(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        from knowledge_base import service as doc_service
+        from knowledge_base.views import DocListView
+
+        try:
+            docs = await doc_service.list_or_search_documents(
+                guild_id=self.guild_id,
+                user_id=uid,
+                project_id=self.project_id,
+                is_guild_admin=is_admin,
+            )
+        except Exception as exc:
+            log.warning("btn_docs failed: %s", exc)
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        view = DocListView(docs=docs, guild_id=self.guild_id, lang=lang, project_id=self.project_id)
+        await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
+
+    @ui.button(label="🧩 Fields", style=discord.ButtonStyle.secondary, custom_id="proj_dash_fields", row=2)
+    async def btn_fields(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        try:
+            project = await service.get_project(self.project_id, self.guild_id)
+        except service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
+            return
+        from custom_fields import service as field_service
+        from custom_fields.views import build_fields_list_embed
+
+        defs = await field_service.list_field_definitions(self.project_id, self.guild_id)
+        embed = build_fields_list_embed(project.name, defs, lang)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @ui.button(label="📰 Changelog", style=discord.ButtonStyle.secondary, custom_id="proj_dash_changelog", row=2)
+    async def btn_changelog(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        uid = str(interaction.user.id)
+        lang = self.lang
+        await interaction.response.defer(ephemeral=True)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        from changelog import service as cl_service
+        from changelog.views import ChangelogPreviewView
+
+        try:
+            gen = await cl_service.generate_changelog(
+                project_id=self.project_id,
+                guild_id=self.guild_id,
+                actor_id=uid,
+                is_guild_admin=is_admin,
+            )
+        except Exception:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
+        view = ChangelogPreviewView(changelog=gen, user_id=uid, lang=lang)
+        await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
+
 
 
 class BoardColumnSelect(ui.Select):

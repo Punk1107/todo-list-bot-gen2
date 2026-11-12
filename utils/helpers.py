@@ -880,7 +880,8 @@ def _recurring_label(recurring: Optional[str], lang: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_task_embed(row, lang: str, tz_name: str,
-                     subtasks=None, category=None, checklists=None) -> discord.Embed:
+                     subtasks=None, category=None, checklists=None,
+                     custom_fields=None) -> discord.Embed:
     """
     Build a premium, visually hierarchical embed for a single task.
     Accepts pre-fetched subtasks/category to avoid blocking DB calls.
@@ -1051,6 +1052,17 @@ def build_task_embed(row, lang: str, tz_name: str,
         embed.add_field(
             name=f"📋 {t('dod_field_title', lang)} ({done_chk}/{total_chk})",
             value=f"{chk_bar}\n" + "\n".join(lines),
+            inline=False,
+        )
+
+    # ── Custom Dynamic Meta-Fields (JSONB EAV) ───────────────────────────────
+    if custom_fields:
+        cf_lines = [f"**{lbl}**: `{val}`" for lbl, val in custom_fields[:10]]
+        if len(custom_fields) > 10:
+            cf_lines.append(f"... +{len(custom_fields) - 10}")
+        embed.add_field(
+            name=f"🧩 {t('field_embed_section', lang)}",
+            value="\n".join(cf_lines)[:1024],
             inline=False,
         )
 

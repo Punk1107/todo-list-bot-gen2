@@ -83,6 +83,9 @@ COGS = [
     "day_planner.cog",                      # /dayplan — Smart Daily Time-Blocker & Ergonomic Optimizer (Gen 5.0)
     "quests.cog",                           # /quest — Server Co-op Quests & Guild Raids (Gen 5.0)
     "kudos.cog",                            # /kudos — Peer Kudos & Gratitude Leaderboard (Gen 5.0)
+    "knowledge_base.cog",                   # /doc — Markdown Wiki Docs & FTS Search (Gen 5.0)
+    "custom_fields.cog",                    # /field — Custom Dynamic Meta-Fields JSONB EAV (Gen 5.0)
+    "changelog.cog",                        # /changelog — Automated Semantic Release Notes (Gen 5.0)
 ]
 
 
