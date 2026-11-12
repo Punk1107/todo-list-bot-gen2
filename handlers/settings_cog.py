@@ -20,7 +20,7 @@ import pytz
 from core.database import db
 from core.security import rate_limit_check, validator
 from core.config import config
-from locales.i18n import t, SUPPORTED_LANGS
+from locales.i18n import t, SUPPORTED_LANGS, locale_to_lang
 from utils.helpers import (
     get_user_lang, get_user_timezone, get_user_role, get_user_theme,
     get_user_display_mode, set_user_display_mode,
@@ -109,205 +109,23 @@ class AddCategoryModal(discord.ui.Modal):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Help UI Components
+# Help UI Components (Modularized in handlers/help_registry.py & help_ui.py)
+# Re-exported here to preserve backward-compatible imports.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_help_embed(category: str, lang: str) -> discord.Embed:
-    if category == "tasks":
-        embed = discord.Embed(
-            title=f"📝 {t('help_cat_tasks', lang)}",
-            description=t("help_tasks_desc", lang),
-            color=0x5865F2,
-        )
-        task_cmds = [
-            ("➕ `/add`", t("help_add", lang)),
-            ("📋 `/list`", t("help_list", lang)),
-            ("📅 `/today`", t("help_today", lang)),
-            ("🚨 `/overdue`", t("help_overdue", lang)),
-            ("📌 `/task [id]`", t("help_task_inspect", lang)),
-            ("✅ `/done [id]`", t("help_done", lang)),
-            ("🗑️ `/delete [id]`", t("help_delete", lang)),
-            ("📌 `/pin [id]` / `/unpin [id]`", t("help_pin", lang)),
-            ("🔄 `/recurring [id]`", t("help_recurring", lang)),
-            ("🔍 `/search [query]`", t("help_search", lang)),
-            ("📊 `/stats`", t("help_stats", lang)),
-            ("📥 `/export`", t("help_export", lang)),
-        ]
-        for cmd, desc in task_cmds:
-            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
-
-    elif category == "collab":
-        embed = discord.Embed(
-            title=f"🤝 {t('help_cat_collab', lang)}",
-            description=t("help_collab_desc", lang),
-            color=0x5865F2,
-        )
-        collab_cmds = [
-            ("🎉 `/project create`", t("help_proj_create", lang)),
-            ("📋 `/project list`", t("help_proj_list", lang)),
-            ("📊 `/project view [id]`", t("help_proj_view", lang)),
-            ("📌 `/project board [id]`", t("help_proj_board", lang)),
-            ("➕ `/project add-task [id]`", t("help_proj_add_task", lang)),
-            ("🙋 `/project my-tasks`", t("help_proj_my_tasks", lang)),
-            ("👥 `/project members [id]`", t("help_proj_members", lang)),
-            ("📜 `/project activity [id]`", t("help_proj_activity", lang)),
-            ("📦 `/project archive [id]`", t("help_proj_archive", lang)),
-        ]
-        for cmd, desc in collab_cmds:
-            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
-
-    elif category == "search":
-        embed = discord.Embed(
-            title=f"🔍 {t('help_cat_search', lang)}",
-            description=t("help_search_desc", lang),
-            color=0x5865F2,
-        )
-        search_cmds = [
-            ("🔍 `/search [query]`", t("help_search_fts", lang)),
-            ("⚡ `/recommend`", t("help_recommend", lang)),
-            ("📊 `/task-stats`", t("help_task_stats", lang)),
-            ("📰 `/digest`", t("help_digest", lang)),
-            ("📈 `/analytics`", t("help_analytics", lang)),
-        ]
-        for cmd, desc in search_cmds:
-            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
-
-    elif category == "files":
-        embed = discord.Embed(
-            title=f"📎 {t('help_cat_files', lang)}",
-            description=t("help_files_desc", lang),
-            color=0x5865F2,
-        )
-        file_cmds = [
-            ("📎 `/attach [task_id] [file]`", t("help_attach", lang)),
-            ("📂 `/attachments [task_id]`", t("help_attachments", lang)),
-        ]
-        for cmd, desc in file_cmds:
-            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
-
-    elif category == "settings":
-        embed = discord.Embed(
-            title=f"⚙️ {t('help_cat_settings', lang)}",
-            description=t("help_settings_desc", lang),
-            color=0x5865F2,
-        )
-        setting_cmds = [
-            ("🕒 `/setup [timezone]`", t("help_setup", lang)),
-            ("🌐 `/lang`", t("help_lang", lang)),
-            ("📂 `/category list`", t("help_cat_list", lang)),
-            ("➕ `/category add`", t("help_cat_add", lang)),
-            ("🗑️ `/category remove [id]`", t("help_cat_remove", lang)),
-        ]
-        for cmd, desc in setting_cmds:
-            embed.add_field(name=cmd, value=f"> {desc}", inline=False)
-
-    elif category == "tips":
-        embed = discord.Embed(
-            title=f"💡 {t('help_cat_advanced', lang)}",
-            description=t("help_advanced_desc", lang),
-            color=0x5865F2,
-        )
-        tips = [
-            (t("help_tip_shorthand_title", lang), t("help_tip_shorthand", lang)),
-            (t("help_tip_autocomplete_title", lang), t("help_tip_autocomplete", lang)),
-            (t("help_tip_dropdown_title", lang), t("help_tip_dropdown", lang)),
-            (t("help_tip_snooze_title", lang), t("help_tip_snooze", lang)),
-            (t("help_tip_dm_title", lang), t("help_tip_dm", lang)),
-        ]
-        for title, desc in tips:
-            embed.add_field(name=title, value=f"> {desc}", inline=False)
-
-    else:  # overview
-        embed = discord.Embed(
-            title=t("help_title", lang),
-            description=t("help_desc", lang),
-            color=0x5865F2,
-        )
-        embed.add_field(
-            name=t("help_quickstart_title", lang),
-            value=t("help_quickstart", lang),
-            inline=False,
-        )
-        embed.add_field(
-            name=t("help_browse_title", lang),
-            value=t("help_overview_browse", lang),
-            inline=False,
-        )
-
-    embed.set_footer(text=t("help_version_footer", lang))
-    return embed
-
-
-class HelpCategorySelect(ui.Select):
-    def __init__(self, lang: str) -> None:
-        self.lang = lang
-        options = [
-            discord.SelectOption(
-                label=t("help_cat_overview", lang),
-                value="overview",
-                emoji="🚀",
-                default=True,
-            ),
-            discord.SelectOption(
-                label=t("help_cat_tasks", lang),
-                value="tasks",
-                emoji="📝",
-            ),
-            discord.SelectOption(
-                label=t("help_cat_collab", lang),
-                value="collab",
-                emoji="🤝",
-            ),
-            discord.SelectOption(
-                label=t("help_cat_search", lang),
-                value="search",
-                emoji="🔍",
-            ),
-            discord.SelectOption(
-                label=t("help_cat_files", lang),
-                value="files",
-                emoji="📎",
-            ),
-            discord.SelectOption(
-                label=t("help_cat_settings", lang),
-                value="settings",
-                emoji="⚙️",
-            ),
-            discord.SelectOption(
-                label=t("help_cat_advanced", lang),
-                value="tips",
-                emoji="💡",
-            ),
-        ]
-        super().__init__(placeholder=t("help_category_select_placeholder", lang), options=options, min_values=1, max_values=1)
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        val = self.values[0]
-        for opt in self.options:
-            opt.default = (opt.value == val)
-
-        embed = build_help_embed(val, self.lang)
-        await interaction.response.edit_message(embed=embed, view=self.view)
-
-
-class HelpView(ui.View):
-    def __init__(self, lang: str) -> None:
-        super().__init__(timeout=300)
-        self.lang = lang
-        self._message: Optional[discord.Message] = None  # set by caller after send
-        self.add_item(HelpCategorySelect(lang))
-
-    async def on_timeout(self) -> None:
-        for child in self.children:
-            try:
-                child.disabled = True  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        try:
-            if self._message:
-                await self._message.edit(view=self)
-        except Exception:
-            pass
+from handlers.help_registry import (
+    HELP_CATEGORIES,
+    get_command_meta,
+    search_help_commands,
+)
+from handlers.help_ui import (
+    HelpCategorySelect,
+    HelpView,
+    build_command_detail_embed,
+    build_help_embed,
+    build_search_results_embed,
+    user_has_admin_access,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -702,17 +520,106 @@ class SettingsCog(commands.Cog, name="Settings"):
 
     # ── /help ─────────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="help", description="📖 ดูวิธีใช้ / View help")
+    def _quick_autocomplete_lang(self, interaction: discord.Interaction) -> str:
+        cached = db.user_cache.get(str(interaction.user.id))
+        if cached and getattr(cached, "language", None):
+            return str(cached.language)
+        return locale_to_lang(str(getattr(interaction, "locale", "en")))
+
+    @app_commands.command(name="help", description="📖 ดูวิธีใช้และค้นหาคำสั่ง / Interactive Help Center")
+    @app_commands.describe(
+        query="ค้นหาคำสั่งหรือฟีเจอร์ (เช่น sprint, gantt, focus) / Search command or keyword",
+        category="เปิดหมวดหมู่ที่ต้องการโดยตรง / Jump directly to a category",
+        ephemeral="ซ่อนให้เห็นเฉพาะคุณ (ค่าเริ่มต้น True) / Show only to you (default True)",
+    )
     @rate_limit_check("command")
-    async def help_cmd(self, interaction: discord.Interaction) -> None:
+    async def help_cmd(
+        self,
+        interaction: discord.Interaction,
+        query: Optional[str] = None,
+        category: Optional[str] = None,
+        ephemeral: bool = True,
+    ) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
 
-        view = HelpView(lang)
-        embed = build_help_embed("overview", lang)
-        await interaction.response.send_message(embed=embed, view=view)
-        # Store message so on_timeout can edit it with disabled select
+        color = None
+        try:
+            palette = await resolve_user_palette(uid, guild_id=interaction.guild_id)
+            color = palette.color_for("primary")
+        except Exception:
+            color = None
+
+        compact = False
+        try:
+            compact = (await get_user_display_mode(uid)) == "compact"
+        except Exception:
+            compact = False
+
+        include_admin = user_has_admin_access(interaction)
+        target_category = category or "overview"
+        view = HelpView(
+            lang,
+            author_id=interaction.user.id,
+            category=target_category,
+            compact=compact,
+            include_admin=include_admin,
+            color=color,
+        )
+
+        if query and query.strip():
+            cleaned = query.strip()
+            exact = get_command_meta(cleaned)
+            if exact and (include_admin or not exact.is_admin):
+                view.category = exact.category
+                view.detail_path = exact.path
+                view.mode = "detail"
+            else:
+                matches = search_help_commands(
+                    cleaned, lang, include_admin=include_admin, limit=25
+                )
+                if len(matches) == 1:
+                    view.category = matches[0].category
+                    view.detail_path = matches[0].path
+                    view.mode = "detail"
+                else:
+                    view.search_query = cleaned
+                    view.search_results = matches
+                    view.mode = "search"
+            view._rebuild_items()
+
+        embed = view.render_current_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
         view._message = await interaction.original_response()
+
+    @help_cmd.autocomplete("query")
+    async def help_query_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        lang = self._quick_autocomplete_lang(interaction)
+        include_admin = user_has_admin_access(interaction)
+        matches = search_help_commands(current, lang, include_admin=include_admin, limit=25)
+        choices: list[app_commands.Choice[str]] = []
+        for entry in matches[:25]:
+            label = f"{entry.emoji} {entry.display_command} — {entry.description(lang)}"
+            if len(label) > 100:
+                label = label[:99].rstrip() + "…"
+            choices.append(app_commands.Choice(name=label, value=entry.path))
+        return choices
+
+    @help_cmd.autocomplete("category")
+    async def help_category_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        lang = self._quick_autocomplete_lang(interaction)
+        q = current.strip().lower()
+        choices: list[app_commands.Choice[str]] = []
+        for cat in HELP_CATEGORIES:
+            label_text = cat.label(lang)
+            if not q or q in cat.key or q in label_text.lower() or q in cat.description(lang).lower():
+                name = label_text if label_text.startswith(cat.emoji) else f"{cat.emoji} {label_text}"
+                choices.append(app_commands.Choice(name=name[:100], value=cat.key))
+        return choices[:25]
 
 
     # ── /theme group & /settings theme + /settings display ────────────────────

@@ -260,8 +260,8 @@ STRINGS = {
     "stats_note_progress": "您已完成 {pct}% — 继续加油！",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — 帮助",
-    "help_desc": "功能完整的待办事项机器人，支持多语言。",
+    "help_title": "📖 指令中心与交互式帮助",
+    "help_desc": "支持 9 种语言的 Discord 效率管理、敏捷开发、Wiki 文档与自动化套件。",
     "help_commands": "所有命令",
     "help_quickstart": "🚀 快速开始\n`1.` 使用 `/setup Asia/Shanghai` 设置时区\n`2.` 使用 `/add` 创建第一个任务\n`3.` 使用 `/list` 查看所有任务",
     "help_add": "添加新任务",
@@ -295,7 +295,7 @@ STRINGS = {
     "help_cat_tasks": "📝 任务命令",
     "help_cat_settings": "⚙️ 设置与分类",
     "help_cat_tips": "💡 技巧与快捷方式",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "帮助中心 • /help [query] • 🔍 搜索与使用指南",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ 每日任务简报 — {date}",
@@ -1260,4 +1260,31 @@ STRINGS = {
     'dod_tpl_applied': '已将模板 **{template}** 应用到任务 **#{task_id}**（+{count} 项）。',
     'dod_tpl_list_title': '☑️ DoD 检查清单模板库',
     'dod_tpl_deleted': '已删除 DoD 模板 **{name}**。',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': '分类整理、模板与自定义字段',
+    'help_organize_desc': '任务分类、DoD 检查清单、工作流模板、智能筛选器、艾森豪威尔矩阵与项目自定义字段。',
+    'help_cat_agile': '敏捷 Sprint、史诗与路线图',
+    'help_agile_desc': 'Scrum 迭代、燃尽图/CFD、团队速率、计划扑克、Epic 层级、战略路线图与每日站会。',
+    'help_cat_focus': '专注计时、工时与日程规划',
+    'help_focus_desc': '番茄钟、语音专注房、实时秒表、工时报表、智能日程规划与日历订阅同步。',
+    'help_cat_automation': '自动化规则、例行流程与 SLA',
+    'help_automation_desc': '无代码 ECA 触发规则、紧急升级策略、新成员角色例行任务与 SLA 合规监控。',
+    'help_cat_gamify': 'RPG 养成、团队副本与赞赏',
+    'help_gamify_desc': '效率 RPG 等级、服务器协作副本、团队 Kudos 感谢、365 天热力图、习惯与假期保护。',
+    'help_btn_prev': '上一页',
+    'help_btn_next': '下一页',
+    'help_btn_search': '搜索',
+    'help_btn_workflows': '指南',
+    'help_btn_home': '总览',
+    'help_btn_compact': '紧凑模式',
+    'help_btn_detailed': '详细模式',
+    'help_btn_admin_show': '管理: 显示',
+    'help_btn_admin_hide': '管理: 隐藏',
+    'help_btn_back_category': '返回分类',
+    'help_search_modal_title': '搜索指令与功能',
+    'help_search_input_label': '指令名称或关键词',
+    'help_search_input_placeholder': '例如 sprint、gantt、timer、doc、vacation...',
+    'help_workflows_title': '🧭 分角色工作流指南',
+    'help_workflows_desc': '针对个人、项目团队、敏捷开发与服务器管理员的步骤指南：',
 }

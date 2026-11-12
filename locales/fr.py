@@ -267,8 +267,8 @@ STRINGS = {
     "stats_note_progress": "Vous avez complété {pct}% — continuez ainsi !",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — Aide",
-    "help_desc": "Un bot complet de gestion de tâches avec support multilingue.",
+    "help_title": "📖 Centre de Commandes & Aide Interactive",
+    "help_desc": "Suite complète de productivité, Agile, Wiki et automatisation sur Discord (9 langues).",
     "help_commands": "Toutes les commandes",
     "help_quickstart": "🚀 Démarrage rapide\n`1.` Utilisez `/setup Europe/Paris` pour définir votre fuseau horaire\n`2.` Utilisez `/add` pour créer votre première tâche\n`3.` Utilisez `/list` pour afficher toutes vos tâches",
     "help_add": "Ajouter une nouvelle tâche",
@@ -302,7 +302,7 @@ STRINGS = {
     "help_cat_tasks": "📝 Commandes de tâches",
     "help_cat_settings": "⚙️ Paramètres et catégories",
     "help_cat_tips": "💡 Conseils et astuces",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "Centre d'aide • /help [query] • 🔍 Recherche & Playbooks",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ Récapitulatif quotidien des tâches — {date}",
@@ -1266,4 +1266,31 @@ STRINGS = {
     'dod_tpl_applied': 'Modèle **{template}** appliqué à **#{task_id}** (+{count}).',
     'dod_tpl_list_title': '☑️ Modèles de checklist DoD',
     'dod_tpl_deleted': 'Modèle DoD **{name}** supprimé.',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': 'Organisation, Modèles & Champs',
+    'help_organize_desc': 'Catégories, checklists DoD, modèles, filtres intelligents, matrice Eisenhower et champs personnalisés.',
+    'help_cat_agile': 'Agile, Sprints & Feuilles de route',
+    'help_agile_desc': 'Sprints Scrum, graphiques Burndown/CFD, vélocité, Planning Poker, Epics, Roadmaps et Standup.',
+    'help_cat_focus': 'Focus, Temps & Planning',
+    'help_focus_desc': 'Minuteurs Pomodoro, salons vocaux focus, chronomètre, feuilles de temps, planificateur et calendrier.',
+    'help_cat_automation': 'Automatisations, Routines & SLA',
+    'help_automation_desc': 'Règles ECA no-code, politiques d’escalade, routines d’intégration et suivi SLA.',
+    'help_cat_gamify': 'RPG, Quêtes, Kudos & Séries',
+    'help_gamify_desc': 'Niveaux RPG, raids coopératifs, kudos d’équipe, carte thermique 365j, habitudes et mode vacances.',
+    'help_btn_prev': 'Préc.',
+    'help_btn_next': 'Suiv.',
+    'help_btn_search': 'Rechercher',
+    'help_btn_workflows': 'Playbooks',
+    'help_btn_home': 'Accueil',
+    'help_btn_compact': 'Compact',
+    'help_btn_detailed': 'Détaillé',
+    'help_btn_admin_show': 'Admin : Affiché',
+    'help_btn_admin_hide': 'Admin : Masqué',
+    'help_btn_back_category': 'Retour catégorie',
+    'help_search_modal_title': 'Rechercher une commande',
+    'help_search_input_label': 'Nom ou mot-clé',
+    'help_search_input_placeholder': 'ex. sprint, gantt, timer, doc, vacation...',
+    'help_workflows_title': '🧭 Guides de travail par rôle',
+    'help_workflows_desc': 'Parcours étape par étape pour vous et votre équipe :',
 }

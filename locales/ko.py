@@ -260,8 +260,8 @@ STRINGS = {
     "stats_note_progress": "{pct}% 완료 — 계속 파이팅!",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — 도움말",
-    "help_desc": "다국어를 지원하는 고기능 To-Do Bot.",
+    "help_title": "📖 명령어 센터 & 대화형 도움말",
+    "help_desc": "9개 언어를 지원하는 올인원 Discord 생산성, 애자일, 위키, 자동화 봇.",
     "help_commands": "모든 명령어",
     "help_quickstart": "🚀 퀘 스타트\n`1.` `/setup Asia/Seoul` 로 시간대 설정\n`2.` `/add` 로 첫 번째 작업 생성\n`3.` `/list` 로 작업 확인",
     "help_add": "새 작업 추가",
@@ -295,7 +295,7 @@ STRINGS = {
     "help_cat_tasks": "📝 작업 명령어",
     "help_cat_settings": "⚙️ 설정 및 카테고리",
     "help_cat_tips": "💡 팁 및 단축키",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "도움말 센터 • /help [query] • 🔍 검색 & 플레이북",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ 오늘 작업 요약 — {date}",
@@ -1259,4 +1259,31 @@ STRINGS = {
     'dod_tpl_applied': '작업 **#{task_id}**에 **{template}** 템플릿을 적용했습니다 (+{count}개).',
     'dod_tpl_list_title': '☑️ DoD 체크리스트 템플릿',
     'dod_tpl_deleted': 'DoD 템플릿 **{name}**을(를) 삭제했습니다.',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': '정리 · 템플릿 · 사용자 필드',
+    'help_organize_desc': '카테고리, DoD 체크리스트, 템플릿, 스마트 필터, 아이젠하워 매트릭스 및 프로젝트 커스텀 필드.',
+    'help_cat_agile': '애자일 · 스프린트 · 로드맵',
+    'help_agile_desc': 'Scrum 스프린트, 번다운/CFD, 벨로시티, 플래닝 포커, 에픽, 로드맵 및 데일리 스탠드업.',
+    'help_cat_focus': '집중 타이머 · 시간 기록 · 일정',
+    'help_focus_desc': '포모도로, 음성 집중실, 스톱워치, 타임시트, 스마트 데이 플래너 및 캘린더 동기화.',
+    'help_cat_automation': '자동화 · 루틴 · SLA',
+    'help_automation_desc': '노코드 ECA 규칙, 에스컬레이션 정책, 역할 기반 온보딩 루틴 및 SLA 모니터링.',
+    'help_cat_gamify': 'RPG · 퀘스트 · 칭찬 · 스트릭',
+    'help_gamify_desc': '생산성 RPG 레벨, 길드 협동 퀘스트, 동료 Kudos, 365일 히트맵, 습관 및 휴가 보호.',
+    'help_btn_prev': '이전',
+    'help_btn_next': '다음',
+    'help_btn_search': '검색',
+    'help_btn_workflows': '플레이북',
+    'help_btn_home': '개요',
+    'help_btn_compact': '간략히',
+    'help_btn_detailed': '자세히',
+    'help_btn_admin_show': '관리자: 표시',
+    'help_btn_admin_hide': '관리자: 숨김',
+    'help_btn_back_category': '카테고리로',
+    'help_search_modal_title': '명령어 및 기능 검색',
+    'help_search_input_label': '명령어 이름 또는 키워드',
+    'help_search_input_placeholder': '예: sprint, gantt, timer, doc, vacation...',
+    'help_workflows_title': '🧭 역할별 워크플로우 플레이북',
+    'help_workflows_desc': '개인, 팀, 애자일 및 관리자를 위한 단계별 가이드:',
 }

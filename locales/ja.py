@@ -260,8 +260,8 @@ STRINGS = {
     "stats_note_progress": "{pct}% 完了 — 引き続き頑張りましょう！",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — ヘルプ",
-    "help_desc": "多言語対応の高機能 To-Do Bot。",
+    "help_title": "📖 コマンドセンター & インタラクティブヘルプ",
+    "help_desc": "9言語対応のDiscord生産性・アジャイル・Wiki・自動化スイート。",
     "help_commands": "すべてのコマンド",
     "help_quickstart": "🚀 クイックスタート\n`1.` `/setup Asia/Tokyo` でタイムゾーンを設定\n`2.` `/add` で最初のタスクを作成\n`3.` `/list` でタスクを確認",
     "help_add": "新しいタスクを追加",
@@ -295,7 +295,7 @@ STRINGS = {
     "help_cat_tasks": "📝 タスクコマンド",
     "help_cat_settings": "⚙️ 設定とカテゴリー",
     "help_cat_tips": "💡 ヒントとショートカット",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "ヘルプセンター • /help [query] • 🔍 検索 & プレイブック",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ 今日のタスクダイジェスト — {date}",
@@ -1260,4 +1260,31 @@ STRINGS = {
     'dod_tpl_applied': 'テンプレート **{template}** をタスク **#{task_id}** に適用しました（+{count}件）。',
     'dod_tpl_list_title': '☑️ DoD チェックリストテンプレート一覧',
     'dod_tpl_deleted': 'DoD テンプレート **{name}** を削除しました。',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': '整理・テンプレート・カスタム項目',
+    'help_organize_desc': 'カテゴリ、DoDチェックリスト、テンプレート、スマートフィルタ、アイゼンハワーマトリクス、カスタム項目。',
+    'help_cat_agile': 'アジャイル・スプリント・ロードマップ',
+    'help_agile_desc': 'Scrumスプリント、バーンダウン/CFD、ベロシティ、プランニングポーカー、Epic、ロードマップ、朝会。',
+    'help_cat_focus': '集中タイマー・時間管理・日程',
+    'help_focus_desc': 'ポモドーロ、ボイス集中ルーム、ストップウォッチ、タイムシート、自動日程、カレンダー連携。',
+    'help_cat_automation': '自動化・ルーティン・SLA',
+    'help_automation_desc': 'ノーコードECAルール、エスカレーション、オンボーディングルーティン、SLA監視。',
+    'help_cat_gamify': 'RPG・クエスト・称賛・継続',
+    'help_gamify_desc': '生産性RPGレベル、協力クエスト、Kudos称賛、365日ヒートマップ、習慣、休暇モード。',
+    'help_btn_prev': '前へ',
+    'help_btn_next': '次へ',
+    'help_btn_search': '検索',
+    'help_btn_workflows': 'プレイブック',
+    'help_btn_home': '概要',
+    'help_btn_compact': 'コンパクト',
+    'help_btn_detailed': '詳細',
+    'help_btn_admin_show': '管理: 表示',
+    'help_btn_admin_hide': '管理: 非表示',
+    'help_btn_back_category': 'カテゴリへ戻る',
+    'help_search_modal_title': 'コマンドと機能を検索',
+    'help_search_input_label': 'コマンド名またはキーワード',
+    'help_search_input_placeholder': '例: sprint, gantt, timer, doc, vacation...',
+    'help_workflows_title': '🧭 ロール別ワークフローガイド',
+    'help_workflows_desc': '個人・チーム・アジャイル・管理者向けのステップ別ガイド：',
 }
