@@ -267,8 +267,8 @@ STRINGS = {
     "stats_note_progress": "Выполнено {pct}% — продолжайте в том же духе!",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — Справка",
-    "help_desc": "Многофункциональный бот списка задач с поддержкой нескольких языков.",
+    "help_title": "📖 Центр команд и интерактивная справка",
+    "help_desc": "Комплексный бот для задач, Agile, Wiki и автоматизации в Discord (9 языков).",
     "help_commands": "Все команды",
     "help_quickstart": "🚀 Быстрый старт\n`1.` Настройте часовой пояс с помощью `/setup Europe/Moscow`\n`2.` Создайте первую задачу через `/add`\n`3.` Просмотрите задачи через `/list`",
     "help_add": "Добавить новую задачу",
@@ -302,7 +302,7 @@ STRINGS = {
     "help_cat_tasks": "📝 Команды задач",
     "help_cat_settings": "⚙️ Настройки и категории",
     "help_cat_tips": "💡 Советы и секреты",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "Центр справки • /help [query] • 🔍 Поиск и сценарии",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ Ежедневная сводка задач — {date}",
@@ -1266,4 +1266,31 @@ STRINGS = {
     'dod_tpl_applied': 'Шаблон **{template}** применён к **#{task_id}** (+{count}).',
     'dod_tpl_list_title': '☑️ Шаблоны чек-листов DoD',
     'dod_tpl_deleted': 'Шаблон DoD **{name}** удалён.',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': 'Организация, шаблоны и поля',
+    'help_organize_desc': 'Категории, чек-листы DoD, шаблоны, умные фильтры, матрица Эйзенхауэра и свои поля проектов.',
+    'help_cat_agile': 'Agile, спринты и дорожные карты',
+    'help_agile_desc': 'Scrum-спринты, Burndown/CFD, Velocity, Planning Poker, эпики, Roadmap и стендапы.',
+    'help_cat_focus': 'Фокус, время и план дня',
+    'help_focus_desc': 'Помодоро-таймер, голосовые комнаты фокуса, секундомер, табели, планировщик дня и календарь.',
+    'help_cat_automation': 'Автоматизация, рутины и SLA',
+    'help_automation_desc': 'No-code правила ECA, эскалации, рутины по ролям и контроль нарушений SLA.',
+    'help_cat_gamify': 'RPG, квесты, Kudos и серии',
+    'help_gamify_desc': 'Уровни RPG, кооп-рейды сервера, благодарности Kudos, тепловая карта 365 дней и режим отпуска.',
+    'help_btn_prev': 'Назад',
+    'help_btn_next': 'Вперёд',
+    'help_btn_search': 'Поиск',
+    'help_btn_workflows': 'Сценарии',
+    'help_btn_home': 'Обзор',
+    'help_btn_compact': 'Компактно',
+    'help_btn_detailed': 'Подробно',
+    'help_btn_admin_show': 'Админ: Вкл',
+    'help_btn_admin_hide': 'Админ: Скрыто',
+    'help_btn_back_category': 'К категории',
+    'help_search_modal_title': 'Поиск команд и функций',
+    'help_search_input_label': 'Название команды или ключевое слово',
+    'help_search_input_placeholder': 'напр. sprint, gantt, timer, doc, vacation...',
+    'help_workflows_title': '🧭 Сценарии работы по ролям',
+    'help_workflows_desc': 'Пошаговые руководства для личной работы, команд, Agile и админов:',
 }

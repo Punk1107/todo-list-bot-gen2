@@ -260,8 +260,8 @@ STRINGS = {
     "stats_note_progress": "Estás {pct}% completado — ¡sigue así!",
 
     # ─── Help ───────────────────────────────────────────────────────────────────
-    "help_title": "📖 To-Do List Bot Gen 2 — Ayuda",
-    "help_desc": "Un bot de lista de tareas completo con soporte multiidioma.",
+    "help_title": "📖 Centro de Comandos y Ayuda Interactiva",
+    "help_desc": "Suite completa de productividad, Agile, Wiki y automatización en Discord (9 idiomas).",
     "help_commands": "Todos los comandos",
     "help_quickstart": "🚀 Inicio rápido\n`1.` Usa `/setup America/Mexico_City` para tu zona horaria\n`2.` Usa `/add` para crear tu primera tarea\n`3.` Usa `/list` para ver todas tus tareas",
     "help_add": "Agregar nueva tarea",
@@ -295,7 +295,7 @@ STRINGS = {
     "help_cat_tasks": "📝 Comandos de tareas",
     "help_cat_settings": "⚙️ Ajustes y Categorías",
     "help_cat_tips": "💡 Consejos y Atajos",
-    "help_version_footer": "To-Do List Bot Gen 2 • /help • github.com",
+    "help_version_footer": "Centro de Ayuda • /help [query] • 🔍 Buscar y Playbooks",
 
     # ─── Daily Digest & Overdue ─────────────────────────────────────────────────
     "digest_title": "☀️ Resumen diario de tareas — {date}",
@@ -1259,4 +1259,31 @@ STRINGS = {
     'dod_tpl_applied': 'Plantilla **{template}** aplicada a **#{task_id}** (+{count}).',
     'dod_tpl_list_title': '☑️ Plantillas Checklist DoD',
     'dod_tpl_deleted': 'Plantilla DoD **{name}** eliminada.',
+
+    # ─── Interactive Help Center v5 ────────────────────────────────────────────
+    'help_cat_organize': 'Organización, Plantillas y Campos',
+    'help_organize_desc': 'Categorías, checklists DoD, plantillas, filtros inteligentes, Matriz Eisenhower y campos personalizados.',
+    'help_cat_agile': 'Agile, Sprints y Roadmaps',
+    'help_agile_desc': 'Sprints Scrum, Burndown/CFD, Velocity, Planning Poker, Epics, Roadmaps y Daily Standup.',
+    'help_cat_focus': 'Enfoque, Tiempo y Plan Diario',
+    'help_focus_desc': 'Temporizador Pomodoro, salas de voz, cronómetro, hojas de horas, planificador diario y calendario.',
+    'help_cat_automation': 'Automatización, Rutinas y SLA',
+    'help_automation_desc': 'Reglas ECA sin código, políticas de escalamiento, rutinas de roles y control SLA.',
+    'help_cat_gamify': 'RPG, Misiones, Kudos y Rachas',
+    'help_gamify_desc': 'Niveles RPG, Raids cooperativos, Kudos, mapa de calor 365 días, hábitos y modo vacaciones.',
+    'help_btn_prev': 'Anterior',
+    'help_btn_next': 'Siguiente',
+    'help_btn_search': 'Buscar',
+    'help_btn_workflows': 'Playbooks',
+    'help_btn_home': 'Inicio',
+    'help_btn_compact': 'Compacto',
+    'help_btn_detailed': 'Detallado',
+    'help_btn_admin_show': 'Admin: Visible',
+    'help_btn_admin_hide': 'Admin: Oculto',
+    'help_btn_back_category': 'Volver a categoría',
+    'help_search_modal_title': 'Buscar comandos y funciones',
+    'help_search_input_label': 'Nombre del comando o palabra clave',
+    'help_search_input_placeholder': 'ej. sprint, gantt, timer, doc, vacation...',
+    'help_workflows_title': '🧭 Playbooks por Rol',
+    'help_workflows_desc': 'Guías paso a paso adaptadas a tu forma de trabajar:',
 }
