@@ -530,7 +530,7 @@ class SettingsCog(commands.Cog, name="Settings"):
     @app_commands.describe(
         query="ค้นหาคำสั่งหรือฟีเจอร์ (เช่น sprint, gantt, focus) / Search command or keyword",
         category="เปิดหมวดหมู่ที่ต้องการโดยตรง / Jump directly to a category",
-        ephemeral="ซ่อนให้เห็นเฉพาะคุณ (ค่าเริ่มต้น True) / Show only to you (default True)",
+        ephemeral="ซ่อนให้เห็นเฉพาะคุณ (ค่าเริ่มต้น False) / Show only to you (default False)",
     )
     @rate_limit_check("command")
     async def help_cmd(
@@ -538,7 +538,7 @@ class SettingsCog(commands.Cog, name="Settings"):
         interaction: discord.Interaction,
         query: Optional[str] = None,
         category: Optional[str] = None,
-        ephemeral: bool = True,
+        ephemeral: bool = False,
     ) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
@@ -558,13 +558,15 @@ class SettingsCog(commands.Cog, name="Settings"):
 
         include_admin = user_has_admin_access(interaction)
         target_category = category or "overview"
+        bound_author = interaction.user.id if ephemeral else None
         view = HelpView(
             lang,
-            author_id=interaction.user.id,
+            author_id=bound_author,
             category=target_category,
             compact=compact,
             include_admin=include_admin,
             color=color,
+            timeout=None,
         )
 
         if query and query.strip():
