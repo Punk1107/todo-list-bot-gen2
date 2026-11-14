@@ -530,8 +530,9 @@ class HelpView(ui.View):
         compact: bool = False,
         include_admin: bool = True,
         color: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> None:
-        super().__init__(timeout=300)
+        super().__init__(timeout=timeout)
         self.lang = lang
         self.author_id = author_id
         self.category = category if category in CATEGORY_MAP else "overview"
