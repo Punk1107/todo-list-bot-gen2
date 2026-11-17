@@ -4,6 +4,7 @@ tests/test_help_system.py — Zero-Drift Command Parity, Discord Limits & UX Tes
 from __future__ import annotations
 
 import asyncio
+import importlib
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
@@ -64,7 +65,8 @@ class TestHelpTreeParity:
         bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
         try:
             for cog_path in main.COGS:
-                await bot.load_extension(cog_path)
+                mod = importlib.import_module(cog_path)
+                await mod.setup(bot)
             missing, stale = audit_tree_coverage(bot.tree)
         finally:
             # Cancel background @tasks.loop timers started during Cog load

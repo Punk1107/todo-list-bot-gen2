@@ -135,12 +135,12 @@ async def test_single_roundtrip_count_filter_query():
         row = await db.afetchone(
             """
             SELECT
-                COUNT(*) FILTER (WHERE status = 'Pending' AND deadline < NOW()) AS overdue_count,
+                COUNT(*) FILTER (WHERE status = 'Pending' AND deadline < $2) AS overdue_count,
                 COUNT(*) AS total_count
             FROM tasks
             WHERE owner_id = $1 AND is_deleted = FALSE AND parent_task_id IS NULL
             """,
-            ("user-123",),
+            ("user-123", "2026-11-17T00:00:00+00:00"),
         )
 
         assert row["total_count"] == 15
@@ -148,7 +148,7 @@ async def test_single_roundtrip_count_filter_query():
         mock_fetch.assert_called_once()
         sql, params = mock_fetch.call_args[0]
         assert "COUNT(*) FILTER" in sql
-        assert params == ("user-123",)
+        assert params == ("user-123", "2026-11-17T00:00:00+00:00")
 
 
 # ── Pillar 4: Thread Safety of RateLimiter ────────────────────────────────────

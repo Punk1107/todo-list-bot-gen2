@@ -2289,8 +2289,8 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
             (uid, start, end),
         ),
         db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline < NOW()",
-            (uid,),
+            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline < $2",
+            (uid, now_utc.isoformat()),
         ),
     )
     overdue_c = overdue_row["c"] if overdue_row else 0
