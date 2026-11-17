@@ -197,6 +197,7 @@ async def _identify_bottlenecks(project_id: int, milestone_id: int) -> List[dict
     Identify critical bottleneck tasks that block multiple other tasks
     or are overdue within the project/milestone.
     """
+    now_iso = datetime.now(timezone.utc).isoformat()
     rows = await db.afetchall(
         """
         SELECT t.task_id, t.task, t.status, t.deadline,
@@ -205,10 +206,10 @@ async def _identify_bottlenecks(project_id: int, milestone_id: int) -> List[dict
         LEFT JOIN project_task_dependencies d ON d.blocked_by_task_id = t.task_id
         WHERE t.project_id = $1 AND t.status != 'Completed' AND t.is_deleted = FALSE
         GROUP BY t.task_id, t.task, t.status, t.deadline
-        HAVING COUNT(d.task_id) > 0 OR t.deadline < NOW()
+        HAVING COUNT(d.task_id) > 0 OR t.deadline < $2
         ORDER BY COUNT(d.task_id) DESC, t.deadline ASC NULLS LAST
         LIMIT 5
         """,
-        (project_id,),
+        (project_id, now_iso),
     )
     return [dict(r) for r in (rows or [])]

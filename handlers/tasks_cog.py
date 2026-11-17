@@ -356,16 +356,17 @@ class TasksCog(commands.Cog, name="Tasks"):
         filter_label     = t("tasks_filter_Pending", lang)
 
         # Single combined query for total and overdue counts via SQL FILTER
+        now_iso = datetime.now(timezone.utc).isoformat()
         stats_row = await db.afetchone(
             """SELECT COUNT(*) AS total_count,
-                      COUNT(*) FILTER (WHERE status='Pending' AND deadline < NOW()) AS overdue_count
+                      COUNT(*) FILTER (WHERE status='Pending' AND deadline < $2) AS overdue_count
                FROM tasks
                WHERE (
                    owner_id=$1
                    OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=tasks.task_id AND ta.user_id=$1)
                    OR EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id=tasks.task_id AND ta2.user_id=$1)
                ) AND parent_task_id IS NULL AND is_deleted=FALSE""",
-            (uid,),
+            (uid, now_iso),
         )
         total_count   = stats_row["total_count"]   if stats_row else 0
         overdue_count = stats_row["overdue_count"] if stats_row else 0
@@ -380,7 +381,10 @@ class TasksCog(commands.Cog, name="Tasks"):
         view._update_quickaction(tasks)
         await interaction.followup.send(embed=embed, view=view)
         # Store message so on_timeout can edit it with disabled buttons
-        view._message = await interaction.original_response()
+        try:
+            view._message = await interaction.original_response()
+        except Exception:
+            pass
 
     # ─────────────────────────────────────────────────────────────────────────
     # /today

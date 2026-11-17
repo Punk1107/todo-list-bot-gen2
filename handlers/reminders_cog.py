@@ -69,10 +69,10 @@ async def _build_digest_embed(
         ),
         db.afetchone(
             """SELECT COUNT(*) AS pending_total,
-                      COUNT(*) FILTER (WHERE deadline < NOW()) AS overdue_count
+                      COUNT(*) FILTER (WHERE deadline < $2) AS overdue_count
                FROM tasks
                WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE""",
-            (uid,),
+            (uid, utc_now.isoformat()),
         ),
         db.afetchall(
             """SELECT task_id, task, deadline, priority
