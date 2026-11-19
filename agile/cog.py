@@ -71,6 +71,71 @@ def _is_admin(interaction: discord.Interaction) -> bool:
     return False
 
 
+async def _verify_project_access(
+    interaction: discord.Interaction,
+    project_id: int,
+    lang: str,
+    *,
+    require_member: bool = False,
+    deferred: bool = True,
+):
+    """Verify project belongs to interaction.guild and optionally require member/lead/admin role."""
+    guild_id = str(interaction.guild.id)
+    uid = str(interaction.user.id)
+    try:
+        project = await collab_service.get_project(project_id, guild_id)
+    except collab_service.ProjectNotFound:
+        msg = t("proj_not_found", lang, project_id=project_id)
+        if deferred:
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+        return None
+
+    if require_member:
+        is_admin = _is_admin(interaction)
+        role = await collab_service.get_member_role(project_id, uid)
+        if not (is_admin or project.owner_id == uid or role in ("owner", "lead", "member")):
+            msg = t("proj_no_permission", lang)
+            if deferred:
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+            return None
+
+    return project
+
+
+async def _verify_task_guild_access(
+    interaction: discord.Interaction,
+    task_id: int,
+    lang: str,
+) -> Optional[dict]:
+    """Ensure a task exists, is not deleted, and belongs to this guild or the actor."""
+    row = await db.fetchone(
+        "SELECT task_id, task, owner_id, project_id, guild_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+        (task_id,),
+    )
+    if not row:
+        await interaction.followup.send(t("task_not_found", lang, task_id=task_id), ephemeral=True)
+        return None
+
+    uid = str(interaction.user.id)
+    guild_id = str(interaction.guild.id)
+    proj_id = row.get("project_id")
+    if proj_id is not None:
+        project = await _verify_project_access(interaction, int(proj_id), lang, require_member=True, deferred=True)
+        if project is None:
+            return None
+        return dict(row)
+
+    if str(row.get("owner_id") or "") == uid or str(row.get("guild_id") or "") == guild_id:
+        return dict(row)
+
+    await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+    return None
+
+
 class AgileCog(commands.Cog, name="Agile"):
     """Agile & Scrum Full Suite Cog for Discord."""
 
@@ -172,11 +237,8 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        guild_id = str(interaction.guild.id)
-        try:
-            await collab_service.get_project(project_id, guild_id)
-        except collab_service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+        project = await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=True)
+        if not project:
             return
 
         try:
@@ -215,6 +277,10 @@ class AgileCog(commands.Cog, name="Agile"):
         if not await _guild_only(interaction, lang):
             return
         await ensure_user(uid, lang)
+
+        project = await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=False)
+        if not project:
+            return
 
         sprint_obj = await service.get_sprint(sprint_id)
         if not sprint_obj or sprint_obj.project_id != project_id:
@@ -256,6 +322,8 @@ class AgileCog(commands.Cog, name="Agile"):
         sprint_obj = await service.get_sprint(sprint_id)
         if not sprint_obj:
             await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
+            return
+        if not await _verify_project_access(interaction, sprint_obj.project_id, lang, deferred=True):
             return
 
         embed = build_sprint_embed(sprint_obj, lang)
@@ -301,6 +369,12 @@ class AgileCog(commands.Cog, name="Agile"):
             return
         await interaction.response.defer()
 
+        sprint_obj = await service.get_sprint(sprint_id)
+        if not sprint_obj or not await _verify_project_access(interaction, sprint_obj.project_id, lang, deferred=True):
+            if not sprint_obj:
+                await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
+            return
+
         data = await viz_service.get_sprint_burndown_data(sprint_id)
         if not data:
             await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
@@ -342,6 +416,12 @@ class AgileCog(commands.Cog, name="Agile"):
         if not await _guild_only(interaction, lang):
             return
         await interaction.response.defer()
+
+        sprint_obj = await service.get_sprint(sprint_id)
+        if not sprint_obj or not await _verify_project_access(interaction, sprint_obj.project_id, lang, deferred=True):
+            if not sprint_obj:
+                await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id}", ephemeral=True)
+            return
 
         data = await viz_service.get_sprint_cfd_data(sprint_id)
         if not data:
@@ -472,6 +552,9 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
+        if not await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=True):
+            return
+
         sprint_obj = await service.get_sprint(sprint_id)
         if not sprint_obj or sprint_obj.project_id != project_id:
             await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id} ในโปรเจกต์ #{project_id}", ephemeral=True)
@@ -514,6 +597,10 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer(ephemeral=True)
 
+        task_row = await _verify_task_guild_access(interaction, task_id, lang)
+        if not task_row:
+            return
+
         try:
             ok = await service.set_task_story_points(task_id, points)
             if ok:
@@ -551,6 +638,9 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer(ephemeral=True)
 
+        if not await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=True):
+            return
+
         sprint_obj = await service.get_sprint(sprint_id)
         if not sprint_obj or sprint_obj.project_id != project_id:
             await interaction.followup.send(f"❌ ไม่พบ Sprint #{sprint_id} ในโปรเจกต์ #{project_id}", ephemeral=True)
@@ -577,16 +667,14 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        row = await db.fetchone(
-            "SELECT task_id, task, project_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
-            (task_id,),
-        )
+        row = await _verify_task_guild_access(interaction, task_id, lang)
         if not row:
-            await interaction.followup.send(f"❌ ไม่พบงาน `#{task_id}`", ephemeral=True)
             return
 
         task_title = row["task"]
-        session = service.start_poker(task_id, uid, task_title)
+        session = await service.start_poker(
+            task_id, uid, guild_id=str(interaction.guild.id), title=task_title
+        )
         embed = build_poker_embed(session, lang)
         view = PlanningPokerView(task_id, uid, lang)
         await interaction.followup.send(embed=embed, view=view)
@@ -618,11 +706,7 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        guild_id = str(interaction.guild.id)
-        try:
-            await collab_service.get_project(project_id, guild_id)
-        except collab_service.ProjectNotFound:
-            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+        if not await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=True):
             return
 
         try:
@@ -630,7 +714,7 @@ class AgileCog(commands.Cog, name="Agile"):
                 project_id=project_id,
                 name=name,
                 description=description,
-                color=color,
+                color=color or "#5865F2",
             )
             embed = build_epic_embed(epic_obj, [], lang)
             await interaction.followup.send(
@@ -706,6 +790,9 @@ class AgileCog(commands.Cog, name="Agile"):
         await ensure_user(uid, lang)
         await interaction.response.defer(ephemeral=True)
 
+        if not await _verify_project_access(interaction, project_id, lang, require_member=True, deferred=True):
+            return
+
         try:
             ok = await service.attach_task_to_epic(task_id, epic_id, project_id)
             if ok:
@@ -735,6 +822,8 @@ class AgileCog(commands.Cog, name="Agile"):
         epic_obj = await service.get_epic(epic_id)
         if not epic_obj:
             await interaction.followup.send(f"❌ ไม่พบ Epic #{epic_id}", ephemeral=True)
+            return
+        if not await _verify_project_access(interaction, epic_obj.project_id, lang, deferred=True):
             return
 
         tasks = await service.get_epic_tasks_tree(epic_id)

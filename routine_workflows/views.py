@@ -226,7 +226,9 @@ class DoDForceConfirmView(ui.View):
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
 
-        completed = await gamification_service.complete_personal_task(self.task_id, self.user_id)
+        completed = await gamification_service.complete_personal_task(
+            self.task_id, self.user_id, allow_assigned=True
+        )
         if completed is None:
             await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
             return

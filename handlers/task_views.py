@@ -197,7 +197,7 @@ class AddTaskModal(ui.Modal):
         # ── Validate name ───────────────────────────────────────────────────
         ok, name_or_err = validator.validate_task_name(self.task_name.value)
         if not ok:
-            err_msg = t(name_or_err, lang)
+            err_msg = t(name_or_err, lang, detail=t("task_name_label", lang))
             await _safe_respond(interaction, err_msg)
             if interaction.guild is not None:
                 await _send_dm(interaction.user, f"⚠️ **Input Error**\n{err_msg}")
@@ -414,7 +414,7 @@ class EditTaskModal(ui.Modal):
 
         ok, name_or_err = validator.validate_task_name(self.task_name.value)
         if not ok:
-            await _safe_respond(interaction, t(name_or_err, lang))
+            await _safe_respond(interaction, t(name_or_err, lang, detail=t("task_name_label", lang)))
             return
 
         prio_raw = self.priority.value.strip()
@@ -1172,9 +1172,13 @@ class TaskActionView(ui.View):
         # Defer immediately so Discord doesn't time out while we query the DB
         await interaction.response.defer(ephemeral=True)
         lang = await get_user_lang(interaction.user.id)
+        actor_id = str(interaction.user.id)
         if not self._check_owner(interaction):
-            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
-            return
+            from assignments import service as assign_service
+            actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
+            if not await assign_service.is_user_assigned_to_task(self.task_id, actor_id, actor_roles):
+                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                return
         row = await db.afetchone("SELECT task, status, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
@@ -1197,7 +1201,7 @@ class TaskActionView(ui.View):
             confirm_view = DoDForceConfirmView(
                 task_id=self.task_id,
                 task_name=row["task"],
-                user_id=self.uid,
+                user_id=actor_id,
                 lang=lang,
                 pending_items=pending_items,
                 origin_view=self,
@@ -1215,7 +1219,7 @@ class TaskActionView(ui.View):
         summary_pre = await assign_service.get_assignment_summary(self.task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
         signoff_res = await assign_service.handle_task_completion_attempt(
-            self.task_id, str(interaction.user.id), role_member_ids=role_members
+            self.task_id, actor_id, role_member_ids=role_members
         )
         if not signoff_res.completed:
             waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
@@ -1225,11 +1229,13 @@ class TaskActionView(ui.View):
             )
             return
 
-        completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
+        completed = await gamification_service.complete_personal_task(
+            self.task_id, actor_id, allow_assigned=True
+        )
         if completed is None:
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
             return
-        await db.alog_action(self.uid, "task_completed", str(self.task_id))
+        await db.alog_action(actor_id, "task_completed", str(self.task_id))
         button.disabled = True
         button.style    = discord.ButtonStyle.secondary
         if interaction.message:
@@ -2087,9 +2093,13 @@ class _QuickActionButtons(ui.View):
     @ui.button(label="✅ Done", style=discord.ButtonStyle.success)
     async def quick_done(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer(ephemeral=True)
-        if str(interaction.user.id) != self.uid:
-            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
-            return
+        actor_id = str(interaction.user.id)
+        if actor_id != self.uid:
+            from assignments import service as assign_service
+            actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
+            if not await assign_service.is_user_assigned_to_task(self.task_id, actor_id, actor_roles):
+                await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+                return
         r = await db.afetchone("SELECT task, status, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not r:
             await interaction.followup.send(
@@ -2116,7 +2126,7 @@ class _QuickActionButtons(ui.View):
             confirm_view = DoDForceConfirmView(
                 task_id=self.task_id,
                 task_name=r["task"],
-                user_id=self.uid,
+                user_id=actor_id,
                 lang=self.lang,
                 pending_items=pending_items,
                 origin_view=self,
@@ -2134,21 +2144,23 @@ class _QuickActionButtons(ui.View):
         summary_pre = await assign_service.get_assignment_summary(self.task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
         signoff_res = await assign_service.handle_task_completion_attempt(
-            self.task_id, str(interaction.user.id), role_member_ids=role_members
+            self.task_id, actor_id, role_member_ids=role_members
         )
         if not signoff_res.completed:
             waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
             await interaction.followup.send(
-                f"✍️ {t('assign_signoff_pending', lang, done=len(signoff_res.signed_users), total=len(signoff_res.signed_users) + len(signoff_res.pending_users), waiting=waiting)}",
+                f"✍️ {t('assign_signoff_pending', self.lang, done=len(signoff_res.signed_users), total=len(signoff_res.signed_users) + len(signoff_res.pending_users), waiting=waiting)}",
                 ephemeral=True,
             )
             return
 
-        completed = await gamification_service.complete_personal_task(self.task_id, self.uid)
+        completed = await gamification_service.complete_personal_task(
+            self.task_id, actor_id, allow_assigned=True
+        )
         if completed is None:
             await interaction.followup.send(t("task_already_done", self.lang), ephemeral=True)
             return
-        await db.alog_action(self.uid, "task_completed", str(self.task_id))
+        await db.alog_action(actor_id, "task_completed", str(self.task_id))
         self.stop()
         await interaction.followup.send(
             t("task_done_with_name", self.lang, task_id=self.task_id, task_name=r["task"]),

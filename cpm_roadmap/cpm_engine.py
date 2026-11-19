@@ -23,6 +23,26 @@ from cpm_roadmap.models import CPMGraphResult, CPMNode
 log = logging.getLogger(__name__)
 
 
+def _coerce_utc_datetime(val: Any) -> Optional[datetime]:
+    """Parse ISO strings or naive/aware datetimes into a UTC-aware datetime."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.replace(tzinfo=timezone.utc) if val.tzinfo is None else val.astimezone(timezone.utc)
+    if isinstance(val, str):
+        raw = val.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return None
+
+
 def calculate_cpm_graph(
     nodes: Dict[int, CPMNode],
     project_id: int = 0,
@@ -122,11 +142,12 @@ def calculate_cpm_graph(
 
     for tid in critical_path:
         crit_node = nodes[tid]
-        if crit_node.status != "Completed" and crit_node.deadline and crit_node.deadline < now:
+        crit_dl = _coerce_utc_datetime(crit_node.deadline)
+        if crit_node.status != "Completed" and crit_dl and crit_dl < now:
             is_at_risk = True
             risk_reason = (
                 f"🚨 **งานบน Critical Path ล่าช้ากว่ากำหนด:** `#{crit_node.task_id}` {crit_node.task_name[:40]} "
-                f"(เกินกำหนดส่งเมื่อ <t:{int(crit_node.deadline.timestamp())}:R>) จะทำให้ทั้งโครงการล่าช้า!"
+                f"(เกินกำหนดส่งเมื่อ <t:{int(crit_dl.timestamp())}:R>) จะทำให้ทั้งโครงการล่าช้า!"
             )
             break
 
@@ -190,10 +211,12 @@ async def calculate_project_cpm(project_id: int) -> CPMGraphResult:
     for r in task_rows:
         tid = int(r["task_id"])
         est_h = r["estimated_hours"]
+        dl_dt = _coerce_utc_datetime(r.get("deadline"))
+        created_dt = _coerce_utc_datetime(r.get("created_at"))
         if est_h and float(est_h) > 0:
             duration = float(est_h)
-        elif r["deadline"] and r["created_at"]:
-            delta = (r["deadline"] - r["created_at"]).total_seconds() / 3600.0
+        elif dl_dt and created_dt:
+            delta = (dl_dt - created_dt).total_seconds() / 3600.0
             duration = max(4.0, min(160.0, delta))
         else:
             duration = 8.0
@@ -203,7 +226,7 @@ async def calculate_project_cpm(project_id: int) -> CPMGraphResult:
             task_name=str(r["task"]),
             duration_hours=duration,
             status=str(r["status"]),
-            deadline=r["deadline"],
+            deadline=dl_dt,
         )
 
     # 5. Populate Predecessors and Successors

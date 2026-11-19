@@ -195,22 +195,44 @@ async def _record_completion(
     return awarded
 
 
-async def complete_personal_task(task_id: int, user_id: str) -> Optional[list[str]]:
-    """Complete an owned task and record gamification data in the same transaction."""
+async def complete_personal_task(
+    task_id: int,
+    user_id: str,
+    *,
+    allow_assigned: bool = False,
+) -> Optional[list[str]]:
+    """Complete an owned or assigned task and record gamification data in the same transaction."""
+    owner_to_invalidate: Optional[str] = None
+    if allow_assigned:
+        scope_clause = "(owner_id=$2 OR $2::text IS NOT NULL)"
+    else:
+        scope_clause = """(
+            owner_id=$2
+            OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=tasks.task_id AND ta.user_id=$2)
+            OR EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id=tasks.task_id AND ta2.user_id=$2)
+        )"""
     async with db.acquire() as conn:
         async with conn.transaction():
             task = await conn.fetchrow(
-                """UPDATE tasks
+                f"""UPDATE tasks
                    SET status='Completed', completed_at=NOW(), updated_at=NOW()
-                   WHERE task_id=$1 AND owner_id=$2
+                   WHERE task_id=$1 AND {scope_clause}
                      AND status IN ('Pending','In_Progress')
                      AND is_deleted = FALSE
                    RETURNING task_id, task, priority, deadline, project_id, guild_id,
-                             completed_at""",
+                             completed_at, owner_id""",
                 task_id, user_id,
             )
             if task is None:
                 return None
+            if hasattr(task, "get"):
+                raw_owner = task.get("owner_id")
+            elif hasattr(task, "keys") and "owner_id" in task.keys():
+                raw_owner = task["owner_id"]
+            else:
+                raw_owner = None
+            if raw_owner is not None and str(raw_owner) != str(user_id):
+                owner_to_invalidate = str(raw_owner)
             completed_at = task["completed_at"]
             if completed_at.tzinfo is None:
                 completed_at = completed_at.replace(tzinfo=timezone.utc)
@@ -222,6 +244,8 @@ async def complete_personal_task(task_id: int, user_id: str) -> Optional[list[st
             )
             awarded = await _record_completion(conn, task, user_id, completed_at)
     db.invalidate_stats(user_id)
+    if owner_to_invalidate:
+        db.invalidate_stats(owner_to_invalidate)
     db.query_cache.invalidate_tables([
         "tasks", "users", "task_completion_events", "user_achievements", "focus_sessions",
     ])

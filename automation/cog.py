@@ -28,6 +28,34 @@ from automation.views import (
 log = logging.getLogger(__name__)
 
 
+def _has_manage_guild(interaction: discord.Interaction) -> bool:
+    """Return True in DMs or when caller holds Administrator / Manage Guild permission."""
+    if interaction.guild is None:
+        return True
+    if isinstance(interaction.user, discord.Member):
+        perms = interaction.user.guild_permissions
+        return bool(perms.administrator or perms.manage_guild)
+    return False
+
+
+async def _can_manage_project_automation(
+    interaction: discord.Interaction,
+    project_row: Any,
+    user_id: str,
+    project_id: int,
+) -> bool:
+    """Allow Guild Admin/Manage Server, Project Owner, Project Lead, or role=='lead'."""
+    if _has_manage_guild(interaction):
+        return True
+    owner_id = project_row.get("owner_id") if hasattr(project_row, "get") else None
+    lead_id = project_row.get("lead_id") if hasattr(project_row, "get") else None
+    if str(owner_id or "") == str(user_id) or str(lead_id or "") == str(user_id):
+        return True
+    from collaboration import service as collab_service
+    role = await collab_service.get_member_role(project_id, user_id)
+    return role in ("owner", "lead")
+
+
 class AutomationCog(commands.Cog, name="Automation"):
     """No-Code Workflow Automations, Task Escalations & SLA Management."""
 
@@ -119,6 +147,9 @@ class AutomationCog(commands.Cog, name="Automation"):
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
         lang = await get_user_lang(user_id)
+        if not _has_manage_guild(interaction):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         try:
@@ -158,6 +189,9 @@ class AutomationCog(commands.Cog, name="Automation"):
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
         lang = await get_user_lang(user_id)
+        if not _has_manage_guild(interaction):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         success = await engine.delete_rule(rule_id, guild_id)
@@ -176,6 +210,9 @@ class AutomationCog(commands.Cog, name="Automation"):
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
         lang = await get_user_lang(user_id)
+        if not _has_manage_guild(interaction):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         new_status = await engine.toggle_rule(rule_id, guild_id)
@@ -227,6 +264,9 @@ class AutomationCog(commands.Cog, name="Automation"):
         if not proj:
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
             return
+        if not await _can_manage_project_automation(interaction, proj, user_id, project_id):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
 
         if lead_mention:
             try:
@@ -277,12 +317,15 @@ class AutomationCog(commands.Cog, name="Automation"):
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         proj = await db.fetchone(
-            "SELECT name FROM projects WHERE project_id = $1 AND guild_id = $2",
+            "SELECT name, owner_id, lead_id FROM projects WHERE project_id = $1 AND guild_id = $2",
             project_id,
             guild_id,
         )
         if not proj:
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
+            return
+        if not await _can_manage_project_automation(interaction, proj, user_id, project_id):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
             return
 
         await engine.upsert_project_sla_policy(

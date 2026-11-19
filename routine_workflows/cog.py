@@ -75,7 +75,25 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
     async def checklist_add(self, interaction: discord.Interaction, task_id: int, title: str) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        is_admin = bool(
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
         await interaction.response.defer(ephemeral=True)
+        row = await db.afetchone(
+            "SELECT task_id, task, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+            (task_id,),
+        )
+        if not row:
+            await interaction.followup.send(t("task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        try:
+            await service._verify_task_checklist_access(row, uid, guild_id=gid, is_guild_admin=is_admin)
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
+
         item = await service.add_checklist_item(task_id, title)
         if not item:
             await interaction.followup.send(t("err_generic", lang), ephemeral=True)
@@ -94,10 +112,23 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
     async def checklist_view(self, interaction: discord.Interaction, task_id: int) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+        is_admin = bool(
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
         await interaction.response.defer(ephemeral=True)
-        row = await db.afetchone("SELECT task FROM tasks WHERE task_id=$1 AND is_deleted=FALSE", (task_id,))
+        row = await db.afetchone(
+            "SELECT task_id, task, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+            (task_id,),
+        )
         if not row:
             await interaction.followup.send(t("task_not_found", lang, task_id=task_id), ephemeral=True)
+            return
+        try:
+            await service._verify_task_checklist_access(row, uid, guild_id=gid, is_guild_admin=is_admin)
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         items = await service.get_checklists(task_id)
         view = TaskChecklistView(task_id=task_id, task_name=row["task"], user_id=uid, lang=lang, items=items)
@@ -133,11 +164,20 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
             await interaction.response.send_modal(modal)
             return
 
+        is_admin = bool(
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
         await interaction.response.defer(ephemeral=True)
         try:
             if task_id is not None:
                 tpl = await service.save_checklist_template_from_task(
-                    task_id=task_id, name=name, owner_id=uid, guild_id=gid, is_shared=shared
+                    task_id=task_id,
+                    name=name,
+                    owner_id=uid,
+                    guild_id=gid,
+                    is_shared=shared,
+                    is_guild_admin=is_admin,
                 )
             else:
                 parsed = [
@@ -339,14 +379,23 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
         gid = str(interaction.guild_id) if interaction.guild_id else None
+        is_admin = bool(
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
         await interaction.response.defer(ephemeral=True)
 
-        tmpl = await service.create_template_from_task(
-            task_id=task_id,
-            name=name,
-            owner_id=uid,
-            guild_id=gid,
-        )
+        try:
+            tmpl = await service.create_template_from_task(
+                task_id=task_id,
+                name=name,
+                owner_id=uid,
+                guild_id=gid,
+                is_guild_admin=is_admin,
+            )
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
         if not tmpl:
             await interaction.followup.send(
                 t("task_not_found", lang, task_id=task_id), ephemeral=True

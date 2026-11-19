@@ -325,6 +325,11 @@ class FocusCog(commands.Cog, name="Focus"):
             await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
             return
 
+        perms = interaction.user.guild_permissions if isinstance(interaction.user, discord.Member) else None
+        if not perms or not (perms.administrator or perms.manage_guild or perms.manage_channels):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
+
         wm = work_minutes if work_minutes and work_minutes > 0 else 25
         bm = break_minutes if break_minutes and break_minutes > 0 else 5
         guild_id = str(interaction.guild.id)
@@ -342,6 +347,15 @@ class FocusCog(commands.Cog, name="Focus"):
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
         await ensure_user(uid, lang)
+
+        if not interaction.guild:
+            await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+            return
+
+        perms = interaction.user.guild_permissions if isinstance(interaction.user, discord.Member) else None
+        if not perms or not (perms.administrator or perms.manage_guild or perms.manage_channels):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
 
         cid = str(channel.id)
         ok = await voice_service.unbind_voice_room(cid)

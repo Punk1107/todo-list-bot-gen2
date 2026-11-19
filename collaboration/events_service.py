@@ -15,6 +15,26 @@ from core.database import db
 log = logging.getLogger(__name__)
 
 
+def _coerce_utc_datetime(val: Any) -> Optional[datetime]:
+    """Parse ISO strings or naive/aware datetimes into a UTC-aware datetime."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.replace(tzinfo=timezone.utc) if val.tzinfo is None else val.astimezone(timezone.utc)
+    if isinstance(val, str):
+        raw = val.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return None
+
+
 async def get_project_synced_events(project_id: int) -> List[Dict[str, Any]]:
     """Retrieve all synced event mappings for a project."""
     rows = await db.fetchall(
@@ -88,9 +108,9 @@ async def sync_project_events(
     for m in milestone_rows:
         mid = m["milestone_id"]
         title = m["title"]
-        target_dt: datetime = m["target_date"]
-        if target_dt.tzinfo is None:
-            target_dt = target_dt.replace(tzinfo=timezone.utc)
+        target_dt = _coerce_utc_datetime(m.get("target_date"))
+        if target_dt is None:
+            continue
 
         # Scheduled events must start in future (at least +2 mins)
         start_time = max(target_dt, now + timedelta(minutes=2))
@@ -144,9 +164,9 @@ async def sync_project_events(
         tid = t_item["task_id"]
         t_name = t_item["task"]
         prio = t_item["priority"]
-        deadline: datetime = t_item["deadline"]
-        if deadline.tzinfo is None:
-            deadline = deadline.replace(tzinfo=timezone.utc)
+        deadline = _coerce_utc_datetime(t_item.get("deadline"))
+        if deadline is None:
+            continue
 
         start_time = max(deadline, now + timedelta(minutes=2))
         end_time = start_time + timedelta(hours=1)

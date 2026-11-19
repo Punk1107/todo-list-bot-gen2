@@ -258,6 +258,7 @@ def export_timesheet_csv(timesheet: TimesheetSummary) -> str:
 async def calculate_estimation_accuracy(
     project_id: Optional[int] = None,
     user_id: Optional[str] = None,
+    guild_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compare estimated_hours vs actual logged hours across tasks.
@@ -280,6 +281,9 @@ async def calculate_estimation_accuracy(
     if user_id is not None:
         params.append(user_id)
         query += f" AND t.owner_id = ${len(params)}"
+    if guild_id is not None:
+        params.append(str(guild_id))
+        query += f" AND t.guild_id = ${len(params)}"
 
     query += " GROUP BY t.task_id, t.task, t.estimated_hours ORDER BY t.task_id ASC"
 

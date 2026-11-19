@@ -247,10 +247,22 @@ class AssignmentsCog(commands.Cog, name="Assignments"):
         await ensure_user(uid, lang)
         await interaction.response.defer(ephemeral=True)
 
+        try:
+            task_row = await service._fetch_task_row(task_id)
+        except service.AssignmentError as exc:
+            await interaction.followup.send(f"❌ {exc}", ephemeral=True)
+            return
+
+        if task_row.get("status") == "Completed":
+            await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
+            return
+        if task_row.get("status") == "Cancelled":
+            await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
+            return
+
         actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
         summary_pre = await service.get_assignment_summary(task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
-        task_row = await service._fetch_task_row(task_id)
         is_owner = str(task_row["owner_id"]) == uid
         is_assigned = await service.is_user_assigned_to_task(task_id, uid, actor_roles)
         if not (is_owner or is_assigned):
@@ -261,7 +273,7 @@ class AssignmentsCog(commands.Cog, name="Assignments"):
             task_id, uid, role_member_ids=role_members
         )
         if res.completed:
-            await gamification_service.complete_personal_task(task_id, uid)
+            await gamification_service.complete_personal_task(task_id, uid, allow_assigned=True)
             await interaction.followup.send(
                 f"✅ {t('assign_signoff_all_done', lang, task_id=task_id)}",
                 ephemeral=True,

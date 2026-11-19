@@ -222,3 +222,332 @@ class TestDoubleEmojiAndDMFixes:
             await modal.on_submit(dm_inter)
 
         mock_send_dm.assert_not_awaited()
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 2 Bugfix Regression Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRound2ViewAndDatetimeFixes:
+    @pytest.mark.asyncio
+    async def test_retro_dot_vote_select_stores_lang(self) -> None:
+        from agile.models import RetroCard
+        from agile.views import RetroDotVoteSelect
+
+        card = RetroCard(retro_id=1, sprint_id=2, column_type="well", content="Great sprint", votes=0)
+        sel = RetroDotVoteSelect(2, [card], lang="en")
+        assert sel.lang == "en"
+
+    @pytest.mark.asyncio
+    async def test_quick_done_no_nameerror_for_pending_signoff(self) -> None:
+        from assignments.models import SignoffResult
+        from handlers.task_views import _QuickActionButtons
+
+        view = _QuickActionButtons(task_id=55, uid="u1", lang="en", tz_name="UTC", row_data={"task": "Shared Task"})
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=999, roles=[])
+        inter.guild = None
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        with (
+            patch("assignments.service.is_user_assigned_to_task", new=AsyncMock(return_value=True)),
+            patch.object(db, "afetchone", new=AsyncMock(return_value={"task": "Shared Task", "status": "Pending", "is_deleted": False})),
+            patch("routine_workflows.service.get_pending_checklists", new=AsyncMock(return_value=[])),
+            patch("assignments.service.get_assignment_summary", new=AsyncMock(return_value=MagicMock(role_ids=[]))),
+            patch(
+                "assignments.service.handle_task_completion_attempt",
+                new=AsyncMock(return_value=SignoffResult(task_id=55, completed=False, mode="all_signoff", signed_users=["999"], pending_users=["100"])),
+            ),
+        ):
+            await view.quick_done.callback(inter)
+
+        inter.followup.send.assert_awaited_once()
+        sent = inter.followup.send.call_args.args[0]
+        assert "100" in sent
+
+    @pytest.mark.asyncio
+    async def test_agile_cog_poker_start_awaits_service_and_checks_guild(self) -> None:
+        from agile import service as agile_service
+        from agile.cog import AgileCog
+        from collaboration.service import ProjectNotFound
+
+        bot = MagicMock()
+        cog = AgileCog(bot)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(id=777)
+        inter.user = MagicMock(id=123)
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        with (
+            patch("agile.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("agile.cog.ensure_user", new=AsyncMock()),
+            patch.object(db, "fetchone", new=AsyncMock(return_value={"task_id": 12, "task": "Poker Task", "owner_id": "123", "project_id": None, "guild_id": "777"})),
+            patch.object(agile_service, "start_poker", new=AsyncMock(return_value=MagicMock(task_id=12, task_title="Poker Task", votes={}, is_revealed=False, voter_count=0, host_id="123"))) as mock_poker,
+        ):
+            await cog.poker_start.callback(cog, inter, task_id=12)
+            mock_poker.assert_awaited_once_with(12, "123", guild_id="777", title="Poker Task")
+
+        # Cross-guild sprint_view blocked
+        inter.followup.send.reset_mock()
+        with (
+            patch("agile.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch.object(agile_service, "get_sprint", new=AsyncMock(return_value=MagicMock(sprint_id=9, project_id=99))),
+            patch("agile.cog.collab_service.get_project", new=AsyncMock(side_effect=ProjectNotFound(99))),
+        ):
+            await cog.sprint_view.callback(cog, inter, sprint_id=9)
+            inter.followup.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_text_deadline_parsed_in_cpm_events_forum_and_roadmap(self) -> None:
+        from cpm_roadmap import cpm_engine, roadmap_service
+        from collaboration import events_service, forum_service
+
+        past_iso = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        created_naive = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=5)
+
+        # 1. CPM handles TEXT ISO deadlines & naive created_at
+        with patch.object(
+            db,
+            "afetchone",
+            new=AsyncMock(return_value={"project_id": 1, "name": "Proj", "created_at": created_naive}),
+        ), patch.object(
+            db,
+            "afetchall",
+            new=AsyncMock(
+                side_effect=[
+                    [{"task_id": 1, "task": "Task A", "status": "Pending", "estimated_hours": None, "deadline": past_iso, "created_at": created_naive}],
+                    [],
+                ]
+            ),
+        ):
+            res = await cpm_engine.calculate_project_cpm(1)
+            assert res.is_at_risk is True
+            assert res.critical_path == [1]
+
+        # 2. Roadmap predict_milestone_health fallback uses timedelta instead of int subtraction
+        ms_row = {
+            "milestone_id": 9,
+            "project_id": 1,
+            "title": "Alpha",
+            "target_date": datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=10),
+            "status": "active",
+            "total_tasks": 2,
+            "completed_tasks": 1,
+            "total_points": 5,
+            "completed_points": 2,
+        }
+        with (
+            patch.object(db, "afetchone", new=AsyncMock(side_effect=[ms_row, None])),
+            patch.object(db, "afetchall", new=AsyncMock(return_value=[])),
+        ):
+            health = await roadmap_service.predict_milestone_health(9)
+            assert health.milestone_id == 9
+
+        # 3. Events sync parses TEXT ISO deadlines on P6/P7 tasks without AttributeError
+        fake_guild = MagicMock(spec=discord.Guild)
+        fake_guild.id = 123
+        fake_guild.scheduled_events = []
+        fake_guild.create_scheduled_event = AsyncMock(return_value=MagicMock(id=999))
+        future_iso = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        with (
+            patch.object(db, "fetchone", new=AsyncMock(return_value={"project_id": 1, "name": "Proj", "emoji": "🚀"})),
+            patch.object(
+                db,
+                "fetchall",
+                new=AsyncMock(
+                    side_effect=[
+                        [],
+                        [],
+                        [{"task_id": 7, "task": "Critical Task", "priority": 7, "deadline": future_iso}],
+                    ]
+                ),
+            ),
+            patch.object(db, "execute", new=AsyncMock()),
+        ):
+            sync_res = await events_service.sync_project_events(1, fake_guild)
+            assert sync_res["created"] == 1
+
+        # 4. Forum sync parses TEXT ISO deadlines & includes is_deleted = FALSE
+        fake_forum = MagicMock(spec=discord.ForumChannel)
+        fake_forum.id = 888
+        fake_forum.available_tags = []
+        fake_forum.create_tag = AsyncMock(return_value=MagicMock(name="tag"))
+        fake_forum.create_thread = AsyncMock(return_value=MagicMock(id=777, jump_url="https://discord.com/t/777"))
+        fake_bot = MagicMock()
+        fake_bot.get_channel = MagicMock(return_value=fake_forum)
+        with (
+            patch.object(
+                db,
+                "fetchone",
+                new=AsyncMock(
+                    side_effect=[
+                        {"project_id": 1, "forum_channel_id": "888", "is_active": True},
+                        {"task_id": 1, "task": "Forum Task", "status": "Pending", "priority": 2, "description": "desc", "deadline": future_iso},
+                        None,
+                    ]
+                ),
+            ) as mock_forum_fetch,
+            patch.object(db, "execute", new=AsyncMock()),
+        ):
+            url = await forum_service.sync_task_to_forum(1, 1, fake_bot)
+            assert url == "https://discord.com/t/777"
+            task_sql = mock_forum_fetch.call_args_list[1].args[0]
+            assert "is_deleted = FALSE" in task_sql
+
+
+class TestRound2PermissionsSignoffAndI18n:
+    @pytest.mark.asyncio
+    async def test_complete_personal_task_allows_assignees(self) -> None:
+        from gamification import service as gam_service
+
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(
+            return_value={
+                "task_id": 10,
+                "task": "Assigned work",
+                "priority": 1,
+                "deadline": None,
+                "project_id": None,
+                "guild_id": None,
+                "completed_at": datetime.now(timezone.utc),
+                "owner_id": "owner_1",
+            }
+        )
+        mock_conn.execute = AsyncMock()
+        mock_conn.transaction = MagicMock(return_value=AsyncMock())
+        mock_conn.transaction.return_value.__aenter__ = AsyncMock()
+        mock_conn.transaction.return_value.__aexit__ = AsyncMock()
+
+        mock_acquire = MagicMock()
+        mock_acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_acquire.return_value.__aexit__ = AsyncMock()
+
+        with (
+            patch("gamification.service.db.acquire", mock_acquire),
+            patch("gamification.service._record_completion", new=AsyncMock(return_value=[])),
+            patch("gamification.service.db.invalidate_stats") as mock_inv,
+        ):
+            res = await gam_service.complete_personal_task(10, "assignee_2", allow_assigned=True)
+            assert res == []
+            assert mock_inv.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cross_guild_admin_escalation_blocked(self) -> None:
+        from assignments import service as assign_service
+        from collaboration.service import ProjectNotFound
+        from routine_workflows import service as routine_service
+
+        # Guild admin in guild B trying to manage someone else's personal task
+        with pytest.raises(assign_service.AssignmentPermissionError):
+            await assign_service._require_manage_permission(
+                {"task_id": 1, "owner_id": "victim", "project_id": None, "guild_id": None},
+                actor_id="attacker_admin",
+                guild_id="guild_B",
+                is_guild_admin=True,
+            )
+
+        # Guild admin in guild B trying to apply DoD template to guild A's project task
+        with (
+            patch.object(db, "afetchone", new=AsyncMock(return_value={"task_id": 2, "owner_id": "victim", "project_id": 99, "guild_id": "guild_A"})),
+            patch("collaboration.service.get_project", new=AsyncMock(side_effect=ProjectNotFound(99))),
+        ):
+            with pytest.raises(PermissionError):
+                await routine_service.apply_checklist_template(
+                    2, "Code Review DoD", "attacker_admin", guild_id="guild_B", is_guild_admin=True
+                )
+
+    @pytest.mark.asyncio
+    async def test_kudos_ignores_foreign_guild_task_and_estimation_filters_guild(self) -> None:
+        from kudos import service as kudos_service
+        from time_tracking import service as tt_service
+
+        now = datetime.now(timezone.utc)
+        inserted = {
+            "kudos_id": 5,
+            "guild_id": "G1",
+            "from_user_id": "U1",
+            "to_user_id": "U2",
+            "task_id": None,
+            "reason": "Thanks",
+            "points": 30,
+            "created_at": now,
+        }
+        with (
+            patch.object(
+                db,
+                "fetchone",
+                side_effect=[
+                    {"count": 0},
+                    {"task": "Secret Foreign Task", "owner_id": "U999", "guild_id": "G_OTHER"},
+                    inserted,
+                ],
+            ),
+            patch("kudos.service.award_exp", new=AsyncMock()),
+        ):
+            k = await kudos_service.send_kudos("G1", "U1", "U2", "Thanks", task_id=999)
+            assert k.task_title is None
+
+        with patch.object(db, "fetchall", new=AsyncMock(return_value=[])) as mock_tt:
+            await tt_service.calculate_estimation_accuracy(guild_id="G1")
+            assert "t.guild_id" in mock_tt.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_automation_and_focus_voice_require_manage_permissions(self) -> None:
+        from automation.cog import AutomationCog
+        from focus.cog import FocusCog
+
+        bot = MagicMock()
+        bot.loop = MagicMock()
+        auto_cog = AutomationCog.__new__(AutomationCog)
+        auto_cog.bot = bot
+
+        non_admin_member = MagicMock(spec=discord.Member)
+        non_admin_member.id = 123
+        non_admin_member.guild_permissions = discord.Permissions.none()
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = non_admin_member
+        inter.guild_id = 111
+        inter.guild = MagicMock(id=111)
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        with (
+            patch("automation.cog.ensure_user", new=AsyncMock()),
+            patch("automation.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("automation.cog.engine.create_rule", new=AsyncMock()) as mock_create,
+        ):
+            choice = MagicMock(value="task_created")
+            await auto_cog.auto_create.callback(auto_cog, inter, "Test Rule", choice)
+            mock_create.assert_not_awaited()
+            inter.response.send_message.assert_awaited_once()
+
+        focus_cog = FocusCog.__new__(FocusCog)
+        focus_cog.bot = bot
+        inter.response.send_message.reset_mock()
+        with (
+            patch("focus.cog.ensure_user", new=AsyncMock()),
+            patch("focus.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("focus.cog.voice_service.bind_voice_room", new=AsyncMock()) as mock_bind,
+        ):
+            await focus_cog.voice_bind.callback(focus_cog, inter, MagicMock(spec=discord.VoiceChannel, id=55))
+            mock_bind.assert_not_awaited()
+            inter.response.send_message.assert_awaited_once()
+
+    def test_i18n_placeholders_render_cleanly(self) -> None:
+        from locales.i18n import t
+
+        for lang in ("th", "en"):
+            ev_msg = t("proj_events_synced", lang, count=3, project_id=1, created=2, updated=1)
+            assert "{count}" not in ev_msg
+            fm_msg = t("proj_forum_mode_enabled", lang, forum="<#123>", project_id=1, tag_count=4)
+            assert "{forum}" not in fm_msg
+            err_msg = t("err_input_invalid", lang, detail="0-100")
+            assert "{detail}" not in err_msg

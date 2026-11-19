@@ -46,16 +46,30 @@ async def _require_manage_permission(
     guild_id: Optional[str] = None,
     is_guild_admin: bool = False,
 ) -> None:
-    if is_guild_admin or str(task_row["owner_id"]) == str(actor_id):
+    if str(task_row.get("owner_id")) == str(actor_id):
         return
     proj_id = task_row.get("project_id")
     if proj_id and guild_id:
         from collaboration import service as collab_service
-        project = await collab_service.get_project(int(proj_id), str(guild_id))
-        if await collab_service.check_project_permission(
-            int(proj_id), str(actor_id), "can_assign_tasks", is_guild_admin=is_guild_admin
-        ) or project.owner_id == str(actor_id):
+        try:
+            project = await collab_service.get_project(int(proj_id), str(guild_id))
+        except collab_service.ProjectNotFound:
+            raise AssignmentPermissionError("You do not have permission to manage assignees for this task.")
+        if (
+            is_guild_admin
+            or project.owner_id == str(actor_id)
+            or await collab_service.check_project_permission(
+                int(proj_id), str(actor_id), "can_assign_tasks", is_guild_admin=is_guild_admin
+            )
+        ):
             return
+    elif (
+        proj_id is None
+        and is_guild_admin
+        and guild_id
+        and str(task_row.get("guild_id") or "") == str(guild_id)
+    ):
+        return
     raise AssignmentPermissionError("You do not have permission to manage assignees for this task.")
 
 

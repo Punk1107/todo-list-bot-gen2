@@ -9,7 +9,7 @@ Features:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any, List, Optional
 
@@ -17,6 +17,22 @@ from core.database import db
 from cpm_roadmap.models import HealthStatus, MilestoneHealth, ProjectMilestone
 
 log = logging.getLogger(__name__)
+
+
+def _coerce_utc_datetime(val: Any) -> datetime:
+    """Parse ISO strings or naive/aware datetimes into a UTC-aware datetime."""
+    if isinstance(val, datetime):
+        return val.replace(tzinfo=timezone.utc) if val.tzinfo is None else val.astimezone(timezone.utc)
+    if isinstance(val, str):
+        raw = val.strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,11 +140,14 @@ def calculate_milestone_health(
     Pure calculation: compute health classification based on progress vs elapsed time.
     """
     # 1. Elapsed Time Ratio
-    total_time = (milestone.target_date - start_date).total_seconds()
+    target_dt = _coerce_utc_datetime(milestone.target_date)
+    start_dt = _coerce_utc_datetime(start_date)
+    now_dt = _coerce_utc_datetime(now)
+    total_time = (target_dt - start_dt).total_seconds()
     if total_time <= 0:
         elapsed_pct = 100.0
     else:
-        elapsed = (now - start_date).total_seconds()
+        elapsed = (now_dt - start_dt).total_seconds()
         elapsed_pct = max(0.0, min(100.0, round((elapsed / total_time) * 100.0, 1)))
 
     # 2. Completed Work Ratio
@@ -185,7 +204,9 @@ async def predict_milestone_health(milestone_id: int) -> MilestoneHealth:
         "SELECT created_at FROM projects WHERE project_id = $1",
         (milestone.project_id,),
     )
-    start_date = proj_row["created_at"] if proj_row and proj_row.get("created_at") else (milestone.target_date - 30 * 86400)
+    target_dt = _coerce_utc_datetime(milestone.target_date)
+    raw_start = proj_row.get("created_at") if proj_row else None
+    start_date = _coerce_utc_datetime(raw_start) if raw_start is not None else (target_dt - timedelta(days=30))
     now = datetime.now(timezone.utc)
 
     bottlenecks = await _identify_bottlenecks(milestone.project_id, milestone.milestone_id)

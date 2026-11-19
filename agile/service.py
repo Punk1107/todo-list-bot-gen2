@@ -276,6 +276,23 @@ async def get_backlog_tasks(project_id: int) -> list[dict[str, Any]]:
     return [dict(r) for r in (rows or [])]
 
 
+get_sprint_backlog = get_backlog_tasks
+
+
+async def get_sprint_tasks(sprint_id: int) -> list[dict[str, Any]]:
+    """Retrieve all non-deleted tasks currently assigned to a sprint."""
+    rows = await db.afetchall(
+        """
+        SELECT task_id, task, status, priority, story_points, deadline
+        FROM tasks
+        WHERE sprint_id = $1 AND is_deleted = FALSE
+        ORDER BY priority DESC, task_id ASC
+        """,
+        (sprint_id,),
+    )
+    return [dict(r) for r in (rows or [])]
+
+
 async def add_task_to_sprint(task_id: int, sprint_id: int, project_id: int) -> bool:
     """Attach a task to a sprint."""
     res = await db.aexecute(
@@ -453,16 +470,17 @@ async def create_epic(
     project_id: int,
     name: str,
     description: Optional[str] = None,
-    color: str = "#5865F2",
+    color: Optional[str] = "#5865F2",
 ) -> Epic:
     """Create a new Epic within a project."""
+    clean_color = (color or "#5865F2").strip() or "#5865F2"
     row = await db.afetchone(
         """
         INSERT INTO epics (project_id, name, description, color, status)
         VALUES ($1, $2, $3, $4, 'open')
         RETURNING epic_id, project_id, name, description, color, status, created_at
         """,
-        (project_id, name.strip(), description.strip() if description else None, color),
+        (project_id, name.strip(), description.strip() if description else None, clean_color),
     )
     if not row:
         raise AgileError("Could not create epic in database.")
@@ -490,6 +508,9 @@ async def list_epics(project_id: int, status: Optional[str] = None) -> list[Epic
     query += " GROUP BY e.epic_id ORDER BY e.created_at ASC"
     rows = await db.afetchall(query, tuple(params))
     return [Epic.from_row(r) for r in (rows or [])]
+
+
+get_project_epics = list_epics
 
 
 async def get_epic(epic_id: int) -> Optional[Epic]:
@@ -557,6 +578,12 @@ async def get_epic_tree(epic_id: int) -> dict[str, Any]:
         "epic": epic,
         "tasks": root_tasks,
     }
+
+
+async def get_epic_tasks_tree(epic_id: int) -> list[dict[str, Any]]:
+    """Return nested task/subtask list for ``epic_id``."""
+    tree = await get_epic_tree(epic_id)
+    return tree.get("tasks", [])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

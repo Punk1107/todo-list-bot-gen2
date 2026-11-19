@@ -182,7 +182,10 @@ class TaskCommentModal(ui.Modal):
                 self.task_id, self.user_id, 0, COMMENTS_PER_PAGE
             )
         except service.InvalidComment:
-            await interaction.response.send_message(t("err_input_invalid", self.lang), ephemeral=True)
+            await interaction.response.send_message(
+                t("err_input_invalid", self.lang, detail=t("comment_input_label", self.lang)),
+                ephemeral=True,
+            )
             return
         except service.TaskFeatureError:
             await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
@@ -243,13 +246,13 @@ class TaskProgressModal(ui.Modal):
             return
         value = self.progress.value.strip()
         if not value.isascii() or not value.isdigit() or not 0 <= int(value) <= 100:
-            await interaction.response.send_message(t("err_input_invalid", self.lang), ephemeral=True)
+            await interaction.response.send_message(t("err_input_invalid", self.lang, detail="0-100"), ephemeral=True)
             return
 
         try:
             updated = await service.update_progress(self.task_id, self.user_id, int(value))
         except service.InvalidProgress:
-            await interaction.response.send_message(t("err_input_invalid", self.lang), ephemeral=True)
+            await interaction.response.send_message(t("err_input_invalid", self.lang, detail="0-100"), ephemeral=True)
             return
         except service.TaskFeatureError:
             await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
