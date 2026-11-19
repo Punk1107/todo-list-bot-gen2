@@ -830,7 +830,7 @@ class SettingsCog(commands.Cog, name="Settings"):
             """SELECT c.category_id, c.name, c.emoji, c.owner_id,
                       COUNT(t.task_id) AS task_count
                FROM categories c
-               LEFT JOIN tasks t ON t.category_id = c.category_id AND t.owner_id = $1 AND t.status != 'Cancelled'
+               LEFT JOIN tasks t ON t.category_id = c.category_id AND t.owner_id = $1 AND t.status != 'Cancelled' AND t.is_deleted = FALSE
                WHERE c.owner_id = $1 OR c.owner_id = 'system'
                GROUP BY c.category_id, c.name, c.emoji, c.owner_id
                ORDER BY c.owner_id DESC, c.name ASC""",
@@ -853,13 +853,13 @@ class SettingsCog(commands.Cog, name="Settings"):
 
             if default_lines:
                 embed.add_field(
-                    name=f"📌 {t('cat_section_default', lang)}",
+                    name=t("cat_section_default", lang),
                     value="\n".join(default_lines),
                     inline=False,
                 )
             if custom_lines:
                 embed.add_field(
-                    name=f"🗂️ {t('cat_section_custom', lang)}",
+                    name=t("cat_section_custom", lang),
                     value="\n".join(custom_lines),
                     inline=False,
                 )

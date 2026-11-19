@@ -133,7 +133,7 @@ async def _build_digest_embed(
             current_len = sum(len(x) + 1 for x in lines)
             if current_len + len(line) + 30 > 1000:
                 remaining = len(today_tasks) - len(lines)
-                lines.append(f"... {t('and_more_tasks', lang, count=remaining)}")
+                lines.append(t("and_more_tasks", lang, count=remaining))
                 break
             lines.append(line)
         embed.add_field(
@@ -164,7 +164,7 @@ async def _build_digest_embed(
 
     if overdue_count > 0:
         embed.add_field(
-            name=f"🚨 {t('tasks_filter_overdue', lang)}",
+            name=t("tasks_filter_overdue", lang),
             value=(
                 f"**{overdue_count}** {t('cat_task_count', lang, count=overdue_count)}"
                 f" — `/overdue`"

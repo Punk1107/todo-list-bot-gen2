@@ -78,7 +78,7 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
         await interaction.response.defer(ephemeral=True)
         item = await service.add_checklist_item(task_id, title)
         if not item:
-            await interaction.followup.send(f"❌ {t('err_generic', lang)}", ephemeral=True)
+            await interaction.followup.send(t("err_generic", lang), ephemeral=True)
             return
         await interaction.followup.send(
             f"✅ {t('dod_item_added', lang, task_id=task_id, item=item.title)}",

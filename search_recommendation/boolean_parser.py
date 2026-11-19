@@ -286,7 +286,7 @@ class BooleanSearchParser:
             elif h_val in ("checklist", "checklists", "dod"):
                 return RawConditionNode("EXISTS (SELECT 1 FROM task_checklists c WHERE c.task_id = t.task_id)")
             elif h_val in ("subtask", "subtasks"):
-                return RawConditionNode("EXISTS (SELECT 1 FROM tasks st WHERE st.parent_task_id = t.task_id)")
+                return RawConditionNode("EXISTS (SELECT 1 FROM tasks st WHERE st.parent_task_id = t.task_id AND st.is_deleted = FALSE)")
 
         # 7. Project
         if key == "project":

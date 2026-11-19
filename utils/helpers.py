@@ -288,10 +288,12 @@ async def ensure_user(user_id, lang: Optional[str] = None,
     entirely to preserve QueryCache hit rates and avoid redundant round-trips.
     """
     from core.database import db
-    from locales.i18n import locale_to_lang
+    from locales.i18n import SUPPORTED_LANGS, locale_to_lang
     uid = str(user_id)
+    if lang is not None and lang not in SUPPORTED_LANGS:
+        lang = None
     # Fast path: user already cached → definitely exists in DB, nothing to do
-    if lang is None and db.user_cache.get(uid) is not None:
+    if db.user_cache.get(uid) is not None:
         return
     if lang is None and discord_locale is not None:
         lang = locale_to_lang(discord_locale)
@@ -1215,7 +1217,7 @@ def build_task_list_embed(
                 worst_color = c
 
     embed = discord.Embed(
-        title=f"📋 {t('tasks_title', lang)} › {filter_label}" if is_compact else f"📋 {t('tasks_title', lang)}  ›  {filter_label}",
+        title=f"{t('tasks_title', lang)} › {filter_label}" if is_compact else f"{t('tasks_title', lang)}  ›  {filter_label}",
         color=worst_color,
     )
 
@@ -1517,7 +1519,7 @@ def build_stats_embed(stats: dict[str, int], lang: str, username: str,
         header = t("stats_header_on_track", lang)
 
     embed = discord.Embed(
-        title=f"📊 {t('stats_title', lang)}  ·  {username}",
+        title=f"{t('stats_title', lang)}  ·  {username}",
         description=f"> **{header}**",
         color=color,
     )

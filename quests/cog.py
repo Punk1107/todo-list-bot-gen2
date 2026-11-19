@@ -96,7 +96,7 @@ class QuestsCog(commands.Cog, name="Quests"):
             return
 
         uid = str(interaction.user.id)
-        await ensure_user(uid, interaction.user.name)
+        await ensure_user(uid)
         lang = await get_user_lang(uid)
         guild_id = str(interaction.guild_id)
 

@@ -22,6 +22,7 @@ async def get_user_365_day_completions(user_id: str) -> dict[str, int]:
         FROM tasks
         WHERE owner_id = $1
           AND status = 'Completed'
+          AND is_deleted = FALSE
           AND updated_at >= NOW() - INTERVAL '365 days'
         GROUP BY cdate
         ORDER BY cdate ASC
@@ -50,6 +51,7 @@ async def get_user_7day_activity(user_id: str) -> list[int]:
         FROM tasks
         WHERE owner_id = $1
           AND status = 'Completed'
+          AND is_deleted = FALSE
           AND updated_at >= $2
         GROUP BY cdate
     """
@@ -78,7 +80,7 @@ async def get_sprint_burndown_data(sprint_id: int) -> Optional[dict[str, Any]]:
         return None
 
     tasks = await db.fetchall(
-        "SELECT task_id, status, story_points, updated_at FROM tasks WHERE sprint_id = $1",
+        "SELECT task_id, status, story_points, updated_at FROM tasks WHERE sprint_id = $1 AND is_deleted = FALSE",
         int(sprint_id),
     )
 
@@ -148,7 +150,7 @@ async def get_sprint_cfd_data(sprint_id: int) -> Optional[dict[str, Any]]:
         return None
 
     tasks = await db.fetchall(
-        "SELECT task_id, status, created_at, updated_at FROM tasks WHERE sprint_id = $1",
+        "SELECT task_id, status, created_at, updated_at FROM tasks WHERE sprint_id = $1 AND is_deleted = FALSE",
         int(sprint_id),
     )
 

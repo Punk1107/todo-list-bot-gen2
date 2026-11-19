@@ -55,8 +55,8 @@ class KudosCog(commands.Cog, name="Kudos"):
         to_uid = str(to.id)
         guild_id = str(interaction.guild_id)
 
-        await ensure_user(from_uid, interaction.user.name)
-        await ensure_user(to_uid, to.name)
+        await ensure_user(from_uid)
+        await ensure_user(to_uid)
         lang = await get_user_lang(from_uid)
 
         if from_uid == to_uid:
@@ -127,7 +127,7 @@ class KudosCog(commands.Cog, name="Kudos"):
     ) -> None:
         target = member or interaction.user
         uid = str(target.id)
-        await ensure_user(uid, target.name)
+        await ensure_user(uid)
 
         recent = await service.get_user_recent_kudos(uid, days=30, limit=10)
         if not recent:

@@ -34,11 +34,11 @@ async def get_accessible_task(
 ) -> Any:
     """Return a task after verifying personal ownership or project membership."""
     task = await db.afetchone(
-        """SELECT task_id, task, owner_id, project_id, guild_id, progress_pct
-           FROM tasks WHERE task_id=$1""",
+        """SELECT task_id, task, owner_id, project_id, guild_id, progress_pct, is_deleted
+           FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
         (task_id,),
     )
-    if not task:
+    if not task or task.get("is_deleted"):
         raise TaskNotFound(task_id)
 
     if task["project_id"] is None:

@@ -83,7 +83,7 @@ class AutomationCog(commands.Cog, name="Automation"):
     )
     async def auto_list(self, interaction: discord.Interaction) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         rules = await engine.list_rules(guild_id)
@@ -117,7 +117,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         action_json: str = "{}",
     ) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         lang = await get_user_lang(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
@@ -156,7 +156,7 @@ class AutomationCog(commands.Cog, name="Automation"):
     @app_commands.describe(rule_id="รหัสของกฎที่ต้องการลบ / Rule ID")
     async def auto_delete(self, interaction: discord.Interaction, rule_id: int) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         lang = await get_user_lang(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
@@ -174,7 +174,7 @@ class AutomationCog(commands.Cog, name="Automation"):
     @app_commands.describe(rule_id="รหัสของกฎที่ต้องการสลับ / Rule ID")
     async def auto_toggle(self, interaction: discord.Interaction, rule_id: int) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         lang = await get_user_lang(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
@@ -193,7 +193,7 @@ class AutomationCog(commands.Cog, name="Automation"):
     )
     async def esc_status(self, interaction: discord.Interaction) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
 
         escalations = await engine.get_escalation_status(guild_id)
@@ -215,17 +215,27 @@ class AutomationCog(commands.Cog, name="Automation"):
         lead_mention: Optional[discord.Member] = None,
     ) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         lang = await get_user_lang(user_id)
+        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
-        proj = await db.fetchone("SELECT * FROM projects WHERE project_id = $1", project_id)
+        proj = await db.fetchone(
+            "SELECT * FROM projects WHERE project_id = $1 AND guild_id = $2",
+            project_id,
+            guild_id,
+        )
         if not proj:
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
             return
 
         if lead_mention:
             try:
-                await db.execute("UPDATE projects SET lead_id = $1 WHERE project_id = $2", str(lead_mention.id), project_id)
+                await db.execute(
+                    "UPDATE projects SET lead_id = $1 WHERE project_id = $2 AND guild_id = $3",
+                    str(lead_mention.id),
+                    project_id,
+                    guild_id,
+                )
             except Exception as e:
                 log.warning("Could not update lead_id on project %s: %s", project_id, e)
 
@@ -262,11 +272,15 @@ class AutomationCog(commands.Cog, name="Automation"):
         p4_hours: float = 48.0,
     ) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         lang = await get_user_lang(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
-        proj = await db.fetchone("SELECT name FROM projects WHERE project_id = $1", project_id)
+        proj = await db.fetchone(
+            "SELECT name FROM projects WHERE project_id = $1 AND guild_id = $2",
+            project_id,
+            guild_id,
+        )
         if not proj:
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
             return
@@ -290,9 +304,14 @@ class AutomationCog(commands.Cog, name="Automation"):
     @app_commands.describe(project_id="รหัสโปรเจกต์ / Project ID")
     async def sla_status_cmd(self, interaction: discord.Interaction, project_id: int) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
+        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
-        proj = await db.fetchone("SELECT name FROM projects WHERE project_id = $1", project_id)
+        proj = await db.fetchone(
+            "SELECT name FROM projects WHERE project_id = $1 AND guild_id = $2",
+            project_id,
+            guild_id,
+        )
         if not proj:
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
             return
@@ -312,7 +331,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         project_id: Optional[int] = None,
     ) -> None:
         user_id = str(interaction.user.id)
-        await ensure_user(user_id, interaction.user.name)
+        await ensure_user(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
 
         breaches = await engine.get_sla_breaches(guild_id, project_id)

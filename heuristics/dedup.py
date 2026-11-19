@@ -118,6 +118,7 @@ async def find_potential_duplicate(
         FROM tasks
         WHERE (owner_id = $1 OR (guild_id IS NOT NULL AND guild_id = $2))
           AND status != 'Completed'
+          AND is_deleted = FALSE
         ORDER BY task_id DESC
         LIMIT 100
     """

@@ -35,6 +35,40 @@ class StorageCog(commands.Cog, name="Storage"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    async def _resolve_authorized_task(
+        self,
+        interaction: discord.Interaction,
+        task_id: int,
+        uid: str,
+        lang: str,
+    ):
+        """Fetch an active task, verify access, and send an error reply if inaccessible."""
+        from core.database import db
+        task_row = await db.fetchone(
+            "SELECT task_id, task, project_id, guild_id, owner_id, is_deleted FROM tasks WHERE task_id=$1",
+            (task_id,),
+        )
+        if not task_row or task_row.get("is_deleted"):
+            await interaction.followup.send(
+                t("task_not_found", lang, task_id=task_id), ephemeral=True
+            )
+            return None
+
+        project_id = task_row.get("project_id")
+        if project_id:
+            if not interaction.guild or str(task_row.get("guild_id") or "") != str(interaction.guild.id):
+                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                return None
+            return task_row
+
+        if str(task_row.get("owner_id") or "") != uid:
+            from assignments import service as assign_service
+            actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
+            if not await assign_service.is_user_assigned_to_task(task_id, uid, actor_roles):
+                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                return None
+        return task_row
+
     # ─────────────────────────────────────────────────────────────────────────
     # /attach
     # ─────────────────────────────────────────────────────────────────────────
@@ -61,25 +95,11 @@ class StorageCog(commands.Cog, name="Storage"):
         await interaction.response.defer()
 
         # Verify task exists and user has access to it
-        from core.database import db
-        task_row = await db.fetchone(
-            "SELECT task_id, task, project_id, guild_id, owner_id FROM tasks WHERE task_id=$1",
-            (task_id,),
-        )
+        task_row = await self._resolve_authorized_task(interaction, task_id, uid, lang)
         if not task_row:
-            await interaction.followup.send(
-                t("task_not_found", lang, task_id=task_id), ephemeral=True
-            )
             return
 
-        # For shared tasks: check project membership
         project_id = task_row.get("project_id")
-        if project_id and interaction.guild:
-            guild_id = str(interaction.guild.id)
-            if str(task_row.get("guild_id", "")) != guild_id:
-                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
-                return
-            # Any guild member may attach files (membership not strictly required)
 
         try:
             attachment = await storage_service.upload_attachment(
@@ -160,16 +180,9 @@ class StorageCog(commands.Cog, name="Storage"):
         lang = await get_user_lang(uid)
         await interaction.response.defer()
 
-        # Verify task exists
-        from core.database import db
-        task_row = await db.fetchone(
-            "SELECT task_id, task FROM tasks WHERE task_id=$1",
-            (task_id,),
-        )
+        # Verify task exists and user has access to it
+        task_row = await self._resolve_authorized_task(interaction, task_id, uid, lang)
         if not task_row:
-            await interaction.followup.send(
-                t("task_not_found", lang, task_id=task_id), ephemeral=True
-            )
             return
 
         if not config.storage.enabled:

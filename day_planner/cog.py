@@ -43,9 +43,8 @@ class DayPlannerCog(commands.Cog, name="DayPlanner"):
         """Calculates and visualizes an ergonomic daily schedule for today's tasks."""
         await interaction.response.defer(ephemeral=False)
         uid = str(interaction.user.id)
-        await ensure_user(uid, interaction.user.name)
-
         lang = await get_user_lang(uid)
+        await ensure_user(uid, lang)
         tz_name = await get_user_timezone(uid)
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
 
