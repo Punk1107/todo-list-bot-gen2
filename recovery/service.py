@@ -38,11 +38,13 @@ async def soft_delete_task(
 
     # Permission check
     if t_proj_id and t_guild_id:
-        if not is_guild_admin and task_owner != user_id:
+        if guild_id is not None and str(t_guild_id) != str(guild_id):
+            return False
+        if not (is_guild_admin and (guild_id is None or str(t_guild_id) == str(guild_id))) and task_owner != user_id:
             from collaboration import service as collab_service
             # Check project role permission
             can_delete = await collab_service.check_project_permission(
-                int(t_proj_id), user_id, "can_delete_tasks", is_guild_admin=is_guild_admin
+                int(t_proj_id), user_id, "can_delete_tasks", is_guild_admin=False
             )
             if not can_delete:
                 # Fall back to checking if user is lead
@@ -52,8 +54,11 @@ async def soft_delete_task(
                     if role != "lead":
                         return False
     else:
-        # Personal task — only the owner or guild admin can delete
-        if task_owner != user_id and not is_guild_admin:
+        # Personal task — only the owner (or guild admin of the same guild when task is guild-scoped) can delete
+        same_guild_admin = bool(
+            is_guild_admin and guild_id and t_guild_id and str(t_guild_id) == str(guild_id)
+        )
+        if task_owner != user_id and not same_guild_admin:
             return False
 
     # Perform soft delete on task and its subtasks
@@ -117,6 +122,11 @@ async def restore_task(
 
     # Check 30-day expiration window
     del_at = row["deleted_at"]
+    if isinstance(del_at, str):
+        try:
+            del_at = datetime.fromisoformat(del_at.replace("Z", "+00:00"))
+        except ValueError:
+            del_at = None
     if del_at:
         now = datetime.now(timezone.utc)
         aware_del_at = del_at if del_at.tzinfo else del_at.replace(tzinfo=timezone.utc)
@@ -130,7 +140,9 @@ async def restore_task(
 
     # Permission check
     if t_proj_id and t_guild_id:
-        if not is_guild_admin and task_owner != user_id:
+        if guild_id is not None and str(t_guild_id) != str(guild_id):
+            return False, "permission_denied", None
+        if not (is_guild_admin and (guild_id is None or str(t_guild_id) == str(guild_id))) and task_owner != user_id:
             from collaboration import service as collab_service
             proj = await collab_service.get_project(int(t_proj_id), str(t_guild_id))
             if proj.owner_id != user_id:
@@ -138,7 +150,10 @@ async def restore_task(
                 if role != "lead":
                     return False, "permission_denied", None
     else:
-        if task_owner != user_id and not is_guild_admin:
+        same_guild_admin = bool(
+            is_guild_admin and guild_id and t_guild_id and str(t_guild_id) == str(guild_id)
+        )
+        if task_owner != user_id and not same_guild_admin:
             return False, "permission_denied", None
 
     # Restore main task and any subtasks
@@ -235,6 +250,7 @@ async def hard_delete_trash(
     task_id: int,
     user_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> bool:
     """Permanently delete a soft-deleted task directly from the trash bin."""
     row = await db.afetchone(
@@ -249,7 +265,9 @@ async def hard_delete_trash(
     t_guild_id = row.get("guild_id")
 
     if t_proj_id and t_guild_id:
-        if not is_guild_admin and task_owner != user_id:
+        if guild_id is not None and str(t_guild_id) != str(guild_id):
+            return False
+        if not (is_guild_admin and (guild_id is None or str(t_guild_id) == str(guild_id))) and task_owner != user_id:
             from collaboration import service as collab_service
             proj = await collab_service.get_project(int(t_proj_id), str(t_guild_id))
             if proj.owner_id != user_id:
@@ -257,7 +275,10 @@ async def hard_delete_trash(
                 if role != "lead":
                     return False
     else:
-        if task_owner != user_id and not is_guild_admin:
+        same_guild_admin = bool(
+            is_guild_admin and guild_id and t_guild_id and str(t_guild_id) == str(guild_id)
+        )
+        if task_owner != user_id and not same_guild_admin:
             return False
 
     await db.aexecute(

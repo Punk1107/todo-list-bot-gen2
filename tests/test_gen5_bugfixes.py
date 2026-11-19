@@ -551,3 +551,249 @@ class TestRound2PermissionsSignoffAndI18n:
             assert "{forum}" not in fm_msg
             err_msg = t("err_input_invalid", lang, detail="0-100")
             assert "{detail}" not in err_msg
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 3 Bugfix Regression Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRound3SchemaEmbedAndSecurityFixes:
+    @pytest.mark.asyncio
+    async def test_sprints_table_and_completed_points_aggregation_in_viz_and_routine(self) -> None:
+        from visualization import service as viz_service
+
+        now_utc = datetime.now(timezone.utc)
+        # Real DB sprint row has no total_points or completed_points column
+        sprint_row = {
+            "sprint_id": 7,
+            "name": "Sprint 7",
+            "start_date": now_utc - timedelta(days=2),
+            "end_date": now_utc + timedelta(days=5),
+            "status": "active",
+        }
+        tasks = [
+            {"task_id": 1, "status": "Completed", "story_points": 8},
+            {"task_id": 2, "status": "Pending", "story_points": 12},
+        ]
+        with (
+            patch.object(viz_service.db, "fetchone", new=AsyncMock(return_value=sprint_row)) as mock_one,
+            patch.object(viz_service.db, "fetchall", new=AsyncMock(return_value=tasks)),
+        ):
+            data = await viz_service.get_sprint_burndown_data(7)
+            assert data is not None
+            assert "FROM sprints" in mock_one.call_args.args[0]
+            assert "project_sprints" not in mock_one.call_args.args[0]
+            assert data["total_points"] == 20.0
+            # Remaining points on latest day should reflect 20 - 8 = 12
+            assert data["actual_burn"][-1] == 12.0
+
+            cfd = await viz_service.get_sprint_cfd_data(7)
+            assert cfd is not None
+            assert "FROM sprints" in mock_one.call_args.args[0]
+
+        with (
+            patch.object(viz_service.db, "fetchone", new=AsyncMock(return_value={"name": "P1"})),
+            patch.object(viz_service.db, "fetchall", new=AsyncMock(return_value=[])) as mock_vel,
+        ):
+            await viz_service.get_project_velocity_history(1)
+            sql_vel = mock_vel.call_args.args[0]
+            assert "FROM sprints" in sql_vel
+            assert "project_sprints" not in sql_vel
+            assert "story_points" in sql_vel
+
+    @pytest.mark.asyncio
+    async def test_privacy_delete_my_data_uses_saved_filters_owner_id(self) -> None:
+        from privacy import service as privacy_service
+
+        executed_sqls: list[str] = []
+
+        async def _capture_exec(sql: str, params=()):
+            executed_sqls.append(sql)
+            return "DELETE 1"
+
+        with (
+            patch.object(privacy_service.db, "afetchall", new=AsyncMock(return_value=[])),
+            patch.object(privacy_service.db, "afetchone", new=AsyncMock(return_value={"user_id": "u1"})),
+            patch.object(privacy_service.db, "aexecute", side_effect=_capture_exec),
+            patch.object(privacy_service.db, "alog_action", new=AsyncMock()),
+            patch.object(privacy_service.db, "invalidate_stats"),
+            patch.object(privacy_service.db.user_cache, "invalidate"),
+            patch.object(privacy_service.db.query_cache, "invalidate_all"),
+        ):
+            await privacy_service.execute_gdpr_deletion("u1")
+
+        saved_filter_deletes = [s for s in executed_sqls if "saved_filters" in s]
+        assert saved_filter_deletes == ["DELETE FROM saved_filters WHERE owner_id=$1"]
+
+    def test_build_search_embed_non_empty_field_name_and_chunks_over_1024_chars(self) -> None:
+        from search_recommendation.models import SearchResult, SearchResultPage, SortBy
+        from search_recommendation.views import build_search_embed
+
+        items = [
+            SearchResult(
+                task_id=i,
+                task="A" * 55,
+                deadline="2099-12-31T23:59:00+00:00",
+                priority=5,
+                status="Pending",
+                tags=None,
+                description=None,
+                note=None,
+                owner_id="u1",
+                guild_id=None,
+                project_id=None,
+                is_pinned=1,
+                created_at=None,
+                updated_at=None,
+                completed_at=None,
+                rank_score=0.95,
+                snippet="B" * 70,
+            )
+            for i in range(1, 20)
+        ]
+        page = SearchResultPage(
+            items=items,
+            total=19,
+            page=1,
+            page_size=20,
+            total_pages=1,
+            query_text="test",
+            sort_by=SortBy.RELEVANCE,
+        )
+        embed = build_search_embed(page, "en", "UTC")
+        assert len(embed.fields) >= 2
+        for f in embed.fields:
+            assert len(f.name) >= 1
+            assert len(f.value) <= 1024
+
+    def test_query_builder_filters_private_tasks_in_guild_scope(self) -> None:
+        from search_recommendation.models import SearchFilter, SortBy
+        from search_recommendation.query_builder import SqlQueryBuilder
+
+        qb = SqlQueryBuilder()
+        sql_search, _ = qb.build_filter_query(
+            search_filter=SearchFilter(guild_id="g1"),
+            sort_by=SortBy.RELEVANCE,
+            page=1,
+            page_size=10,
+        )
+        assert "COALESCE(t.is_private, FALSE) = FALSE" in sql_search
+
+        sql_rec, params_rec = qb.build_recommendation_candidates_query("u1", "g1", limit=25)
+        assert "COALESCE(t.is_private, FALSE) = FALSE" in sql_rec
+        assert "u1" in params_rec
+
+    @pytest.mark.asyncio
+    async def test_task_action_view_blocks_unauthorized_files_checklist_and_fields(self) -> None:
+        from handlers.task_views import TaskActionView
+
+        view = TaskActionView(task_id=99, uid="owner_1", lang="en")
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=22222)
+        inter.guild = None
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        personal_row = {
+            "task_id": 99,
+            "task": "Owner Task",
+            "owner_id": "owner_1",
+            "project_id": None,
+            "guild_id": None,
+            "is_deleted": False,
+        }
+        with (
+            patch("handlers.task_views.get_user_lang", new=AsyncMock(return_value="en")),
+            patch.object(db, "afetchone", new=AsyncMock(return_value=personal_row)),
+            patch("assignments.service.is_user_assigned_to_task", new=AsyncMock(return_value=False)),
+        ):
+            await view.view_checklist.callback(inter)
+            assert inter.followup.send.await_count == 1
+            inter.followup.send.reset_mock()
+
+            await view.view_files.callback(inter)
+            assert inter.followup.send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_reaction_quick_complete_restricts_to_owner_or_assignee(self) -> None:
+        from discord_native.reaction_cog import ReactionCog
+
+        bot = MagicMock()
+        bot.user = MagicMock(id=111)
+        cog = ReactionCog(bot)
+
+        msg = MagicMock()
+        msg.author.id = 111
+        embed = discord.Embed(title="Task #42", description="Do work")
+        msg.embeds = [embed]
+        msg.add_reaction = AsyncMock()
+
+        ch = MagicMock()
+        ch.fetch_message = AsyncMock(return_value=msg)
+        bot.get_channel.return_value = ch
+
+        payload = MagicMock()
+        payload.channel_id = 10
+        payload.message_id = 20
+
+        with patch.object(db, "execute", new=AsyncMock(return_value="UPDATE 0")) as mock_exec:
+            await cog._handle_quick_complete(payload, "intruder_99")
+            sql_called = mock_exec.call_args.args[0]
+            assert "OR is_private = FALSE" not in sql_called
+            assert "is_deleted = FALSE" in sql_called
+            assert "owner_id = $2" in sql_called
+
+    @pytest.mark.asyncio
+    async def test_agile_convert_action_items_populates_guild_id_and_uses_sql_now(self) -> None:
+        from agile import service as agile_service
+
+        with (
+            patch.object(
+                agile_service.db,
+                "afetchall",
+                new=AsyncMock(return_value=[{"content": "Fix flaky CI"}]),
+            ),
+            patch.object(
+                agile_service.db,
+                "afetchone",
+                new=AsyncMock(return_value={"guild_id": "guild_777"}),
+            ),
+            patch.object(agile_service.db, "aexecute", new=AsyncMock()) as mock_exec,
+            patch.object(agile_service.db, "invalidate_stats"),
+            patch.object(agile_service.db.query_cache, "invalidate_table"),
+        ):
+            count = await agile_service.convert_action_items_to_tasks(1, 10, "u1")
+            assert count == 1
+            sql_insert, params = mock_exec.call_args.args
+            assert "guild_id" in sql_insert
+            assert "NOW()" in sql_insert
+            assert params == ("Fix flaky CI", 10, "guild_777", "u1")
+
+    @pytest.mark.asyncio
+    async def test_recovery_blocks_cross_guild_admin_and_other_users_personal_tasks(self) -> None:
+        from recovery import service as recovery_service
+
+        personal_deleted = {
+            "task_id": 50,
+            "task": "Secret DM Task",
+            "owner_id": "victim_1",
+            "project_id": None,
+            "guild_id": None,
+            "parent_task_id": None,
+            "is_deleted": True,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with patch.object(recovery_service.db, "afetchone", new=AsyncMock(return_value=personal_deleted)):
+            ok, key, _ = await recovery_service.restore_task(
+                50, "attacker_admin", is_guild_admin=True, guild_id="attacker_guild"
+            )
+            assert ok is False
+            assert key == "permission_denied"
+
+            purged = await recovery_service.hard_delete_trash(
+                50, "attacker_admin", is_guild_admin=True, guild_id="attacker_guild"
+            )
+            assert purged is False
+

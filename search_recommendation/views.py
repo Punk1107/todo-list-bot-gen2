@@ -116,7 +116,23 @@ def build_search_embed(
                 line += f"\n   ╰ 💬 *{item.snippet[:70]}*"
             lines.append(line)
 
-        embed.add_field(name="", value="\n\n".join(lines), inline=False)
+        chunks: list[str] = []
+        current_chunk: list[str] = []
+        current_len = 0
+        for line in lines:
+            sep_len = 2 if current_chunk else 0
+            if current_chunk and current_len + sep_len + len(line) > 1024:
+                chunks.append("\n\n".join(current_chunk))
+                current_chunk = [line]
+                current_len = len(line)
+            else:
+                current_chunk.append(line)
+                current_len += sep_len + len(line)
+        if current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+
+        for chunk in chunks[:25]:
+            embed.add_field(name="\u200b", value=chunk[:1024], inline=False)
 
     # Footer: page indicator + FTS note
     page_str = t("search_page_indicator", lang,
@@ -317,13 +333,21 @@ class TaskSelectFromSearch(ui.Select):
         if not row:
             await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
             return
+        task_owner = str(row["owner_id"]) if "owner_id" in row.keys() and row["owner_id"] else self.uid
+        is_private = bool(row["is_private"]) if "is_private" in row.keys() else False
+        task_guild = str(row["guild_id"]) if "guild_id" in row.keys() and row["guild_id"] else None
+        inter_guild = str(interaction.guild.id) if interaction.guild else None
+        if task_owner != self.uid:
+            if is_private or not task_guild or task_guild != inter_guild:
+                await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+                return
         categories = await db.afetchall(
             "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
-            (self.uid,),
+            (task_owner,),
         )
         embed = await _async_build_task_embed(row, self.lang, self.tz_name)
         view = TaskActionView(
-            task_id, self.uid, self.lang,
+            task_id, task_owner, self.lang,
             is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
             categories=list(categories),
             current_cat_id=row["category_id"],
@@ -524,13 +548,21 @@ class TaskQuickActionFromRecommend(ui.Select):
         if not row:
             await interaction.response.send_message(t("task_not_found", self.lang, task_id=task_id), ephemeral=True)
             return
+        task_owner = str(row["owner_id"]) if "owner_id" in row.keys() and row["owner_id"] else self.uid
+        is_private = bool(row["is_private"]) if "is_private" in row.keys() else False
+        task_guild = str(row["guild_id"]) if "guild_id" in row.keys() and row["guild_id"] else None
+        inter_guild = str(interaction.guild.id) if interaction.guild else None
+        if task_owner != self.uid:
+            if is_private or not task_guild or task_guild != inter_guild:
+                await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+                return
         categories = await db.afetchall(
             "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
-            (self.uid,),
+            (task_owner,),
         )
         embed = await _async_build_task_embed(row, self.lang, self.tz_name)
         view = TaskActionView(
-            task_id, self.uid, self.lang,
+            task_id, task_owner, self.lang,
             is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
             categories=list(categories),
             current_cat_id=row["category_id"],

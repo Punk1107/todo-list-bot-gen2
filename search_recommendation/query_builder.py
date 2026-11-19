@@ -255,8 +255,9 @@ FROM tasks t
         ]
 
         if guild_id:
-            # Shared project mode: tasks in this guild
+            # Shared project mode: tasks in this guild (excluding other users' private tasks)
             where_clauses.append(f"t.guild_id = {p(guild_id)}")
+            where_clauses.append(f"(COALESCE(t.is_private, FALSE) = FALSE OR t.owner_id = {p(user_id)})")
         else:
             # Personal mode: tasks owned by the user (no guild scope)
             where_clauses.append(f"t.owner_id = {p(user_id)}")
@@ -305,6 +306,7 @@ LIMIT {limit_placeholder}
             clauses.append(f"t.guild_id = {p(f.guild_id)}")
         elif f.guild_id:
             clauses.append(f"t.guild_id = {p(f.guild_id)}")
+            clauses.append("COALESCE(t.is_private, FALSE) = FALSE")
         elif f.owner_id:
             clauses.append(f"t.owner_id = {p(f.owner_id)}")
             clauses.append("t.guild_id IS NULL")

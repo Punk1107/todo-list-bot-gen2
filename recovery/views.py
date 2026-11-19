@@ -185,7 +185,7 @@ class TrashPaginationView(ui.View):
         await interaction.response.defer()
         is_admin = interaction.user.guild_permissions.administrator if interaction.guild else False
         ok, msg_key, tid = await service.restore_task(
-            self.selected_task_id, self.uid, is_guild_admin=is_admin
+            self.selected_task_id, self.uid, is_guild_admin=is_admin, guild_id=self.guild_id
         )
         if ok:
             # Refresh list
@@ -214,7 +214,7 @@ class TrashPaginationView(ui.View):
         await interaction.response.defer()
         is_admin = interaction.user.guild_permissions.administrator if interaction.guild else False
         ok = await service.hard_delete_trash(
-            self.selected_task_id, self.uid, is_guild_admin=is_admin
+            self.selected_task_id, self.uid, is_guild_admin=is_admin, guild_id=self.guild_id
         )
         if ok:
             tid = self.selected_task_id
@@ -242,7 +242,9 @@ class TrashPaginationView(ui.View):
         is_admin = interaction.user.guild_permissions.administrator if interaction.guild else False
         count = 0
         for tk in list(self.all_tasks):
-            if await service.hard_delete_trash(tk.task_id, self.uid, is_guild_admin=is_admin):
+            if await service.hard_delete_trash(
+                tk.task_id, self.uid, is_guild_admin=is_admin, guild_id=self.guild_id
+            ):
                 count += 1
         self.all_tasks = []
         self.selected_task_id = None

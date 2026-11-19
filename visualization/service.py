@@ -73,7 +73,7 @@ async def get_sprint_burndown_data(sprint_id: int) -> Optional[dict[str, Any]]:
     - actual_burn: remaining points recorded per day
     """
     sprint_row = await db.fetchone(
-        "SELECT * FROM project_sprints WHERE sprint_id = $1",
+        "SELECT * FROM sprints WHERE sprint_id = $1",
         int(sprint_id),
     )
     if not sprint_row:
@@ -116,6 +116,14 @@ async def get_sprint_burndown_data(sprint_id: int) -> Optional[dict[str, Any]]:
 
     # Actual burn: calculate remaining points
     completed_pts = float(sprint_row.get("completed_points") or 0.0)
+    if completed_pts <= 0.0:
+        completed_pts = sum(
+            float(t.get("story_points") or 0.0)
+            for t in tasks
+            if t.get("status") == "Completed"
+        )
+        if completed_pts <= 0.0 and all(not t.get("story_points") for t in tasks):
+            completed_pts = float(sum(1 for t in tasks if t.get("status") == "Completed"))
     current_remaining = max(0.0, total_pts - completed_pts)
 
     days_elapsed = min(total_days, max(1, (now_utc.date() - start_dt.date()).days + 1))
@@ -143,7 +151,7 @@ async def get_sprint_cfd_data(sprint_id: int) -> Optional[dict[str, Any]]:
     across the active days of the sprint.
     """
     sprint_row = await db.fetchone(
-        "SELECT * FROM project_sprints WHERE sprint_id = $1",
+        "SELECT * FROM sprints WHERE sprint_id = $1",
         int(sprint_id),
     )
     if not sprint_row:
@@ -189,10 +197,16 @@ async def get_project_velocity_history(project_id: int) -> dict[str, Any]:
     proj_name = proj.get("name") if proj else f"Project #{project_id}"
 
     sprints = await db.fetchall(
-        """SELECT sprint_id, name, total_points, completed_points, status
-           FROM project_sprints
-           WHERE project_id = $1
-           ORDER BY sprint_id ASC
+        """SELECT s.sprint_id,
+                  s.name,
+                  s.status,
+                  COALESCE(SUM(t.story_points), 0) AS total_points,
+                  COALESCE(SUM(t.story_points) FILTER (WHERE t.status = 'Completed'), 0) AS completed_points
+           FROM sprints s
+           LEFT JOIN tasks t ON t.sprint_id = s.sprint_id AND t.is_deleted = FALSE
+           WHERE s.project_id = $1
+           GROUP BY s.sprint_id, s.name, s.status
+           ORDER BY s.sprint_id ASC
            LIMIT 6""",
         int(project_id),
     )
