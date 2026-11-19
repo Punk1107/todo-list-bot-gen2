@@ -185,7 +185,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             return
         ok, name_or_err = validator.validate_task_name(text)
         if not ok:
-            await interaction.followup.send(t(name_or_err, lang), ephemeral=True)
+            await interaction.followup.send(t(name_or_err, lang, detail=t("task_name_label", lang)), ephemeral=True)
             return
         if rate_limiter.check_task_creation(uid):
             seconds = rate_limiter.remaining_block_seconds(uid)
@@ -258,7 +258,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             # Validate inputs
             ok, name_or_err = validator.validate_task_name(task)
             if not ok:
-                await interaction.response.send_message(t(name_or_err, lang), ephemeral=True)
+                await interaction.response.send_message(t(name_or_err, lang, detail=t("task_name_label", lang)), ephemeral=True)
                 return
             task_name = name_or_err
 
@@ -537,7 +537,7 @@ class TasksCog(commands.Cog, name="Tasks"):
             )
             return
 
-        awarded = await gamification_service.complete_personal_task(task_id, uid)
+        awarded = await gamification_service.complete_personal_task(task_id, uid, allow_assigned=True)
         if awarded is None:
             await interaction.followup.send(t("task_already_done", lang), ephemeral=True)
             return

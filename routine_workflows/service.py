@@ -346,16 +346,74 @@ async def delete_custom_template(
     return not res.endswith(" 0")
 
 
+async def _verify_task_checklist_access(
+    task_row: Any,
+    actor_id: str,
+    *,
+    guild_id: Optional[str] = None,
+    is_guild_admin: bool = False,
+) -> None:
+    """Verify actor owns the task, belongs to its project in ``guild_id``, or is assigned."""
+    uid = str(actor_id)
+    if str(task_row.get("owner_id") or "") == uid:
+        return
+
+    proj_id = task_row.get("project_id")
+    if proj_id is not None:
+        if not guild_id:
+            raise PermissionError("You do not have permission to access this task.")
+        from collaboration import service as collab_service
+        try:
+            project = await collab_service.get_project(int(proj_id), str(guild_id))
+        except collab_service.ProjectNotFound:
+            raise PermissionError("You do not have permission to access this task.")
+        if is_guild_admin or project.owner_id == uid:
+            return
+        role = await collab_service.get_member_role(int(proj_id), uid)
+        if role in ("owner", "member", "lead"):
+            return
+        raise PermissionError("You do not have permission to access this task.")
+
+    task_gid = task_row.get("guild_id")
+    if is_guild_admin and guild_id and str(task_gid or "") == str(guild_id):
+        return
+
+    if task_gid and guild_id and str(task_gid) != str(guild_id):
+        raise PermissionError("You do not have permission to access this task.")
+
+    tid = task_row.get("task_id")
+    if tid is not None:
+        try:
+            from assignments import service as assign_service
+            if await assign_service.is_user_assigned_to_task(int(tid), uid):
+                return
+        except StopAsyncIteration:
+            pass
+        except Exception:
+            pass
+
+    raise PermissionError("You do not have permission to access this task.")
+
+
 async def create_template_from_task(
     task_id: int,
     name: str,
     owner_id: str,
     guild_id: Optional[str] = None,
+    *,
+    is_guild_admin: bool = False,
 ) -> Optional[TaskTemplate]:
     """Generate a template from an existing task (including its subtasks and checklists)."""
     parent = await db.afetchone("SELECT * FROM tasks WHERE task_id=$1 AND is_deleted = FALSE", (task_id,))
     if not parent:
         return None
+    if parent.get("owner_id") is not None:
+        await _verify_task_checklist_access(
+            parent,
+            owner_id,
+            guild_id=guild_id,
+            is_guild_admin=is_guild_admin,
+        )
 
     # Fetch DoD checklists of parent
     parent_checklists = await get_checklists(task_id)
@@ -858,8 +916,26 @@ async def save_checklist_template_from_task(
     guild_id: Optional[str] = None,
     is_shared: bool = False,
     description: Optional[str] = None,
+    is_guild_admin: bool = False,
 ) -> ChecklistTemplate:
     """Copy a task's existing `task_checklists` items into a reusable template."""
+    task_row = await db.afetchone(
+        "SELECT task_id, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+        (task_id,),
+    )
+    if not task_row:
+        raise ValueError(f"Task #{task_id} not found.")
+    if task_row.get("owner_id") is not None:
+        try:
+            await _verify_task_checklist_access(
+                task_row,
+                owner_id,
+                guild_id=guild_id,
+                is_guild_admin=is_guild_admin,
+            )
+        except PermissionError as exc:
+            raise ValueError(str(exc)) from exc
+
     items = await get_checklists(task_id)
     if not items:
         raise ValueError(f"Task #{task_id} has no checklist items to save.")
@@ -943,18 +1019,14 @@ async def apply_checklist_template(
     if not task_row:
         raise ValueError(f"Task #{task_id} not found.")
 
-    uid = str(actor_id)
-    if not is_guild_admin and str(task_row["owner_id"]) != uid:
-        proj_id = task_row.get("project_id")
-        if proj_id and guild_id:
-            from collaboration import service as collab_service
-            role = await collab_service.get_member_role(int(proj_id), uid)
-            if role not in ("member", "lead"):
-                raise PermissionError("You do not have permission to edit this task's checklist.")
-        else:
-            raise PermissionError("You do not have permission to edit this task's checklist.")
+    await _verify_task_checklist_access(
+        task_row,
+        actor_id,
+        guild_id=guild_id,
+        is_guild_admin=is_guild_admin,
+    )
 
-    tpl = await get_checklist_template(template_name, uid, guild_id=guild_id)
+    tpl = await get_checklist_template(template_name, str(actor_id), guild_id=guild_id)
     if not tpl:
         raise ValueError(f"Checklist template '{template_name}' not found.")
 

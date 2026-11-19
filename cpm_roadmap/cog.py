@@ -108,9 +108,15 @@ class RoadmapCog(commands.Cog, name="Strategic Roadmap"):
 
         guild_id = str(interaction.guild.id)
         try:
-            await collab_service.get_project(project_id, guild_id)
+            project = await collab_service.get_project(project_id, guild_id)
         except collab_service.ProjectNotFound:
             await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        role = await collab_service.get_member_role(project_id, uid)
+        if not (is_admin or project.owner_id == uid or role in ("owner", "lead", "member")):
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
             return
 
         modal = MilestoneCreateModal(project_id, lang)
@@ -140,6 +146,19 @@ class RoadmapCog(commands.Cog, name="Strategic Roadmap"):
             return
         await ensure_user(uid, lang)
         await interaction.response.defer(ephemeral=True)
+
+        guild_id = str(interaction.guild.id)
+        try:
+            project = await collab_service.get_project(project_id, guild_id)
+        except collab_service.ProjectNotFound:
+            await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        role = await collab_service.get_member_role(project_id, uid)
+        if not (is_admin or project.owner_id == uid or role in ("owner", "lead", "member")):
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+            return
 
         milestone = await roadmap_service.get_milestone(milestone_id)
         if not milestone or milestone.project_id != project_id:

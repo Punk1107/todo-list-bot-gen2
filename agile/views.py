@@ -402,6 +402,7 @@ class RetroDotVoteSelect(ui.Select):
 
     def __init__(self, sprint_id: int, cards: list[RetroCard], lang: str = "th") -> None:
         self.sprint_id = sprint_id
+        self.lang = lang
         options = []
         for c in cards[:25]:
             col_icon = "🌟" if c.column_type == "well" else ("🔧" if c.column_type == "improve" else "🎯")

@@ -4,6 +4,7 @@ Transforms a Discord Forum Channel into a real-time Kanban Task Board using Foru
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,26 @@ import discord
 from core.database import db
 
 log = logging.getLogger(__name__)
+
+
+def _coerce_utc_datetime(val: Any) -> Optional[datetime]:
+    """Parse ISO strings or naive/aware datetimes into a UTC-aware datetime."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.replace(tzinfo=timezone.utc) if val.tzinfo is None else val.astimezone(timezone.utc)
+    if isinstance(val, str):
+        raw = val.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return None
 
 TAG_NAMES = {
     "Pending": "⏳ Pending",
@@ -96,7 +117,7 @@ async def sync_task_to_forum(
         return None
 
     task_row = await db.fetchone(
-        "SELECT task_id, task, status, priority, description, deadline FROM tasks WHERE task_id = $1",
+        "SELECT task_id, task, status, priority, description, deadline FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
         (task_id,),
     )
     if not task_row:
@@ -142,8 +163,9 @@ async def sync_task_to_forum(
                 f"• **Status:** `{task_status}`",
                 f"• **Priority:** `P{priority}`",
             ]
-            if task_row.get("deadline"):
-                ts = int(task_row["deadline"].timestamp())
+            dl_dt = _coerce_utc_datetime(task_row.get("deadline"))
+            if dl_dt is not None:
+                ts = int(dl_dt.timestamp())
                 content_lines.append(f"• **Deadline:** <t:{ts}:D> (<t:{ts}:R>)")
             if task_row.get("description"):
                 content_lines.append(f"\n**Details:**\n{task_row['description']}")

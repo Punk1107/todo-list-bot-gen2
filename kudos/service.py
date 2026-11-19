@@ -52,12 +52,26 @@ async def send_kudos(
     if sent_count >= DAILY_KUDOS_LIMIT:
         raise ValueError(f"Daily kudos limit reached ({DAILY_KUDOS_LIMIT}/day). Please send more tomorrow!")
 
-    # Verify task if provided
+    # Verify task if provided (block soft-deleted or unrelated guild/private tasks)
     task_title: Optional[str] = None
     if task_id:
-        t_row = await db.fetchone("SELECT task FROM tasks WHERE task_id = $1", (int(task_id),))
+        t_row = await db.fetchone(
+            "SELECT task, owner_id, guild_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+            (int(task_id),),
+        )
         if t_row:
-            task_title = t_row["task"]
+            t_gid = t_row.get("guild_id") if hasattr(t_row, "get") else None
+            t_owner = t_row.get("owner_id") if hasattr(t_row, "get") else None
+            if (
+                (t_gid is None and t_owner is None)
+                or str(t_gid or "") == str(guild_id)
+                or str(t_owner or "") in (f_uid, t_uid)
+            ):
+                task_title = t_row["task"]
+            else:
+                task_id = None
+        else:
+            task_id = None
 
     # Insert kudos
     row = await db.fetchone(

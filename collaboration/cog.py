@@ -1161,9 +1161,13 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             return
 
         try:
-            await service.get_project(project_id, str(guild.id))
+            project = await service.get_project(project_id, str(guild.id))
+            await service.require_role(project, uid, "lead", _is_admin(interaction))
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
             return
 
         from collaboration import events_service
@@ -1172,7 +1176,14 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         created = res["created"]
         updated = res["updated"]
 
-        msg = t("proj_events_synced", lang, project_id=project_id, created=created, updated=updated)
+        msg = t(
+            "proj_events_synced",
+            lang,
+            project_id=project_id,
+            created=created,
+            updated=updated,
+            count=created + updated,
+        )
         await interaction.followup.send(msg)
 
     @project.command(
@@ -1203,9 +1214,13 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             return
 
         try:
-            await service.get_project(project_id, str(guild.id))
+            project = await service.get_project(project_id, str(guild.id))
+            await service.require_role(project, uid, "lead", _is_admin(interaction))
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
             return
 
         from collaboration import forum_service
@@ -1218,6 +1233,7 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
             lang,
             project_id=project_id,
             channel=forum_channel.mention,
+            forum=forum_channel.mention,
             tag_count=len(tag_map),
         )
         await interaction.followup.send(msg, ephemeral=True)
@@ -1238,6 +1254,12 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         if not await _guild_only(interaction, lang):
             return
         await ensure_user(uid, lang)
+
+        try:
+            await service.get_project(project_id, str(interaction.guild.id))
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
 
         from time_tracking import service as tt_service
         from time_tracking.views import build_budget_embed
@@ -1274,8 +1296,15 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         await ensure_user(uid, lang)
 
         is_admin = _is_admin(interaction)
-        project = await service.get_project(project_id, str(interaction.guild.id))
-        await service.require_role(project, uid, "lead", is_admin)
+        try:
+            project = await service.get_project(project_id, str(interaction.guild.id))
+            await service.require_role(project, uid, "lead", is_admin)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
 
         from time_tracking import service as tt_service
 
@@ -1309,8 +1338,15 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         await ensure_user(uid, lang)
 
         is_admin = _is_admin(interaction)
-        project = await service.get_project(project_id, str(interaction.guild.id))
-        await service.require_role(project, uid, "lead", is_admin)
+        try:
+            project = await service.get_project(project_id, str(interaction.guild.id))
+            await service.require_role(project, uid, "lead", is_admin)
+        except service.ProjectNotFound:
+            await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
+            return
+        except service.ProjectPermissionError:
+            await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+            return
 
         from time_tracking import service as tt_service
 
