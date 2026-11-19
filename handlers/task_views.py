@@ -412,6 +412,10 @@ class EditTaskModal(ui.Modal):
         uid  = str(interaction.user.id)
         lang = self.lang
 
+        if str(self.uid) != uid:
+            await _safe_respond(interaction, t("task_not_owned", lang))
+            return
+
         ok, name_or_err = validator.validate_task_name(self.task_name.value)
         if not ok:
             await _safe_respond(interaction, t(name_or_err, lang, detail=t("task_name_label", lang)))
@@ -490,7 +494,7 @@ class EditTaskModal(ui.Modal):
 
         try:
             if deadline_changed:
-                await db.aexecute(
+                res = await db.aexecute(
                     """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
                        tags=$5, dm_reminded=0, last_reminder=NULL, updated_at=NOW()
                        WHERE task_id=$6 AND owner_id=$7 AND is_deleted=FALSE""",
@@ -498,13 +502,16 @@ class EditTaskModal(ui.Modal):
                      description, tags, self.task_id, uid),
                 )
             else:
-                await db.aexecute(
+                res = await db.aexecute(
                     """UPDATE tasks SET task=$1, deadline=$2, priority=$3, description=$4,
                        tags=$5, updated_at=NOW()
                        WHERE task_id=$6 AND owner_id=$7 AND is_deleted=FALSE""",
                     (name_or_err, dt.isoformat() if dt else None, prio_val,
                      description, tags, self.task_id, uid),
                 )
+            if isinstance(res, str) and res.endswith(" 0"):
+                await _safe_respond(interaction, t("task_not_found", lang, task_id=self.task_id))
+                return
             await db.alog_action(uid, "task_edited", str(self.task_id), name_or_err)
             if (self._initial_description or "") != (description or ""):
                 from history_reporting.service import record_task_revision
@@ -1420,7 +1427,7 @@ class TaskActionView(ui.View):
         from storage.views import build_attachments_embed, TaskAttachmentsView
 
         task_row = await db.afetchone(
-            "SELECT task, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,)
+            "SELECT task_id, task, owner_id, project_id, guild_id, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,)
         )
         if not task_row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
@@ -1428,8 +1435,26 @@ class TaskActionView(ui.View):
         if task_row.get("is_deleted"):
             await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
             return
-        task_name = task_row["task"]
         uid = str(interaction.user.id)
+        if task_row.get("owner_id") is not None or task_row.get("project_id") is not None:
+            from routine_workflows import service as routine_service
+            guild_id = str(interaction.guild.id) if interaction.guild else None
+            is_admin = bool(
+                interaction.guild
+                and getattr(interaction.user, "guild_permissions", None)
+                and interaction.user.guild_permissions.administrator
+            )
+            try:
+                await routine_service._verify_task_checklist_access(
+                    task_row, uid, guild_id=guild_id, is_guild_admin=is_admin
+                )
+            except PermissionError:
+                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                return
+        elif uid != str(self.uid):
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
+        task_name = task_row["task"]
 
         files = await storage_svc.get_attachments(self.task_id)
         embed = build_attachments_embed(self.task_id, task_name, files, lang)
@@ -1499,12 +1524,31 @@ class TaskActionView(ui.View):
         from routine_workflows import service as routine_service
         from routine_workflows.views import TaskChecklistView
 
-        task_row = await db.afetchone("SELECT task, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
+        task_row = await db.afetchone(
+            "SELECT task_id, task, owner_id, project_id, guild_id, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,)
+        )
         if not task_row:
             await interaction.followup.send(t("task_not_found", lang, task_id=self.task_id), ephemeral=True)
             return
         if task_row.get("is_deleted"):
             await interaction.followup.send(t("task_already_in_trash", lang, task_id=self.task_id), ephemeral=True)
+            return
+        if task_row.get("owner_id") is not None or task_row.get("project_id") is not None:
+            guild_id = str(interaction.guild.id) if interaction.guild else None
+            is_admin = bool(
+                interaction.guild
+                and getattr(interaction.user, "guild_permissions", None)
+                and interaction.user.guild_permissions.administrator
+            )
+            try:
+                await routine_service._verify_task_checklist_access(
+                    task_row, uid, guild_id=guild_id, is_guild_admin=is_admin
+                )
+            except PermissionError:
+                await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                return
+        elif uid != str(self.uid):
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         task_name = task_row["task"]
         items = await routine_service.get_checklists(self.task_id)
@@ -1546,7 +1590,7 @@ class TaskActionView(ui.View):
         lang = await get_user_lang(uid)
         await interaction.response.defer(ephemeral=True, thinking=True)
         row = await db.afetchone(
-            "SELECT task_id, task, project_id, guild_id, custom_fields, is_deleted FROM tasks WHERE task_id=$1",
+            "SELECT task_id, task, owner_id, project_id, guild_id, custom_fields, is_deleted FROM tasks WHERE task_id=$1",
             (self.task_id,),
         )
         if not row or row.get("is_deleted"):
@@ -1556,6 +1600,20 @@ class TaskActionView(ui.View):
         guild_id = row.get("guild_id")
         if not proj_id or not guild_id:
             await interaction.followup.send(t("field_project_task_required", lang), ephemeral=True)
+            return
+        from routine_workflows import service as routine_service
+        inter_guild_id = str(interaction.guild.id) if interaction.guild else None
+        is_admin = bool(
+            interaction.guild
+            and getattr(interaction.user, "guild_permissions", None)
+            and interaction.user.guild_permissions.administrator
+        )
+        try:
+            await routine_service._verify_task_checklist_access(
+                row, uid, guild_id=inter_guild_id, is_guild_admin=is_admin
+            )
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
         from custom_fields import service as field_service
         from custom_fields.models import parse_custom_fields_json

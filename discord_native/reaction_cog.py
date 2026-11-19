@@ -78,18 +78,21 @@ class ReactionCog(commands.Cog, name="ReactionTriggers"):
         lang = await get_user_lang(user_id)
         await ensure_user(user_id, lang)
 
-        # Truncate title for DB column, full text in description
-        title = task_text[:120]
+        from core.security import validator
+
+        # Truncate and sanitize title for DB column, full text in description
+        title = validator.sanitize(task_text, max_length=120) or "Captured Task"
         jump_link = message.jump_url
-        description = f"{t('context_source_message', lang)}: {jump_link}\n\n{task_text}"
+        raw_desc = f"{t('context_source_message', lang)}: {jump_link}\n\n{task_text}"
+        description = validator.sanitize(raw_desc, max_length=1000)
 
         row = await db.fetchone(
             """
-            INSERT INTO tasks (owner_id, task, description, status, priority, is_private)
-            VALUES ($1, $2, $3, 'Pending', 3, TRUE)
+            INSERT INTO tasks (owner_id, task, description, source_message_url, status, priority, is_private)
+            VALUES ($1, $2, $3, $4, 'Pending', 3, TRUE)
             RETURNING task_id
             """,
-            (user_id, title, description),
+            (user_id, title, description, jump_link),
         )
 
         if row:
@@ -142,12 +145,19 @@ class ReactionCog(commands.Cog, name="ReactionTriggers"):
             return
 
         task_id = int(match.group(1))
-        # Update task status to completed if owner or member
+        # Update task status to completed only if actor is owner or assigned
         res = await db.execute(
             """
             UPDATE tasks
             SET status = 'Completed', completed_at = NOW()
-            WHERE task_id = $1 AND (owner_id = $2 OR is_private = FALSE) AND status != 'Completed'
+            WHERE task_id = $1
+              AND is_deleted = FALSE
+              AND status IN ('Pending', 'In_Progress')
+              AND (
+                  owner_id = $2
+                  OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.task_id AND ta.user_id = $2)
+                  OR EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id = tasks.task_id AND ta2.user_id = $2)
+              )
             """,
             (task_id, user_id),
         )

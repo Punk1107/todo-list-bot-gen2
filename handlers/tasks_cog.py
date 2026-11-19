@@ -448,15 +448,16 @@ class TasksCog(commands.Cog, name="Tasks"):
             )
             return
 
+        owner_uid = str(row["owner_id"]) if "owner_id" in row.keys() and row["owner_id"] else uid
         # Fetch categories for the Category Select dropdown
         categories = await db.afetchall(
             "SELECT * FROM categories WHERE owner_id=$1 OR owner_id='system' ORDER BY name",
-            (uid,),
+            (owner_uid,),
         )
 
         embed = await _async_build_task_embed(row, lang, tz_name)
         view  = TaskActionView(
-            task_id, uid, lang,
+            task_id, owner_uid, lang,
             is_pinned=bool(row["is_pinned"]) if "is_pinned" in row.keys() else False,
             categories=list(categories),
             current_cat_id=row["category_id"],

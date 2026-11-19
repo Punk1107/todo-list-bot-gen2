@@ -511,7 +511,7 @@ async def apply_template(
             if proj_row:
                 project_name = proj_row.get("name") or ""
             sprint_row = await db.fetchone(
-                "SELECT name FROM project_sprints WHERE project_id = $1 AND status = 'Active' ORDER BY sprint_id DESC LIMIT 1",
+                "SELECT name FROM sprints WHERE project_id = $1 AND LOWER(status) = 'active' ORDER BY sprint_id DESC LIMIT 1",
                 project_id,
             )
             if sprint_row:

@@ -171,7 +171,7 @@ async def execute_gdpr_deletion(user_id: str) -> GdprDeletionReport:
         ("calendar_feed_tokens", "user_id"),
         ("task_templates", "owner_id"),
         ("routine_event_rules", "created_by"),
-        ("saved_filters", "user_id"),
+        ("saved_filters", "owner_id"),
         ("user_chime_settings", "user_id"),
         ("user_themes", "user_id"),
         ("daily_standups", "user_id"),

@@ -682,17 +682,24 @@ async def convert_action_items_to_tasks(
     if not rows:
         return 0
 
+    proj_row = await db.afetchone(
+        "SELECT guild_id FROM projects WHERE project_id = $1",
+        (project_id,),
+    )
+    guild_id = str(proj_row["guild_id"]) if proj_row and proj_row.get("guild_id") else None
+
     count = 0
-    now = datetime.now(timezone.utc)
     for r in rows:
         title = str(r["content"])[:200]
         await db.aexecute(
             """
-            INSERT INTO tasks (task, project_id, owner_id, status, priority, is_deleted, created_at)
-            VALUES ($1, $2, $3, 'Pending', 2, FALSE, $4)
+            INSERT INTO tasks (task, project_id, guild_id, owner_id, status, priority, is_deleted, created_at)
+            VALUES ($1, $2, $3, $4, 'Pending', 2, FALSE, NOW())
             """,
-            (title, project_id, str(user_id), now),
+            (title, project_id, guild_id, str(user_id)),
         )
         count += 1
+    db.invalidate_stats(str(user_id))
+    db.query_cache.invalidate_table("tasks")
     return count
 
