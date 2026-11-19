@@ -1044,7 +1044,7 @@ async def send_weekly_retrospective_dm(
             for t_info in retro_data.overdue_carryover_tasks[:5]
         ]
         if len(retro_data.overdue_carryover_tasks) > 5:
-            carry_lines.append(f"... {t('and_more_tasks', lang, count=len(retro_data.overdue_carryover_tasks) - 5)}")
+            carry_lines.append(t("and_more_tasks", lang, count=len(retro_data.overdue_carryover_tasks) - 5))
         embed.add_field(
             name=f"⚠️ {t('retro_overdue_carryovers', lang)} ({len(retro_data.overdue_carryover_tasks)})",
             value="\n".join(carry_lines),

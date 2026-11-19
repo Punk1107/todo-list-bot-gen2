@@ -147,7 +147,8 @@ class BulkTaskView(ui.View):
                     row = await db.afetchone(
                         """SELECT deadline FROM tasks
                            WHERE task_id=$1 AND owner_id=$2 AND parent_task_id IS NULL
-                             AND status IN ('Pending','In_Progress')""",
+                             AND status IN ('Pending','In_Progress')
+                             AND is_deleted = FALSE""",
                         (task_id, self.uid),
                     )
                     if row is None:
@@ -158,6 +159,7 @@ class BulkTaskView(ui.View):
                         """UPDATE tasks SET deadline=$1, updated_at=NOW()
                            WHERE task_id=$2 AND owner_id=$3 AND parent_task_id IS NULL
                              AND status IN ('Pending','In_Progress')
+                             AND is_deleted = FALSE
                            RETURNING task_id""",
                         (new_deadline, task_id, self.uid),
                     )
@@ -222,6 +224,7 @@ class BulkActionsCog(commands.Cog, name="Bulk Actions"):
             """SELECT task_id, task, deadline, status FROM tasks
                WHERE owner_id=$1 AND parent_task_id IS NULL
                  AND status IN ('Pending','In_Progress')
+                 AND is_deleted = FALSE
                ORDER BY priority DESC, deadline ASC""",
             (uid,),
         ) or []

@@ -156,7 +156,7 @@ class GamificationCog(commands.Cog, name="Gamification"):
     ) -> None:
         target = member or interaction.user
         uid = str(target.id)
-        await ensure_user(uid, target.name)
+        await ensure_user(uid)
         lang = await get_user_lang(str(interaction.user.id))
 
         profile = await rpg.get_user_rpg_profile(uid)
@@ -264,7 +264,7 @@ class GamificationCog(commands.Cog, name="Gamification"):
         reason: Optional[str] = None,
     ) -> None:
         uid = str(interaction.user.id)
-        await ensure_user(uid, interaction.user.name)
+        await ensure_user(uid)
         lang = await get_user_lang(uid)
 
         res = await vacation.start_vacation(uid, days, reason)
@@ -282,7 +282,7 @@ class GamificationCog(commands.Cog, name="Gamification"):
     )
     async def vacation_stop(self, interaction: discord.Interaction) -> None:
         uid = str(interaction.user.id)
-        await ensure_user(uid, interaction.user.name)
+        await ensure_user(uid)
         lang = await get_user_lang(uid)
 
         await vacation.stop_vacation(uid)
@@ -295,7 +295,7 @@ class GamificationCog(commands.Cog, name="Gamification"):
     )
     async def vacation_status(self, interaction: discord.Interaction) -> None:
         uid = str(interaction.user.id)
-        await ensure_user(uid, interaction.user.name)
+        await ensure_user(uid)
         lang = await get_user_lang(uid)
 
         st = await vacation.get_vacation_status(uid)

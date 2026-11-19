@@ -133,7 +133,8 @@ def build_project_dashboard_embed(stats: ProjectStats, lang: str) -> discord.Emb
         embed.add_field(name=f"🚨 {t('proj_overdue', lang)}", value=str(stats.overdue), inline=True)
     embed.add_field(name=f"👥 {t('proj_members', lang)}", value=str(stats.members), inline=True)
     embed.add_field(name=f"📊 {t('proj_status_label', lang)}", value=p.status_emoji + " " + p.status.capitalize(), inline=True)
-    embed.add_field(name=f"🎯 {t('proj_priority_label', lang)}", value=f"{p.priority_emoji} {t(f'priority_{p.priority}', lang)} (P{p.priority})", inline=True)
+    prio_lbl = t("proj_priority_label", lang)
+    embed.add_field(name=prio_lbl if prio_lbl.startswith("🎯") else f"🎯 {prio_lbl}", value=f"{p.priority_emoji} {t(f'priority_{p.priority}', lang)} (P{p.priority})", inline=True)
 
     if stats.leaderboard:
         lb_lines = []

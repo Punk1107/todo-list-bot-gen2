@@ -199,7 +199,8 @@ class AddTaskModal(ui.Modal):
         if not ok:
             err_msg = t(name_or_err, lang)
             await _safe_respond(interaction, err_msg)
-            await _send_dm(interaction.user, f"⚠️ **Input Error**\n{err_msg}")
+            if interaction.guild is not None:
+                await _send_dm(interaction.user, f"⚠️ **Input Error**\n{err_msg}")
             return
         task_name = name_or_err
 
@@ -252,7 +253,7 @@ class AddTaskModal(ui.Modal):
         except DeadlineValidationError as e:
             err_msg = t(e.i18n_key, lang, **e.kwargs)
             await _safe_respond(interaction, err_msg)
-            if e.i18n_key == "task_invalid_deadline":
+            if e.i18n_key == "task_invalid_deadline" and interaction.guild is not None:
                 await _send_dm(
                     interaction.user,
                     f"⚠️ **Invalid Deadline**\n{err_msg}\n"
@@ -343,13 +344,14 @@ class AddTaskModal(ui.Modal):
             await interaction.response.send_message(
                 success_msg, embed=embed, view=view,
             )
-        dm_embed = discord.Embed(
-            title="✅ " + t("task_created_title", lang),
-            description=f"**#{task_id} — {task_name[:80]}**",
-            color=0x57F287,
-        )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title="✅ " + t("task_created_title", lang),
+                description=f"**#{task_id} — {task_name[:80]}**",
+                color=0x57F287,
+            )
+            dm_embed.set_footer(text="To-Do List Bot Gen 2")
+            await _send_dm(interaction.user, embed=dm_embed)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("AddTaskModal.on_error: %s", error, exc_info=True)
@@ -529,13 +531,14 @@ class EditTaskModal(ui.Modal):
         await interaction.response.send_message(
             t("task_edit_success", lang), embed=embed, view=view,
         )
-        dm_embed = discord.Embed(
-            title="✏️ " + t("task_updated_title", lang),
-            description=f"**#{self.task_id} — {name_or_err[:80]}**",
-            color=0x5865F2,
-        )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title="✏️ " + t("task_updated_title", lang),
+                description=f"**#{self.task_id} — {name_or_err[:80]}**",
+                color=0x5865F2,
+            )
+            dm_embed.set_footer(text="To-Do List Bot Gen 2")
+            await _send_dm(interaction.user, embed=dm_embed)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
         log.error("EditTaskModal.on_error: %s", error, exc_info=True)
@@ -601,12 +604,13 @@ class DeleteConfirmView(ui.View):
             await interaction.followup.send(
                 t("task_deleted", self.lang, task_id=self.task_id), ephemeral=True
             )
-        dm_embed = discord.Embed(
-            title=t("task_deleted", self.lang, task_id=self.task_id),
-            color=0xED4245,
-        )
-        dm_embed.set_footer(text=t("footer_text", self.lang))
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title=t("task_deleted", self.lang, task_id=self.task_id),
+                color=0xED4245,
+            )
+            dm_embed.set_footer(text=t("footer_text", self.lang))
+            await _send_dm(interaction.user, embed=dm_embed)
 
     @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -774,13 +778,14 @@ class TaskConflictView(ui.View):
         await interaction.edit_original_response(
             content=success_msg, embed=embed, view=view,
         )
-        dm_embed = discord.Embed(
-            title="✅ " + t("task_created_title", lang),
-            description=f"**#{task_id} — {final_name[:80]}**",
-            color=0x57F287,
-        )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title="✅ " + t("task_created_title", lang),
+                description=f"**#{task_id} — {final_name[:80]}**",
+                color=0x57F287,
+            )
+            dm_embed.set_footer(text="To-Do List Bot Gen 2")
+            await _send_dm(interaction.user, embed=dm_embed)
 
     async def on_timeout(self) -> None:
         _disable_all(self)
@@ -1233,12 +1238,13 @@ class TaskActionView(ui.View):
             except Exception:
                 pass
         await interaction.followup.send(t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]), ephemeral=True)
-        dm_embed = discord.Embed(
-            title=t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]),
-            color=0x57F287,
-        )
-        dm_embed.set_footer(text=t("footer_text", lang))
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title=t("task_done_with_name", lang, task_id=self.task_id, task_name=row["task"]),
+                color=0x57F287,
+            )
+            dm_embed.set_footer(text=t("footer_text", lang))
+            await _send_dm(interaction.user, embed=dm_embed)
 
     # ── Edit ──────────────────────────────────────────────────────────────────
 
@@ -1287,14 +1293,15 @@ class TaskActionView(ui.View):
         self._update_pin_label()
         msg_key = "task_pinned" if self.is_pinned else "task_unpinned"
         await interaction.followup.send(t(msg_key, lang, task_id=self.task_id), ephemeral=True)
-        pin_label = t("task_pinned_badge", lang) if self.is_pinned else t("task_unpinned_badge", lang)
-        dm_embed = discord.Embed(
-            title=pin_label,
-            description=f"Task **#{self.task_id}**",
-            color=0xFEE75C,
-        )
-        dm_embed.set_footer(text="To-Do List Bot Gen 2")
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            pin_label = t("task_pinned_badge", lang) if self.is_pinned else t("task_unpinned_badge", lang)
+            dm_embed = discord.Embed(
+                title=pin_label,
+                description=f"Task **#{self.task_id}**",
+                color=0xFEE75C,
+            )
+            dm_embed.set_footer(text="To-Do List Bot Gen 2")
+            await _send_dm(interaction.user, embed=dm_embed)
 
     # ── Delete ────────────────────────────────────────────────────────────────
 
@@ -2299,7 +2306,7 @@ async def _build_today_embed_and_view(uid: str, lang: str, tz_name: str):
     color = 0xED4245 if overdue_c > 0 else (0xE67E22 if any(r["priority"] >= 4 for r in tasks) else 0x5865F2)
     local_date = local_now.strftime("%d/%m/%Y")
     embed = discord.Embed(
-        title=f"📅 {_t('today_view_title', lang)} — {local_date}",
+        title=f"{_t('today_view_title', lang)} — {local_date}",
         color=color,
     )
     if not tasks:
@@ -2394,7 +2401,7 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
         "SELECT * FROM tasks WHERE owner_id=$1 AND status='Pending' AND is_deleted=FALSE AND deadline<$2 ORDER BY deadline ASC",
         (uid, now),
     )
-    embed = discord.Embed(title=f"🚨 {_t('overdue_view_title', lang)}", color=0xED4245)
+    embed = discord.Embed(title=_t("overdue_view_title", lang), color=0xED4245)
     if not tasks:
         embed.description = "> ✅ " + _t("overdue_none", lang)
     else:
@@ -2412,7 +2419,7 @@ async def _build_overdue_embed_and_view(uid: str, lang: str, tz_name: str):
             current_len = sum(len(x) + 1 for x in lines)
             if current_len + len(line) + 30 > 3900:
                 remaining = len(tasks) - (len(lines) - 1)
-                lines.append(f"\n... {_t('and_more_tasks', lang, count=remaining)}")
+                lines.append(f"\n{_t('and_more_tasks', lang, count=remaining)}")
                 break
             lines.append(line)
         embed.description = "\n".join(lines)

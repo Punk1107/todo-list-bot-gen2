@@ -377,6 +377,10 @@ async def create_template_from_task(
             try:
                 s_dl = s["deadline"] if isinstance(s["deadline"], datetime) else datetime.fromisoformat(s["deadline"])
                 p_dl = parent["deadline"] if isinstance(parent["deadline"], datetime) else datetime.fromisoformat(parent["deadline"])
+                if s_dl.tzinfo is None:
+                    s_dl = s_dl.replace(tzinfo=timezone.utc)
+                if p_dl.tzinfo is None:
+                    p_dl = p_dl.replace(tzinfo=timezone.utc)
                 diff = (s_dl - p_dl).days
                 rel_days = max(1, diff) if diff > 0 else 1
             except Exception:

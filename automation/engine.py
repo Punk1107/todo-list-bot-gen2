@@ -288,6 +288,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
         LEFT JOIN projects p ON t.project_id = p.project_id
         LEFT JOIN task_escalations e ON t.task_id = e.task_id
         WHERE t.status = 'Pending'
+          AND t.is_deleted = FALSE
           AND t.priority >= 6
           AND t.created_at <= NOW() - INTERVAL '12 hours'
         ORDER BY t.priority DESC, t.created_at ASC
@@ -305,6 +306,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
                 LEFT JOIN projects p ON t.project_id = p.project_id
                 LEFT JOIN task_escalations e ON t.task_id = e.task_id
                 WHERE t.status = 'Pending'
+                  AND t.is_deleted = FALSE
                   AND t.priority >= 6
                   AND t.created_at <= NOW() - INTERVAL '12 hours'
                 ORDER BY t.priority DESC, t.created_at ASC
@@ -402,7 +404,7 @@ async def get_escalation_status(guild_id: Optional[str] = None) -> list[dict[str
         FROM task_escalations e
         JOIN tasks t ON e.task_id = t.task_id
         LEFT JOIN projects p ON t.project_id = p.project_id
-        WHERE t.status != 'Completed'
+        WHERE t.status != 'Completed' AND t.is_deleted = FALSE
     """
     params: list[Any] = []
     if guild_id:
@@ -515,7 +517,7 @@ async def check_sla_deadlines(bot: Any) -> list[dict[str, Any]]:
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
         LEFT JOIN projects p ON s.project_id = p.project_id
-        WHERE s.resolved_at IS NULL AND t.status != 'Completed'
+        WHERE s.resolved_at IS NULL AND t.status != 'Completed' AND t.is_deleted = FALSE
     """
     rows = await db.fetchall(query)
     alerts: list[dict[str, Any]] = []
@@ -608,7 +610,7 @@ async def get_sla_status(project_id: int) -> dict[str, Any]:
                t.task, t.priority, t.status, t.created_at, t.owner_id
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
-        WHERE s.project_id = $1
+        WHERE s.project_id = $1 AND t.is_deleted = FALSE
         ORDER BY s.breached DESC, s.target_deadline ASC
     """
     rows = await db.fetchall(query, int(project_id))
@@ -637,7 +639,7 @@ async def get_sla_breaches(guild_id: str, project_id: Optional[int] = None) -> l
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
         JOIN projects p ON s.project_id = p.project_id
-        WHERE s.breached = TRUE AND p.guild_id = $1
+        WHERE s.breached = TRUE AND p.guild_id = $1 AND t.is_deleted = FALSE
     """
     params: list[Any] = [str(guild_id)]
     if project_id:
