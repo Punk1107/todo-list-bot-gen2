@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -51,14 +53,22 @@ class TaskImportCog(commands.Cog, name="Task Import"):
             return
 
         await ensure_user(uid, lang)
+        default_dl = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         statements = [
             (
                 """INSERT INTO tasks
                    (task, deadline, priority, status, recurring, tags, description, is_pinned, owner_id, completed_at)
                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, (CASE WHEN $4 = 'Completed' THEN NOW() ELSE NULL END))""",
                 (
-                    task.task, task.deadline, task.priority, task.status, task.recurring,
-                    task.tags, task.description, task.is_pinned, uid,
+                    task.task,
+                    task.deadline if task.deadline is not None else default_dl,
+                    task.priority,
+                    task.status,
+                    task.recurring,
+                    task.tags,
+                    task.description,
+                    1 if task.is_pinned else 0,
+                    uid,
                 ),
             )
             for task in tasks

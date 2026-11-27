@@ -3,7 +3,7 @@ standup/service.py — Asynchronous Daily Standup Service layer.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 import logging
 import re
 from typing import List, Optional
@@ -62,7 +62,7 @@ async def submit_standup(
     blockers: Optional[str] = None,
 ) -> DailyStandupEntry:
     """Submit daily standup answers (upsert per day)."""
-    today_date = date.today()
+    today_date = datetime.now(timezone.utc).date()
     clean_blockers = blockers.strip() if blockers and blockers.strip() else None
 
     row = await db.fetchone(
@@ -87,7 +87,7 @@ async def get_daily_standups(
     standup_date: Optional[date] = None,
 ) -> List[DailyStandupEntry]:
     """Retrieve all standup entries for a guild on a given date."""
-    target_date = standup_date or date.today()
+    target_date = standup_date or datetime.now(timezone.utc).date()
     rows = await db.fetchall(
         """
         SELECT * FROM daily_standups

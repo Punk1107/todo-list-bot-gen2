@@ -975,3 +975,240 @@ class TestCommandDoneDeadlockAndResilienceFixes:
             mock_exec.assert_not_awaited()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 4 System-Wide Audit Bugfix Tests (7 Categories)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRound4SystemWideBugfixes:
+    @pytest.mark.asyncio
+    async def test_janitor_archive_completed_tasks_excludes_generated_search_vector(self) -> None:
+        from recovery import janitor
+
+        async def _fake_fetchall(sql: str, params=()):
+            if "SELECT task_id FROM tasks" in sql:
+                return [{"task_id": 101}]
+            if "information_schema.columns" in sql:
+                assert "is_generated" in sql
+                assert "tasks_archive" in sql
+                return [
+                    {"column_name": "task_id"},
+                    {"column_name": "task"},
+                    {"column_name": "search_vector"},
+                    {"column_name": "archived_at"},
+                ]
+            if "DELETE FROM tasks" in sql:
+                return [{"task_id": 101}]
+            return []
+
+        with (
+            patch.object(janitor.db, "afetchall", side_effect=_fake_fetchall),
+            patch.object(janitor.db, "aexecute", new=AsyncMock()) as mock_exec,
+            patch.object(janitor.db.query_cache, "invalidate_tables"),
+        ):
+            count = await janitor.archive_completed_tasks(days=90)
+            assert count == 1
+            insert_sql = mock_exec.call_args_list[0].args[0]
+            assert "INSERT INTO tasks_archive (task_id, task, archived_at)" in insert_sql
+            assert "search_vector" not in insert_sql
+
+    @pytest.mark.asyncio
+    async def test_assign_task_handles_none_wip_limit_without_type_error(self) -> None:
+        from collaboration import service as collab_service
+
+        fake_task = MagicMock(
+            task_id=55,
+            task="Implement OAuth",
+            status="Pending",
+            project_id=10,
+            guild_id="g1",
+        )
+
+        with (
+            patch.object(collab_service, "get_project", new=AsyncMock(return_value=MagicMock(owner_id="u1"))),
+            patch.object(collab_service, "require_role", new=AsyncMock()),
+            patch.object(collab_service, "get_project_task", new=AsyncMock(return_value=fake_task)),
+            patch.object(collab_service, "_get_incomplete_task_blockers", new=AsyncMock(return_value=[])),
+            patch("utils.helpers.ensure_user", new=AsyncMock()),
+            patch.object(collab_service, "get_project_wip_limit", new=AsyncMock(return_value=None)),
+            patch.object(collab_service.db, "execute", new=AsyncMock()),
+            patch.object(collab_service.db, "fetchone", new=AsyncMock(return_value={"estimated_hours": 0})),
+            patch.object(collab_service.db.query_cache, "invalidate_tables"),
+            patch.object(collab_service, "log_activity", new=AsyncMock()),
+            patch("time_tracking.service.check_burnout_shield", new=AsyncMock(return_value={"exceeded": False})),
+        ):
+            res_task = await collab_service.assign_task(55, 10, "g1", "u2", "u1")
+            assert res_task.task_id == 55
+
+    @pytest.mark.asyncio
+    async def test_import_tasks_converts_is_pinned_to_int_and_fills_none_deadline(self) -> None:
+        from discord import app_commands
+        from task_import.cog import TaskImportCog
+        from task_import.service import ImportedTask
+
+        cog = TaskImportCog()
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=12345)
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        attachment = MagicMock(spec=discord.Attachment)
+        attachment.size = 120
+        attachment.filename = "tasks.csv"
+        attachment.read = AsyncMock(return_value=b"task\nSample")
+
+        choice = app_commands.Choice(name="Leave deadline empty", value="no_deadline")
+        parsed = [
+            ImportedTask(
+                task="Sample Task",
+                deadline=None,
+                priority=3,
+                status="Pending",
+                recurring="none",
+                tags="work",
+                description="desc",
+                is_pinned=True,
+            )
+        ]
+
+        with (
+            patch("task_import.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("task_import.cog.get_user_timezone", new=AsyncMock(return_value="UTC")),
+            patch("task_import.cog.parse_import_file", return_value=parsed),
+            patch("task_import.cog.ensure_user", new=AsyncMock()),
+            patch.object(db, "aexecute_batch", new=AsyncMock()) as mock_batch,
+            patch.object(db, "invalidate_stats"),
+            patch.object(db, "alog_action", new=AsyncMock()),
+        ):
+            await cog.import_tasks.callback(cog, inter, attachment, choice)
+            mock_batch.assert_awaited_once()
+            statements = mock_batch.call_args.args[0]
+            _, params = statements[0]
+            # params[1] is deadline (must not be None), params[7] is is_pinned (must be int 1, not bool)
+            assert isinstance(params[1], str) and len(params[1]) > 0
+            assert params[7] == 1 and type(params[7]) is int
+
+    @pytest.mark.asyncio
+    async def test_stats_estimation_and_timesheet_enforce_tenant_and_privacy_isolation(self) -> None:
+        from handlers.tasks_cog import TasksCog
+        from time_tracking import service as tt_service
+
+        cog = TasksCog(MagicMock())
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=111)
+        inter.guild_id = 999
+        inter.guild = MagicMock(name="Guild 999")
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        with (
+            patch("handlers.tasks_cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("collaboration.service.get_project", new=AsyncMock()) as mock_get_proj,
+            patch("time_tracking.service.calculate_estimation_accuracy", new=AsyncMock(return_value={"total_analyzed": 0})) as mock_calc,
+            patch("time_tracking.views.build_estimation_analytics_embed", return_value=discord.Embed(title="Est")),
+        ):
+            await cog.stats_estimation.callback(cog, inter, project_id=7, member=None)
+            mock_get_proj.assert_awaited_once_with(7, "999")
+            mock_calc.assert_awaited_once_with(project_id=7, user_id=None, guild_id="999")
+
+        with patch.object(tt_service.db, "fetchall", new=AsyncMock(return_value=[])) as mock_fetchall:
+            await tt_service.get_user_timesheet("target_u", period="week", guild_id="999", viewer_id="caller_u")
+            sql_called, params_called = mock_fetchall.call_args.args
+            assert "t.is_deleted = FALSE" in sql_called
+            assert "t.guild_id = $3" in sql_called
+            assert "COALESCE(t.is_private, FALSE) = FALSE" in sql_called
+            assert params_called[0] == "target_u"
+            assert params_called[2] == "999"
+
+    @pytest.mark.asyncio
+    async def test_soft_delete_stops_active_time_timers_and_admin_stats_excludes_deleted(self) -> None:
+        from recovery import service as recovery_service
+
+        row = {
+            "task_id": 44,
+            "task": "Timer Task",
+            "owner_id": "u1",
+            "project_id": None,
+            "guild_id": None,
+            "is_deleted": False,
+        }
+        with (
+            patch.object(recovery_service.db, "afetchone", new=AsyncMock(return_value=row)),
+            patch.object(recovery_service.db, "aexecute", new=AsyncMock()) as mock_exec,
+            patch.object(recovery_service.db, "invalidate_stats"),
+            patch.object(recovery_service.db.query_cache, "invalidate_tables") as mock_inv,
+            patch.object(recovery_service.db, "alog_action", new=AsyncMock()),
+        ):
+            ok = await recovery_service.soft_delete_task(44, "u1")
+            assert ok is True
+            executed_sqls = [c.args[0] for c in mock_exec.call_args_list]
+            assert any("DELETE FROM active_time_timers" in s for s in executed_sqls)
+            mock_inv.assert_called_with(["tasks", "focus_sessions", "active_time_timers"])
+
+    @pytest.mark.asyncio
+    async def test_voice_room_loop_normalizes_naive_ends_at_and_standup_uses_utc_date(self) -> None:
+        from focus.cog import FocusCog
+        from standup import service as standup_service
+
+        bot = MagicMock()
+        cog_dummy = MagicMock(bot=bot)
+
+        member = MagicMock(bot=False)
+        channel = MagicMock(spec=discord.VoiceChannel)
+        channel.members = [member]
+        bot.get_channel.return_value = channel
+
+        naive_past = datetime(2020, 1, 1, 0, 0, 0)  # naive datetime
+        room_row = {
+            "channel_id": "555",
+            "current_phase": "work",
+            "phase_ends_at": naive_past,
+            "break_minutes": 5,
+            "work_minutes": 25,
+            "current_round": 1,
+            "chime_enabled": False,
+        }
+        with (
+            patch("focus.voice_service.get_all_active_voice_rooms", new=AsyncMock(return_value=[room_row])),
+            patch("focus.voice_service.update_room_phase", new=AsyncMock()) as mock_update_phase,
+            patch("focus.voice_service.update_voice_channel_status", new=AsyncMock()),
+        ):
+            await FocusCog.voice_room_loop.coro(cog_dummy)
+            mock_update_phase.assert_awaited_once()
+
+        with patch.object(standup_service.db, "fetchall", new=AsyncMock(return_value=[])) as mock_fetchall:
+            await standup_service.get_daily_standups("g1")
+            _, params = mock_fetchall.call_args.args
+            assert params[1] == datetime.now(timezone.utc).date()
+
+    @pytest.mark.asyncio
+    async def test_retro_convert_disables_button_and_saved_filter_hides_private_tasks(self) -> None:
+        from agile.views import RetroBoardView
+        from organization import service as org_service
+        from organization.models import SavedFilter, SavedFilterCriteria
+
+        view = RetroBoardView(sprint_id=1, project_id=2, lang="en")
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=101)
+        inter.message = MagicMock()
+        inter.message.edit = AsyncMock()
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        with patch("agile.service.convert_action_items_to_tasks", new=AsyncMock(return_value=2)):
+            await view.btn_convert_actions.callback(inter)
+            assert view.btn_convert_actions.disabled is True
+            inter.message.edit.assert_awaited_once_with(view=view)
+
+        sf = MagicMock(spec=SavedFilter)
+        sf.criteria = SavedFilterCriteria(project_id=10)
+        with patch.object(org_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_fetch:
+            await org_service.execute_saved_filter(sf, user_id="u1", guild_id="g1")
+            sql_called, params = mock_fetch.call_args.args
+            assert "t.guild_id = $2" in sql_called
+            assert "COALESCE(t.is_private, FALSE) = FALSE OR t.owner_id = $3" in sql_called
+            assert params[:3] == (10, "g1", "u1")
+
+
+

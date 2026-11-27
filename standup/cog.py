@@ -124,10 +124,11 @@ class StandupCog(commands.Cog, name="Daily Standup"):
 
         await interaction.response.defer()
         guild_id = str(interaction.guild.id)
-        entries = await service.get_daily_standups(guild_id, date.today())
+        today_utc = datetime.now(timezone.utc).date()
+        entries = await service.get_daily_standups(guild_id, today_utc)
         embed = build_standup_digest_embed(
             guild_name=interaction.guild.name,
-            standup_date=date.today(),
+            standup_date=today_utc,
             entries=entries,
             lang=lang,
         )

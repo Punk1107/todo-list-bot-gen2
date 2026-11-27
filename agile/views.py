@@ -471,6 +471,12 @@ class RetroBoardView(ui.View):
         uid = str(interaction.user.id)
         count = await service.convert_action_items_to_tasks(self.sprint_id, self.project_id, uid)
         if count > 0:
+            button.disabled = True
+            if interaction.message:
+                try:
+                    await interaction.message.edit(view=self)
+                except discord.HTTPException:
+                    pass
             await interaction.response.send_message(
                 t("retro_actions_converted", self.lang, count=count),
                 ephemeral=False,

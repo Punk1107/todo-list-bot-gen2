@@ -130,7 +130,7 @@ async def get_active_timer(user_id: str) -> Optional[ActiveTimer]:
         SELECT att.*, t.task AS task_title
         FROM active_time_timers att
         JOIN tasks t ON att.task_id = t.task_id
-        WHERE att.user_id = $1
+        WHERE att.user_id = $1 AND t.is_deleted = FALSE
         """,
         (user_id,),
     )
@@ -176,9 +176,12 @@ async def cancel_timer(user_id: str) -> bool:
 async def get_user_timesheet(
     user_id: str,
     period: str = "week",
+    guild_id: Optional[str] = None,
+    viewer_id: Optional[str] = None,
 ) -> TimesheetSummary:
     """
     Aggregate user's logged hours over a specified period ('today', 'week', 'month', 'all').
+    Enforces tenant isolation (guild_id) and hides private tasks when viewed by another user.
     """
     now = datetime.now(timezone.utc)
     if period == "today":
@@ -190,16 +193,27 @@ async def get_user_timesheet(
     else:  # default 'week'
         start_date = now - timedelta(days=7)
 
+    conditions = ["ttl.user_id = $1", "ttl.logged_at >= $2", "t.is_deleted = FALSE"]
+    params: list = [user_id, start_date]
+    idx = 3
+    if guild_id is not None:
+        conditions.append(f"t.guild_id = ${idx}")
+        params.append(guild_id)
+        idx += 1
+    if viewer_id is not None and viewer_id != user_id:
+        conditions.append("COALESCE(t.is_private, FALSE) = FALSE")
+
+    where_sql = " AND ".join(conditions)
     rows = await db.fetchall(
-        """
+        f"""
         SELECT ttl.*, t.task AS task_title, t.project_id, p.name AS project_name
         FROM task_time_logs ttl
         JOIN tasks t ON ttl.task_id = t.task_id
         LEFT JOIN projects p ON t.project_id = p.project_id
-        WHERE ttl.user_id = $1 AND ttl.logged_at >= $2
+        WHERE {where_sql}
         ORDER BY ttl.logged_at DESC
         """,
-        (user_id, start_date),
+        tuple(params),
     )
 
     entries = [TimeLogEntry.from_row(r) for r in rows]
@@ -477,7 +491,7 @@ async def calculate_project_budget_spent(project_id: int) -> Optional[ProjectBud
         FROM task_time_logs ttl
         JOIN tasks t ON ttl.task_id = t.task_id
         LEFT JOIN project_members pm ON t.project_id = pm.project_id AND ttl.user_id = pm.user_id
-        WHERE t.project_id = $1
+        WHERE t.project_id = $1 AND t.is_deleted = FALSE
         """,
         (project_id,),
     )

@@ -1630,6 +1630,7 @@ MIGRATIONS: list[tuple[int, str]] = [
 
     -- Feature 41: Janitor Archival & Audit Summary
     ALTER TABLE tasks_archive
+        ADD COLUMN IF NOT EXISTS assignment_mode   TEXT NOT NULL DEFAULT 'first_wins',
         ADD COLUMN IF NOT EXISTS archived_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         ADD COLUMN IF NOT EXISTS archived_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE INDEX IF NOT EXISTS idx_tasks_archive_owner ON tasks_archive(owner_id, archived_at);
