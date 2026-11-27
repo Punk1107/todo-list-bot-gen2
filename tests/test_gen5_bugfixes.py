@@ -797,3 +797,181 @@ class TestRound3SchemaEmbedAndSecurityFixes:
             )
             assert purged is False
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 4 (/done Self-Deadlock, Timeout Retry Cap & QuickAction Ownership) Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCommandDoneDeadlockAndResilienceFixes:
+    @pytest.mark.asyncio
+    async def test_complete_personal_task_awards_exp_only_after_transaction_commits(self) -> None:
+        from contextlib import asynccontextmanager
+        from gamification import service as gam_service
+
+        in_transaction = False
+        exp_called_outside_tx = False
+
+        class _TxTrackedConn:
+            @asynccontextmanager
+            async def transaction(self):
+                nonlocal in_transaction
+                in_transaction = True
+                try:
+                    yield
+                finally:
+                    in_transaction = False
+
+            async def fetchrow(self, query: str, *params):
+                if "UPDATE tasks" in query:
+                    return {
+                        "task_id": 28,
+                        "task": "SPD445 - Business plan report",
+                        "priority": 5,
+                        "deadline": "2026-12-01T12:00:00+00:00",
+                        "project_id": None,
+                        "guild_id": "g1",
+                        "completed_at": datetime.now(timezone.utc),
+                        "owner_id": "u1",
+                    }
+                if "FROM users WHERE user_id=$1 FOR UPDATE" in query:
+                    return {
+                        "timezone": "Asia/Bangkok",
+                        "streak_days": 3,
+                        "streak_last_completion": None,
+                        "streak_freeze_tokens": 0,
+                        "vacation_until": None,
+                    }
+                if "INSERT INTO user_achievements" in query:
+                    return None
+                return None
+
+            async def execute(self, query: str, *params):
+                return "UPDATE 1"
+
+            async def fetchval(self, query: str, *params):
+                return True
+
+        @asynccontextmanager
+        async def _fake_acquire():
+            yield _TxTrackedConn()
+
+        async def _check_award_exp(uid: str, exp: int, reason: str = ""):
+            nonlocal exp_called_outside_tx
+            assert in_transaction is False, "award_exp must NOT run while conn.transaction() holds FOR UPDATE lock!"
+            exp_called_outside_tx = True
+            return {"exp_awarded": exp, "did_level_up": False}
+
+        async def _check_quest_contrib(gid: str, uid: str):
+            assert in_transaction is False, "record_task_contribution must NOT run inside conn.transaction()!"
+            return None
+
+        with (
+            patch.object(gam_service.db, "acquire", side_effect=_fake_acquire),
+            patch.object(gam_service, "award_exp", side_effect=_check_award_exp),
+            patch("quests.service.record_task_contribution", side_effect=_check_quest_contrib),
+            patch.object(gam_service.db, "invalidate_stats"),
+            patch.object(gam_service.db.query_cache, "invalidate_tables"),
+        ):
+            res = await gam_service.complete_personal_task(28, "u1", allow_assigned=True)
+            assert res == []
+            assert exp_called_outside_tx is True
+
+    @pytest.mark.asyncio
+    async def test_db_execute_caps_timeout_error_retries_and_formats_blank_exc_name(self) -> None:
+        mock_pool = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.execute = AsyncMock(side_effect=TimeoutError())
+
+        class _PoolAcquireCtx:
+            async def __aenter__(self):
+                return mock_conn
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        mock_pool.acquire = MagicMock(return_value=_PoolAcquireCtx())
+
+        assert db._format_exc(TimeoutError()) == "TimeoutError"
+        assert db._max_attempts_for_error(TimeoutError()) == 2
+
+        with (
+            patch.object(db, "_pool", mock_pool),
+            patch.object(db, "_retry_delay", return_value=0.001),
+        ):
+            with pytest.raises(TimeoutError):
+                await db.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", "u1")
+
+        # Must stop after 2 attempts (1 retry) instead of hanging for 5 attempts (150s)
+        assert mock_conn.execute.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_done_command_in_dm_does_not_send_duplicate_dm_and_reuses_summary(self) -> None:
+        from assignments.models import AssignmentSummary
+        from handlers.tasks_cog import TasksCog
+
+        cog = TasksCog(MagicMock())
+        dm_inter = MagicMock(spec=discord.Interaction)
+        dm_inter.user = MagicMock(id=777, roles=[])
+        dm_inter.guild = None
+        dm_inter.response = MagicMock()
+        dm_inter.response.defer = AsyncMock()
+        dm_inter.followup = MagicMock()
+        dm_inter.followup.send = AsyncMock()
+
+        task_row = {
+            "task": "SPD445 - Public Health Policy",
+            "status": "Pending",
+            "owner_id": "777",
+            "is_deleted": False,
+        }
+        fake_summary = AssignmentSummary(task_id=34, assignment_mode="first_wins")
+
+        with (
+            patch("handlers.tasks_cog.get_user_lang", new=AsyncMock(return_value="th")),
+            patch.object(db, "afetchone", new=AsyncMock(return_value=task_row)),
+            patch("routine_workflows.service.get_pending_checklists", new=AsyncMock(return_value=[])),
+            patch("assignments.service.get_assignment_summary", new=AsyncMock(return_value=fake_summary)) as mock_sum,
+            patch.object(gamification_service := __import__("gamification.service", fromlist=["complete_personal_task"]), "complete_personal_task", new=AsyncMock(return_value=[])),
+            patch.object(db, "alog_action", new=AsyncMock()),
+            patch("handlers.tasks_cog._send_dm", new=AsyncMock()) as mock_send_dm,
+        ):
+            await cog.done.callback(cog, dm_inter, task_id=34, force=False)
+
+        # get_assignment_summary called only once (reused by handle_task_completion_attempt)
+        assert mock_sum.await_count == 1
+        dm_inter.followup.send.assert_awaited_once()
+        mock_send_dm.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_quick_action_buttons_prevent_assignee_from_pinning_or_snoozing_owners_task(self) -> None:
+        from handlers.task_views import _QuickActionButtons
+
+        view = _QuickActionButtons(
+            task_id=88,
+            uid="assignee_2",
+            lang="en",
+            tz_name="UTC",
+            row_data={"task": "Shared Task", "owner_id": "owner_1"},
+        )
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id="assignee_2")
+        inter.response = MagicMock()
+        inter.response.defer = AsyncMock()
+        inter.followup = MagicMock()
+        inter.followup.send = AsyncMock()
+
+        with (
+            patch.object(
+                db,
+                "afetchone",
+                new=AsyncMock(return_value={"owner_id": "owner_1", "is_pinned": 0, "deadline": "2026-12-01T00:00:00+00:00", "is_deleted": False}),
+            ),
+            patch.object(db, "aexecute", new=AsyncMock()) as mock_exec,
+        ):
+            await view.quick_pin.callback(inter)
+            mock_exec.assert_not_awaited()
+
+            await view.quick_snooze.callback(inter)
+            mock_exec.assert_not_awaited()
+
+

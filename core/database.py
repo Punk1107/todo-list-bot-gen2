@@ -1934,6 +1934,18 @@ class DatabaseManager:
         return random.uniform(0, min(cap, 2.0))
 
     @staticmethod
+    def _format_exc(exc: Exception) -> str:
+        """Return a non-empty string representation of an exception for logging."""
+        text = str(exc).strip()
+        return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+    def _max_attempts_for_error(self, exc: Exception) -> int:
+        """Cap TimeoutError retries on query execution so a 30s timeout cannot hang for 150s."""
+        if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+            return min(2, self._MAX_RETRIES)
+        return self._MAX_RETRIES
+
+    @staticmethod
     def _is_transient_error(exc: Exception) -> bool:
         """Check if an exception is transient (connection reset, pool exhaustion, network blip)."""
         if isinstance(exc, (
@@ -1998,17 +2010,18 @@ class DatabaseManager:
             except Exception as exc:
                 if self._is_transient_error(exc):
                     last_exc = exc
-                    if attempt < self._MAX_RETRIES:
+                    max_attempts = self._max_attempts_for_error(exc)
+                    if attempt < max_attempts:
                         delay = self._retry_delay(attempt)
                         log.warning("DB transient error (attempt %d/%d), retry in %.3fs: %s",
-                                    attempt, self._MAX_RETRIES, delay, exc)
+                                    attempt, max_attempts, delay, self._format_exc(exc))
                         await asyncio.sleep(delay)
                     else:
                         log.error("DB execute failed after %d retries: %s | SQL: %.200s",
-                                  self._MAX_RETRIES, exc, sql)
+                                  attempt, self._format_exc(exc), sql)
                         raise
                 else:
-                    log.error("DB execute error: %s | SQL: %.200s", exc, sql)
+                    log.error("DB execute error: %s | SQL: %.200s", self._format_exc(exc), sql)
                     raise
         raise last_exc  # type: ignore[misc]
 
@@ -2028,10 +2041,11 @@ class DatabaseManager:
                 return
             except Exception as exc:
                 if self._is_transient_error(exc):
-                    if attempt < self._MAX_RETRIES:
+                    max_attempts = self._max_attempts_for_error(exc)
+                    if attempt < max_attempts:
                         delay = self._retry_delay(attempt)
                         log.warning("DB executemany transient error, retry %d/%d: %s",
-                                    attempt, self._MAX_RETRIES, exc)
+                                    attempt, max_attempts, self._format_exc(exc))
                         await asyncio.sleep(delay)
                     else:
                         raise
@@ -2074,10 +2088,11 @@ class DatabaseManager:
                 return
             except Exception as exc:
                 if self._is_transient_error(exc):
-                    if attempt < self._MAX_RETRIES:
+                    max_attempts = self._max_attempts_for_error(exc)
+                    if attempt < max_attempts:
                         delay = self._retry_delay(attempt)
                         log.warning("DB batch transient error, retry %d/%d: %s",
-                                    attempt, self._MAX_RETRIES, exc)
+                                    attempt, max_attempts, self._format_exc(exc))
                         await asyncio.sleep(delay)
                     else:
                         raise
@@ -2102,15 +2117,16 @@ class DatabaseManager:
             except Exception as exc:
                 if self._is_transient_error(exc):
                     last_exc = exc
-                    if attempt < self._MAX_RETRIES:
+                    max_attempts = self._max_attempts_for_error(exc)
+                    if attempt < max_attempts:
                         delay = self._retry_delay(attempt)
                         await asyncio.sleep(delay)
                     else:
                         log.error("DB fetchone failed after %d retries: %s | SQL: %.200s",
-                                  self._MAX_RETRIES, exc, sql)
+                                  attempt, self._format_exc(exc), sql)
                         raise
                 else:
-                    log.error("DB fetchone error: %s | SQL: %.200s", exc, sql)
+                    log.error("DB fetchone error: %s | SQL: %.200s", self._format_exc(exc), sql)
                     raise
         raise last_exc  # type: ignore[misc]
 
@@ -2131,15 +2147,16 @@ class DatabaseManager:
             except Exception as exc:
                 if self._is_transient_error(exc):
                     last_exc = exc
-                    if attempt < self._MAX_RETRIES:
+                    max_attempts = self._max_attempts_for_error(exc)
+                    if attempt < max_attempts:
                         delay = self._retry_delay(attempt)
                         await asyncio.sleep(delay)
                     else:
                         log.error("DB fetchall failed after %d retries: %s | SQL: %.200s",
-                                  self._MAX_RETRIES, exc, sql)
+                                  attempt, self._format_exc(exc), sql)
                         raise
                 else:
-                    log.error("DB fetchall error: %s | SQL: %.200s", exc, sql)
+                    log.error("DB fetchall error: %s | SQL: %.200s", self._format_exc(exc), sql)
                     raise
         raise last_exc  # type: ignore[misc]
 

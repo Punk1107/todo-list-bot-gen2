@@ -307,12 +307,29 @@ async def handle_task_completion_attempt(
     *,
     role_member_ids: Optional[Iterable[str]] = None,
     force: bool = False,
+    summary: Optional[AssignmentSummary] = None,
 ) -> SignoffResult:
     """
     Evaluate whether completing `task_id` by `actor_id` completes the task immediately
     ('first_wins' or `force=True`) or records an incremental sign-off ('all_signoff').
+    If ``summary`` is pre-fetched by the caller, reuse it instead of querying the DB again.
     """
-    summary = await get_assignment_summary(task_id, role_member_ids=role_member_ids)
+    if summary is not None:
+        if role_member_ids:
+            required_set = set(summary.user_ids)
+            required_set.update(str(uid) for uid in role_member_ids if uid)
+            signed_set = set(summary.signed_user_ids)
+            pending_ids = sorted(uid for uid in required_set if uid not in signed_set)
+            summary = AssignmentSummary(
+                task_id=summary.task_id,
+                assignment_mode=summary.assignment_mode,
+                user_ids=summary.user_ids,
+                role_ids=summary.role_ids,
+                signed_user_ids=summary.signed_user_ids,
+                pending_user_ids=pending_ids,
+            )
+    else:
+        summary = await get_assignment_summary(task_id, role_member_ids=role_member_ids)
     actor = str(actor_id)
 
     if force or summary.assignment_mode != "all_signoff" or summary.total_required <= 1:
