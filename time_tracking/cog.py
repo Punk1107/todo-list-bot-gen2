@@ -36,10 +36,14 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
         self,
         interaction: discord.Interaction,
         task_id: int,
+        *,
+        require_write: bool = False,
     ) -> tuple[Optional[dict], Optional[str]]:
         """Ensure task exists and actor has permission to view or log time against it."""
         row = await db.fetchone(
-            "SELECT task_id, task, owner_id, project_id, guild_id, is_private FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+            """SELECT task_id, task, owner_id, project_id, guild_id,
+                      COALESCE(is_private, FALSE) AS is_private
+               FROM tasks WHERE task_id = $1 AND is_deleted = FALSE""",
             (task_id,),
         )
         if not row:
@@ -66,9 +70,14 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
             if is_admin or project.owner_id == uid:
                 return dict(row), None
             role = await collab_service.get_member_role(int(proj_id), uid)
-            if role in ("owner", "lead", "member") or (role == "viewer" and not row.get("is_private")):
-                if not row.get("is_private") or role in ("owner", "lead"):
+            is_private = bool(row.get("is_private"))
+            if is_private:
+                if role in ("owner", "lead"):
                     return dict(row), None
+                return None, "denied"
+            allowed_roles = ("owner", "lead", "member") if require_write else ("owner", "lead", "member", "viewer")
+            if role in allowed_roles:
+                return dict(row), None
 
         return None, "denied"
 
@@ -117,7 +126,7 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
             return
 
         # Check task existence and access authorization
-        task_row, err_reason = await self._get_authorized_task(interaction, task_id)
+        task_row, err_reason = await self._get_authorized_task(interaction, task_id, require_write=True)
         if err_reason == "not_found":
             await interaction.response.send_message(t("task_not_found", lang, task_id=task_id), ephemeral=True)
             return
@@ -142,7 +151,7 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
         if entry.note:
             embed.add_field(name="📝 Note", value=entry.note, inline=True)
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=bool(task_row.get("is_private")))
 
     # ─────────────────────────────────────────────────────────────────────────
     # /time timer (start / stop / status)
@@ -166,7 +175,7 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
         lang = await get_user_lang(uid)
         await ensure_user(uid, lang)
 
-        task_row, err_reason = await self._get_authorized_task(interaction, task_id)
+        task_row, err_reason = await self._get_authorized_task(interaction, task_id, require_write=True)
         if err_reason == "not_found":
             await interaction.response.send_message(t("task_not_found", lang, task_id=task_id), ephemeral=True)
             return
@@ -193,6 +202,7 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
             content=f"⏳ {t('time_timer_started', lang)}",
             embed=embed,
             view=view,
+            ephemeral=bool(task_row.get("is_private")),
         )
 
     @timer_subgroup.command(
@@ -308,10 +318,16 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
                 return
             from collaboration import service as collab_service
             try:
-                await collab_service.get_project(project_id, gid)
+                project = await collab_service.get_project(project_id, gid)
             except collab_service.ProjectNotFound:
                 await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
                 return
+            is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+            if not is_admin and project.owner_id != uid:
+                role = await collab_service.get_member_role(project_id, uid)
+                if role is None:
+                    await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+                    return
 
         if not gid and not target_uid:
             target_uid = uid
@@ -380,10 +396,16 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
         if not target_uids and project_id:
             from collaboration import service as collab_service
             try:
-                await collab_service.get_project(project_id, guild_id)
+                project = await collab_service.get_project(project_id, guild_id)
             except collab_service.ProjectNotFound:
                 await interaction.response.send_message(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
                 return
+            is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+            if not is_admin and project.owner_id != uid:
+                role = await collab_service.get_member_role(project_id, uid)
+                if role is None:
+                    await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+                    return
             rows = await db.fetchall(
                 "SELECT user_id FROM project_members WHERE project_id = $1",
                 (project_id,),

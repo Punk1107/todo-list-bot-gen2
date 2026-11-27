@@ -34,7 +34,8 @@ async def get_accessible_task(
 ) -> Any:
     """Return a task after verifying personal ownership or project membership."""
     task = await db.afetchone(
-        """SELECT task_id, task, owner_id, project_id, guild_id, progress_pct, is_deleted
+        """SELECT task_id, task, owner_id, project_id, guild_id, progress_pct, is_deleted,
+                  COALESCE(is_private, FALSE) AS is_private
            FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
         (task_id,),
     )
@@ -58,10 +59,15 @@ async def get_accessible_task(
     except collaboration_service.ProjectNotFound as exc:
         raise TaskNotFound(task_id) from exc
 
-    if project.owner_id == user_id:
+    if project.owner_id == user_id or str(task["owner_id"]) == str(user_id):
         return task
 
     role = await collaboration_service.get_member_role(task["project_id"], user_id)
+    if bool(task.get("is_private")):
+        if role != "lead":
+            raise TaskAccessDenied(task_id)
+        return task
+
     role_level = {"viewer": 0, "member": 1, "lead": 2}
     if role is None or role_level.get(role, -1) < role_level[minimum_role]:
         raise TaskAccessDenied(task_id)

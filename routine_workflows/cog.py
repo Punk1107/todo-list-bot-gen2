@@ -28,6 +28,11 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    @staticmethod
+    def _has_manage_guild_permission(interaction: discord.Interaction) -> bool:
+        perms = getattr(interaction.user, "guild_permissions", None)
+        return bool(perms and (perms.manage_guild or perms.administrator))
+
     template_group = app_commands.Group(
         name="template",
         description="📋 Manage and use standard task templates",
@@ -82,7 +87,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
         )
         await interaction.response.defer(ephemeral=True)
         row = await db.afetchone(
-            "SELECT task_id, task, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+            """SELECT task_id, task, owner_id, project_id, guild_id,
+                      COALESCE(is_private, FALSE) AS is_private
+               FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
             (task_id,),
         )
         if not row:
@@ -119,7 +126,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
         )
         await interaction.response.defer(ephemeral=True)
         row = await db.afetchone(
-            "SELECT task_id, task, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+            """SELECT task_id, task, owner_id, project_id, guild_id,
+                      COALESCE(is_private, FALSE) AS is_private
+               FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
             (task_id,),
         )
         if not row:
@@ -189,6 +198,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
                 tpl = await service.create_checklist_template(
                     name=name, items=parsed, owner_id=uid, guild_id=gid, is_shared=shared
                 )
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
         except ValueError as exc:
             await interaction.followup.send(f"❌ {exc}", ephemeral=True)
             return
@@ -228,6 +240,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
                 guild_id=gid,
                 is_guild_admin=is_admin,
             )
+        except PermissionError:
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
         except PermissionError:
             await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
             return
@@ -530,6 +545,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
 
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        if not self._has_manage_guild_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         gid = str(interaction.guild_id)
         await interaction.response.defer(ephemeral=True)
 
@@ -565,6 +583,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
 
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        if not self._has_manage_guild_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         gid = str(interaction.guild_id)
         await interaction.response.defer(ephemeral=True)
 
@@ -596,6 +617,9 @@ class RoutineWorkflowsCog(commands.Cog, name="Routine Workflows"):
 
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        if not self._has_manage_guild_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         gid = str(interaction.guild_id)
         await interaction.response.defer(ephemeral=True)
 

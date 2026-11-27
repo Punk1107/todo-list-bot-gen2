@@ -1833,3 +1833,499 @@ class TestRound6SystemWideBugfixes:
 
 
 
+
+
+class TestRound7SystemWideBugfixes:
+    """Round 7 regression tests covering all 8 system-wide bug categories."""
+
+    @pytest.mark.asyncio
+    async def test_events_forum_and_realtime_block_private_and_cancelled_tasks(self) -> None:
+        from types import SimpleNamespace
+        from collaboration import events_service, forum_service
+        from realtime.dispatcher import RealtimeDispatcher
+
+        # 1. events_service imports Optional and excludes Cancelled & is_private tasks
+        assert events_service._coerce_utc_datetime(None) is None
+        guild = MagicMock(id=999, scheduled_events=[])
+        guild.create_scheduled_event = AsyncMock()
+        captured_sqls: list[str] = []
+
+        async def _fake_fetchall(sql: str, *args, **kwargs):
+            captured_sqls.append(sql)
+            return []
+
+        with (
+            patch.object(events_service.db, "fetchone", new=AsyncMock(return_value={"project_id": 1, "name": "Alpha", "emoji": "🚀"})),
+            patch.object(events_service.db, "fetchall", side_effect=_fake_fetchall),
+        ):
+            res = await events_service.sync_project_events(1, guild)
+            assert res == {"created": 0, "updated": 0}
+            task_sql = next(s for s in captured_sqls if "FROM tasks" in s)
+            assert "Cancelled" in task_sql
+            assert "COALESCE(is_private, FALSE) = FALSE" in task_sql
+
+        # 2. forum_service skips private tasks and recovers from discord.NotFound on stale thread
+        forum_ch = MagicMock(spec=discord.ForumChannel)
+        forum_ch.id = 555
+        forum_ch.available_tags = []
+        created_thread = MagicMock(id=888, jump_url="https://discord.com/channels/1/888")
+        forum_ch.create_thread = AsyncMock(return_value=(created_thread, MagicMock()))
+
+        bot = MagicMock()
+        bot.get_channel.side_effect = lambda cid: forum_ch if cid == 555 else None
+        bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "Unknown Channel"))
+
+        with (
+            patch.object(forum_service, "get_project_forum_config", new=AsyncMock(return_value={"forum_channel_id": "555"})),
+            patch.object(
+                forum_service.db,
+                "fetchone",
+                new=AsyncMock(return_value={
+                    "task_id": 10, "task": "Secret CEO plan", "status": "Pending",
+                    "priority": 7, "description": "Confidential", "deadline": None, "is_private": True,
+                }),
+            ),
+        ):
+            assert await forum_service.sync_task_to_forum(10, 1, bot) is None
+            forum_ch.create_thread.assert_not_awaited()
+
+        with (
+            patch.object(forum_service, "get_project_forum_config", new=AsyncMock(return_value={"forum_channel_id": "555"})),
+            patch.object(forum_service, "ensure_forum_kanban_tags", new=AsyncMock(return_value={})),
+            patch.object(
+                forum_service.db,
+                "fetchone",
+                new=AsyncMock(side_effect=[
+                    {
+                        "task_id": 11, "task": "Public Feature", "status": "Pending",
+                        "priority": 3, "description": "", "deadline": None, "is_private": False,
+                    },
+                    {"thread_id": "777"},
+                ]),
+            ),
+            patch.object(forum_service.db, "execute", new=AsyncMock()),
+            patch.object(forum_service.db.query_cache, "invalidate_table"),
+        ):
+            url = await forum_service.sync_task_to_forum(11, 1, bot)
+            assert url == "https://discord.com/channels/1/888"
+            forum_ch.create_thread.assert_awaited_once()
+
+        # 3. RealtimeDispatcher does not announce private or soft-deleted tasks
+        dispatcher = RealtimeDispatcher(MagicMock())
+        dispatcher._announce_task_completed = AsyncMock()
+        dispatcher._trigger_dashboard_update = AsyncMock()
+
+        await dispatcher._handle_task_update({
+            "old_record": {"status": "In_Progress"},
+            "record": {"task_id": 1, "project_id": 2, "status": "Completed", "is_private": True},
+        })
+        await dispatcher._handle_task_update({
+            "old_record": {"status": "In_Progress"},
+            "record": {"task_id": 2, "project_id": 2, "status": "Completed", "is_deleted": True},
+        })
+        dispatcher._announce_task_completed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_reminder_loops_handle_sentinel_users_and_prevent_public_channel_leaks(self) -> None:
+        from datetime import datetime, timedelta
+        import pytz
+        from handlers.reminders_cog import RemindersCog
+
+        bot = MagicMock()
+        bot.wait_until_ready = AsyncMock()
+        dm_user = MagicMock(send=AsyncMock())
+        bot.get_user.side_effect = lambda uid: dm_user if uid == 123456 else None
+        bot.fetch_user = AsyncMock(return_value=dm_user)
+
+        guild_channel = MagicMock(spec=discord.TextChannel)
+        guild_channel.guild = MagicMock(id=900)
+        guild_channel.send = AsyncMock()
+        bot.get_channel.return_value = guild_channel
+
+        with patch("discord.ext.tasks.Loop.start"):
+            cog = RemindersCog(bot)
+
+        now = datetime.now(pytz.UTC)
+        soon_iso = (now + timedelta(hours=2)).isoformat()
+
+        # 1. deadline_dm_loop skips 'deleted_user' without ValueError and still notifies valid user
+        dm_rows = [
+            {"task_id": 1, "task": "Anon Task", "deadline": soon_iso, "dm_reminded": 0, "user_id": "deleted_user", "timezone": "UTC", "lang": "en", "notify_enabled": 1},
+            {"task_id": 2, "task": "Valid Task", "deadline": soon_iso, "dm_reminded": 0, "user_id": "123456", "timezone": "UTC", "lang": "en", "notify_enabled": 1},
+        ]
+        with (
+            patch("handlers.reminders_cog.db.afetchall", new=AsyncMock(side_effect=[dm_rows, [], []])),
+            patch("handlers.reminders_cog.db.aexecute_batch", new=AsyncMock()) as mock_batch,
+            patch("handlers.reminders_cog.asyncio.sleep", new=AsyncMock()),
+        ):
+            await cog.deadline_dm_loop()
+            dm_user.send.assert_awaited_once()
+            mock_batch.assert_awaited_once()
+            batch_ops = mock_batch.await_args.args[0]
+            assert len(batch_ops) == 2
+
+        # 2. reminder_loop redirects private & cross-guild tasks to DM instead of guild TextChannel
+        dm_user.send.reset_mock()
+        rem_rows = [
+            {
+                "task_id": 10, "task": "Private Secret", "deadline": soon_iso, "is_pinned": False,
+                "priority": 1, "is_private": True, "guild_id": "900",
+                "user_id": "123456", "channel_id": 500, "timezone": "UTC", "lang": "en", "notify_enabled": 1,
+            },
+            {
+                "task_id": 11, "task": "Other Guild Task", "deadline": soon_iso, "is_pinned": False,
+                "priority": 1, "is_private": False, "guild_id": "999",
+                "user_id": "123456", "channel_id": 500, "timezone": "UTC", "lang": "en", "notify_enabled": 1,
+            },
+            {
+                "task_id": 12, "task": "Same Guild Public", "deadline": soon_iso, "is_pinned": False,
+                "priority": 1, "is_private": False, "guild_id": "900",
+                "user_id": "123456", "channel_id": 500, "timezone": "UTC", "lang": "en", "notify_enabled": 1,
+            },
+        ]
+        with (
+            patch("handlers.reminders_cog.db.afetchall", new=AsyncMock(return_value=rem_rows)),
+            patch("handlers.reminders_cog.db.aexecute_batch", new=AsyncMock()),
+            patch("handlers.reminders_cog.asyncio.sleep", new=AsyncMock()),
+        ):
+            await cog.reminder_loop()
+            assert dm_user.send.await_count == 2
+            assert guild_channel.send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_task_features_and_routine_workflows_enforce_private_and_manage_guild(self) -> None:
+        from types import SimpleNamespace
+        from task_features import service as tf_service
+        from routine_workflows import service as rw_service
+        from routine_workflows.cog import RoutineWorkflowsCog
+
+        private_proj_task = {
+            "task_id": 77, "task": "Confidential Salary Review", "owner_id": "owner_u",
+            "project_id": 5, "guild_id": "g1", "progress_pct": 10, "is_deleted": False, "is_private": True,
+        }
+        fake_proj = SimpleNamespace(owner_id="proj_owner")
+
+        # 1. task_features blocks normal member/viewer from private project task, allows lead
+        with (
+            patch.object(tf_service.db, "afetchone", new=AsyncMock(return_value=private_proj_task)),
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="member")),
+        ):
+            with pytest.raises(tf_service.TaskAccessDenied):
+                await tf_service.get_accessible_task(77, "other_member")
+
+        with (
+            patch.object(tf_service.db, "afetchone", new=AsyncMock(return_value=private_proj_task)),
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="lead")),
+        ):
+            res = await tf_service.get_accessible_task(77, "lead_u")
+            assert res["task_id"] == 77
+
+        # 2. routine_workflows blocks regular member from private project task checklists
+        with (
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="member")),
+        ):
+            with pytest.raises(PermissionError):
+                await rw_service._verify_task_checklist_access(private_proj_task, "other_member", guild_id="g1")
+
+        # 3. routine_rule_list rejects user without manage_guild/administrator at runtime
+        cog = RoutineWorkflowsCog(MagicMock())
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild_id = 100
+        inter.user = MagicMock(id=55, guild_permissions=SimpleNamespace(manage_guild=False, administrator=False))
+        inter.response = MagicMock(send_message=AsyncMock(), defer=AsyncMock())
+        with patch("routine_workflows.cog.get_user_lang", new=AsyncMock(return_value="en")):
+            await cog.routine_rule_list.callback(cog, inter)
+            inter.response.send_message.assert_awaited_once()
+            inter.response.defer.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_time_tracking_blocks_viewer_writes_private_exposure_and_non_members(self) -> None:
+        from types import SimpleNamespace
+        from time_tracking.cog import TimeTrackingCog
+
+        cog = TimeTrackingCog(MagicMock())
+        viewer_member = MagicMock(spec=discord.Member)
+        viewer_member.id = 200
+        viewer_member.roles = []
+        viewer_member.guild_permissions = SimpleNamespace(administrator=False)
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = viewer_member
+        inter.guild = MagicMock(id=10, name="Guild")
+        inter.guild_id = 10
+        inter.response = MagicMock(send_message=AsyncMock())
+
+        proj_task = {
+            "task_id": 30, "task": "Public Project Task", "owner_id": "100",
+            "project_id": 7, "guild_id": "10", "is_private": False,
+        }
+        fake_proj = SimpleNamespace(owner_id="100")
+
+        # 1. viewer cannot write time (require_write=True)
+        with (
+            patch("time_tracking.cog.db.fetchone", new=AsyncMock(return_value=proj_task)),
+            patch("assignments.service.is_user_assigned_to_task", new=AsyncMock(return_value=False)),
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="viewer")),
+        ):
+            row, err = await cog._get_authorized_task(inter, 30, require_write=True)
+            assert row is None and err == "denied"
+
+        # 2. /time log on private task sends ephemeral=True
+        owner_inter = MagicMock(spec=discord.Interaction)
+        owner_inter.user = MagicMock(id=100, roles=[], display_name="Owner")
+        owner_inter.guild_id = 10
+        owner_inter.response = MagicMock(send_message=AsyncMock())
+        private_task = {**proj_task, "is_private": True}
+        fake_entry = SimpleNamespace(hours_spent=1.5, is_billable=False, note=None)
+
+        with (
+            patch("time_tracking.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("time_tracking.cog.ensure_user", new=AsyncMock()),
+            patch.object(cog, "_get_authorized_task", new=AsyncMock(return_value=(private_task, None))),
+            patch("time_tracking.cog.service.log_time", new=AsyncMock(return_value=fake_entry)),
+        ):
+            await cog.time_log.callback(cog, owner_inter, task_id=30, hours=1.5)
+            assert owner_inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+        # 3. /time estimation denies non-member for project_id
+        with (
+            patch("time_tracking.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value=None)),
+            patch("time_tracking.cog.service.calculate_estimation_accuracy", new=AsyncMock()) as mock_est,
+        ):
+            await cog.time_estimation.callback(cog, inter, project_id=7)
+            mock_est.assert_not_awaited()
+            assert inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_agile_sprint_owner_access_private_poker_block_and_backlog_filtering(self) -> None:
+        from types import SimpleNamespace
+        from agile.cog import AgileCog, _verify_task_guild_access
+        from agile import service as agile_service
+
+        cog = AgileCog(MagicMock())
+
+        # 1. Project owner not in project_members can create a sprint
+        owner_member = MagicMock(spec=discord.Member)
+        owner_member.id = 500
+        owner_member.guild_permissions = SimpleNamespace(administrator=False)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = owner_member
+        inter.guild = MagicMock(id=50)
+        inter.response = MagicMock(defer=AsyncMock(), send_message=AsyncMock())
+        inter.followup = MagicMock(send=AsyncMock())
+
+        fake_proj = SimpleNamespace(owner_id="500", emoji="🚀", name="Alpha")
+        fake_sprint = SimpleNamespace(sprint_id=9, name="Sprint 1")
+        with (
+            patch("agile.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("agile.cog.ensure_user", new=AsyncMock()),
+            patch("agile.cog.collab_service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("agile.cog.collab_service.get_member_role", new=AsyncMock(return_value=None)),
+            patch("agile.cog.service.create_sprint", new=AsyncMock(return_value=fake_sprint)) as mock_create,
+            patch("agile.cog.build_sprint_embed", return_value=discord.Embed(title="S1")),
+        ):
+            await cog.sprint_create.callback(cog, inter, project_id=1, name="Sprint 1")
+            mock_create.assert_awaited_once()
+
+        # 2. _verify_task_guild_access rejects private task for public poker (allow_private=False)
+        #    and rejects non-owner guild member on personal guild task
+        other_member = MagicMock(spec=discord.Member)
+        other_member.id = 600
+        other_member.guild_permissions = SimpleNamespace(administrator=False)
+        other_inter = MagicMock(spec=discord.Interaction)
+        other_inter.user = other_member
+        other_inter.guild = MagicMock(id=50)
+        other_inter.followup = MagicMock(send=AsyncMock())
+
+        with patch("agile.cog.db.fetchone", new=AsyncMock(return_value={
+            "task_id": 12, "task": "Secret Personal", "owner_id": "500",
+            "project_id": None, "guild_id": "50", "is_private": True,
+        })):
+            assert await _verify_task_guild_access(inter, 12, "en", allow_private=False) is None
+
+        with patch("agile.cog.db.fetchone", new=AsyncMock(return_value={
+            "task_id": 13, "task": "Other Guild Task", "owner_id": "500",
+            "project_id": None, "guild_id": "50", "is_private": False,
+        })):
+            assert await _verify_task_guild_access(other_inter, 13, "en", allow_private=True) is None
+
+        # 3. get_backlog_tasks & get_sprint_tasks exclude Cancelled and is_private by default
+        with patch.object(agile_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_all:
+            await agile_service.get_backlog_tasks(1)
+            sql_backlog = mock_all.await_args.args[0]
+            assert "Cancelled" in sql_backlog
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_backlog
+
+            await agile_service.get_sprint_tasks(9)
+            sql_sprint = mock_all.await_args.args[0]
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_sprint
+
+    @pytest.mark.asyncio
+    async def test_cpm_roadmap_membership_privacy_and_velocity_latest_6_sprints(self) -> None:
+        from types import SimpleNamespace
+        from cpm_roadmap.cog import RoadmapCog
+        from cpm_roadmap import cpm_engine, roadmap_service
+        from visualization import service as viz_service
+
+        # 1. /roadmap view denies non-members
+        cog = RoadmapCog(MagicMock())
+        outsider = MagicMock(spec=discord.Member)
+        outsider.id = 777
+        outsider.guild_permissions = SimpleNamespace(administrator=False)
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = outsider
+        inter.guild = MagicMock(id=70)
+        inter.response = MagicMock(defer=AsyncMock())
+        inter.followup = MagicMock(send=AsyncMock())
+
+        with (
+            patch("cpm_roadmap.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("cpm_roadmap.cog.ensure_user", new=AsyncMock()),
+            patch("cpm_roadmap.cog.collab_service.get_project", new=AsyncMock(return_value=SimpleNamespace(owner_id="1", emoji="🗺️", name="Road"))),
+            patch("cpm_roadmap.cog.collab_service.get_member_role", new=AsyncMock(return_value=None)),
+            patch("cpm_roadmap.cog.roadmap_service.get_project_milestones", new=AsyncMock()) as mock_ms,
+        ):
+            await cog.roadmap_view.callback(cog, inter, project_id=3)
+            mock_ms.assert_not_awaited()
+            assert inter.followup.send.await_args.kwargs.get("ephemeral") is True
+
+        # 2. _identify_bottlenecks & calculate_project_cpm exclude Cancelled and is_private
+        with patch.object(roadmap_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_bn:
+            await roadmap_service._identify_bottlenecks(3, 1)
+            sql_bn = mock_bn.await_args.args[0]
+            assert "Cancelled" in sql_bn
+            assert "COALESCE(t.is_private, FALSE) = FALSE" in sql_bn
+
+        with (
+            patch.object(cpm_engine.db, "afetchone", new=AsyncMock(return_value={"project_id": 3, "name": "Road", "created_at": None})),
+            patch.object(cpm_engine.db, "afetchall", new=AsyncMock(return_value=[])) as mock_cpm,
+        ):
+            await cpm_engine.calculate_project_cpm(3)
+            sql_cpm = mock_cpm.await_args.args[0]
+            assert "status != 'Cancelled'" in sql_cpm
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_cpm
+
+        # 3. get_project_velocity_history queries latest 6 (DESC LIMIT 6) and sorts ASC chronologically
+        desc_rows = [
+            {"sprint_id": 8, "name": "Sprint 8", "total_points": 30, "completed_points": 28},
+            {"sprint_id": 7, "name": "Sprint 7", "total_points": 25, "completed_points": 20},
+            {"sprint_id": 6, "name": "Sprint 6", "total_points": 20, "completed_points": 18},
+        ]
+        with (
+            patch.object(viz_service.db, "fetchone", new=AsyncMock(return_value={"name": "Alpha"})),
+            patch.object(viz_service.db, "fetchall", new=AsyncMock(return_value=desc_rows)) as mock_vel,
+        ):
+            res = await viz_service.get_project_velocity_history(1)
+            assert "ORDER BY s.sprint_id DESC" in mock_vel.await_args.args[0]
+            assert res["sprint_names"] == ["Sprint 6", "Sprint 7", "Sprint 8"]
+
+    @pytest.mark.asyncio
+    async def test_settings_autocomplete_lang_and_runtime_admin_guards(self) -> None:
+        from types import SimpleNamespace
+        from handlers.settings_cog import SettingsCog, CustomThemeBuilderView
+        from handlers.monitoring_cog import MonitoringCog, MonitoringSetupModal
+
+        # 1. _quick_autocomplete_lang reads cached.lang (not cached.language)
+        scog = SettingsCog(MagicMock())
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=42, guild_permissions=SimpleNamespace(manage_guild=False, administrator=False))
+        inter.locale = "en-US"
+        inter.guild_id = 10
+        inter.guild = MagicMock(id=10)
+        inter.response = MagicMock(send_message=AsyncMock(), send_modal=AsyncMock(), defer=AsyncMock())
+
+        with patch("handlers.settings_cog.db.user_cache.get", return_value=SimpleNamespace(lang="ja")):
+            assert scog._quick_autocomplete_lang(inter) == "ja"
+
+        # 2. /theme guild & CustomThemeBuilderView._on_save reject non-manage_guild users
+        with patch("handlers.settings_cog.get_user_lang", new=AsyncMock(return_value="en")):
+            await scog.theme_guild.callback(scog, inter)
+            inter.response.send_modal.assert_not_awaited()
+            assert inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+        view = CustomThemeBuilderView(
+            user_id="42", lang="en", name="GuildTheme",
+            primary_color="#5865F2", success_color="#57F287", warning_color="#FEE75C",
+            danger_color="#ED4245", guild_id="10", is_guild_scope=True,
+        )
+        inter.response.send_message.reset_mock()
+        with patch("handlers.settings_cog.save_guild_theme", new=AsyncMock()) as mock_save:
+            await view._on_save(inter)
+            mock_save.assert_not_awaited()
+            assert inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+        # 3. MonitoringCog commands & MonitoringSetupModal reject non-admin users at runtime
+        mcog = MonitoringCog(MagicMock())
+        inter.response.send_message.reset_mock()
+        with patch("handlers.monitoring_cog.get_user_lang", new=AsyncMock(return_value="en")):
+            await mcog.health_cmd.callback(mcog, inter)
+            inter.response.defer.assert_not_awaited()
+            assert inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+            modal = MonitoringSetupModal()
+            inter.response.send_message.reset_mock()
+            await modal.on_submit(inter)
+            assert inter.response.send_message.await_args.kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_bulk_done_enforces_dod_signoff_blockers_and_formats_null_deadline(self) -> None:
+        from types import SimpleNamespace
+        from discord_native.bulk_cog import BulkTaskView
+
+        # 1. BulkTaskSelect renders status cleanly without 'None' when deadline is None
+        rows = [{"task_id": 1, "task": "No deadline task", "deadline": None, "status": "Pending"}]
+        view = BulkTaskView("42", "en", "done", rows, 1)
+        select = next(item for item in view.children if item.__class__.__name__ == "BulkTaskSelect")
+        assert "None" not in (select.options[0].description or "")
+        assert select.options[0].description == "Pending"
+
+        # 2. /bulk done rejects tasks with pending DoD, incomplete all_signoff, or active blockers
+        bulk_view = BulkTaskView(
+            "42", "en", "done",
+            [
+                {"task_id": 101, "task": "Has DoD", "deadline": None, "status": "Pending"},
+                {"task_id": 102, "task": "Collective Signoff", "deadline": None, "status": "Pending"},
+                {"task_id": 103, "task": "Blocked Task", "deadline": None, "status": "Pending"},
+            ],
+            3,
+        )
+        bulk_view.selected_ids = {101, 102, 103}
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=42)
+        inter.response = MagicMock(defer=AsyncMock())
+        inter.edit_original_response = AsyncMock()
+
+        async def _fake_dod(tid: int) -> int:
+            return 2 if tid == 101 else 0
+
+        async def _fake_afetchone(sql: str, params: tuple):
+            tid = params[0]
+            if "FROM tasks" in sql:
+                if tid == 102:
+                    return {"project_id": None, "assignment_mode": "all_signoff"}
+                if tid == 103:
+                    return {"project_id": 5, "assignment_mode": "any"}
+            if "project_task_dependencies" in sql and tid == 103:
+                return {"blocked_by_task_id": 99}
+            return None
+
+        with (
+            patch("routine_workflows.service.get_pending_checklist_count", side_effect=_fake_dod),
+            patch("discord_native.bulk_cog.db.afetchone", side_effect=_fake_afetchone),
+            patch(
+                "assignments.service.get_assignment_summary",
+                new=AsyncMock(return_value=SimpleNamespace(pending_user_ids=["42", "99"], role_ids=[])),
+            ),
+            patch("discord_native.bulk_cog.gamification_service.complete_personal_task", new=AsyncMock()) as mock_complete,
+        ):
+            await bulk_view.apply.callback(inter)
+            mock_complete.assert_not_awaited()
+            result_content = inter.edit_original_response.await_args.kwargs.get("content", "")
+            assert "0" in result_content and "3" in result_content

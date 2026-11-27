@@ -74,8 +74,13 @@ class RealtimeDispatcher:
 
         project_id = int(project_id_raw)
 
-        # Task completed transition
-        if new_status == "Completed" and old_status != "Completed":
+        # Task completed transition (skip private or soft-deleted tasks)
+        if (
+            new_status == "Completed"
+            and old_status != "Completed"
+            and not new.get("is_private")
+            and not new.get("is_deleted")
+        ):
             await self._announce_task_completed(new, project_id)
 
         # Always trigger dashboard refresh for any task status change
@@ -96,6 +101,8 @@ class RealtimeDispatcher:
         project_id: int,
     ) -> None:
         """Post a task-completed embed to the project's notification channel."""
+        if task_record.get("is_private") or task_record.get("is_deleted"):
+            return
         guild_id_raw = task_record.get("guild_id")
         if not guild_id_raw:
             return

@@ -74,6 +74,13 @@ class RoadmapCog(commands.Cog, name="Strategic Roadmap"):
             await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
             return
 
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        if not is_admin and project.owner_id != uid:
+            role = await collab_service.get_member_role(project_id, uid)
+            if role is None:
+                await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+                return
+
         milestones = await roadmap_service.get_project_milestones(project_id)
         health_map: Dict[int, MilestoneHealth] = {}
         for m in milestones:

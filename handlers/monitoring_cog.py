@@ -68,14 +68,19 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
         from core.database import db
 
         guild = interaction.guild
+        lang = await get_user_lang(interaction.user.id)
         if not guild or not interaction.guild_id:
-            lang = await get_user_lang(interaction.user.id)
             await interaction.response.send_message(
                 t("monitoring_guild_only", lang), ephemeral=True
             )
             return
+        perms = getattr(interaction.user, "guild_permissions", None)
+        if not (perms and perms.administrator):
+            await interaction.response.send_message(
+                t("permission_denied", lang), ephemeral=True
+            )
+            return
 
-        lang = await get_user_lang(interaction.user.id)
         guild_id = str(interaction.guild_id)
         saved: list[str] = []
         errors: list[str] = []
@@ -202,6 +207,11 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    @staticmethod
+    def _has_admin_permission(interaction: discord.Interaction) -> bool:
+        perms = getattr(interaction.user, "guild_permissions", None)
+        return bool(perms and perms.administrator)
+
     # ── Group: /monitoring ────────────────────────────────────────────────────
 
     monitoring_group = app_commands.Group(
@@ -217,6 +227,10 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
     )
     async def monitoring_setup(self, interaction: discord.Interaction) -> None:
         """Open a Modal to configure monitoring settings."""
+        if not self._has_admin_permission(interaction):
+            lang = await get_user_lang(interaction.user.id)
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         await interaction.response.send_modal(MonitoringSetupModal())
 
     @monitoring_group.command(
@@ -231,6 +245,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
             await interaction.response.send_message(
                 t("monitoring_guild_only", lang), ephemeral=True
             )
+            return
+        if not self._has_admin_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True)
@@ -303,6 +320,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
     async def health_cmd(self, interaction: discord.Interaction) -> None:
         """Display the latest health snapshot as a rich embed."""
         lang = await get_user_lang(interaction.user.id)
+        if not self._has_admin_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.health_monitor import health_monitor
@@ -326,6 +346,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
     async def errors_cmd(self, interaction: discord.Interaction) -> None:
         """Display the error tracker summary embed."""
         lang = await get_user_lang(interaction.user.id)
+        if not self._has_admin_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.error_tracker import error_tracker
@@ -349,6 +372,9 @@ class MonitoringCog(commands.Cog, name="Monitoring"):
     async def cmdstats_cmd(self, interaction: discord.Interaction) -> None:
         """Display command usage statistics."""
         lang = await get_user_lang(interaction.user.id)
+        if not self._has_admin_permission(interaction):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
         try:
             from monitoring.commands_log import commands_logger

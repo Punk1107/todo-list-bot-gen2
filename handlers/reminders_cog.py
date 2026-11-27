@@ -318,6 +318,7 @@ class RemindersCog(commands.Cog, name="Reminders"):
 
             rows = await db.afetchall(
                 """SELECT t.task_id, t.task, t.deadline, t.is_pinned, t.priority,
+                          COALESCE(t.is_private, FALSE) AS is_private, t.guild_id,
                           u.user_id, u.channel_id, u.timezone, u.lang, u.notify_enabled
                    FROM tasks t
                    JOIN users u ON t.owner_id = u.user_id
@@ -398,7 +399,31 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     embed.add_field(name="\u200B", value=f"> 💡 {hint}", inline=False)
                     embed.set_footer(text=t("footer_text", lang))
 
-                    await channel.send(f"<@{row['user_id']}>", embed=embed)
+                    channel_guild = getattr(channel, "guild", None)
+                    is_private_task = bool(row.get("is_private")) if hasattr(row, "get") else False
+                    task_gid = row.get("guild_id") if hasattr(row, "get") else None
+                    must_dm_only = (
+                        channel_guild is not None
+                        and (
+                            is_private_task
+                            or not task_gid
+                            or str(task_gid) != str(channel_guild.id)
+                        )
+                    )
+                    if must_dm_only:
+                        uid_str = str(row["user_id"] or "").strip()
+                        if not uid_str.isdigit():
+                            reminder_updates.append((
+                                "UPDATE tasks SET last_reminder=NOW() WHERE task_id=$1",
+                                (tid,),
+                            ))
+                            continue
+                        dm_user = self.bot.get_user(int(uid_str))
+                        if dm_user is None:
+                            dm_user = await self.bot.fetch_user(int(uid_str))
+                        await dm_user.send(embed=embed)
+                    else:
+                        await channel.send(f"<@{row['user_id']}>", embed=embed)
 
                     # Queue last_reminder update into BulkWriter instead of individual execute()
                     reminder_updates.append((
@@ -766,11 +791,25 @@ class RemindersCog(commands.Cog, name="Reminders"):
                     tz_name = row["timezone"] or config.bot.default_timezone
                     tid     = row["task_id"]
 
+                    uid_str = str(uid or "").strip()
+                    if not uid_str.isdigit():
+                        log.debug(
+                            "deadline_dm_loop: skipping non-numeric user_id %r for task_id=%d",
+                            uid, tid,
+                        )
+                        new_mask = row["dm_reminded"] | bit
+                        dm_updates.append((
+                            "UPDATE tasks SET dm_reminded=$1 WHERE task_id=$2",
+                            (new_mask, tid),
+                        ))
+                        continue
+
                     # Fetch the Discord user object — try cache first, then API
-                    user = self.bot.get_user(int(uid))
+                    uid_int = int(uid_str)
+                    user = self.bot.get_user(uid_int)
                     if user is None:
                         try:
-                            user = await self.bot.fetch_user(int(uid))
+                            user = await self.bot.fetch_user(uid_int)
                         except (discord.NotFound, discord.HTTPException) as user_exc:
                             log.debug("deadline_dm_loop: could not fetch user %s: %s; setting bitmask to prevent retry hammer", uid, user_exc)
                             new_mask = row["dm_reminded"] | bit

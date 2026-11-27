@@ -313,6 +313,10 @@ class CustomThemeBuilderView(discord.ui.View):
             return
         emojis = EMOJI_PRESETS.get(self.emoji_preset, EMOJI_PRESETS["classic"])
         if self.is_guild_scope and self.guild_id:
+            perms = getattr(interaction.user, "guild_permissions", None)
+            if not (perms and (perms.manage_guild or perms.administrator)):
+                await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+                return
             palette = await save_guild_theme(
                 self.guild_id,
                 self.user_id,
@@ -522,8 +526,8 @@ class SettingsCog(commands.Cog, name="Settings"):
 
     def _quick_autocomplete_lang(self, interaction: discord.Interaction) -> str:
         cached = db.user_cache.get(str(interaction.user.id))
-        if cached and getattr(cached, "language", None):
-            return str(cached.language)
+        if cached and getattr(cached, "lang", None):
+            return str(cached.lang)
         return locale_to_lang(str(getattr(interaction, "locale", "en")))
 
     @app_commands.command(name="help", description="📖 ดูวิธีใช้และค้นหาคำสั่ง / Interactive Help Center")
@@ -700,6 +704,10 @@ class SettingsCog(commands.Cog, name="Settings"):
     async def theme_guild(self, interaction: discord.Interaction) -> None:
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
+        perms = getattr(interaction.user, "guild_permissions", None)
+        if not (perms and (perms.manage_guild or perms.administrator)):
+            await interaction.response.send_message(t("permission_denied", lang), ephemeral=True)
+            return
         await ensure_user(uid, lang)
         modal = CustomThemeModal(
             user_id=uid,

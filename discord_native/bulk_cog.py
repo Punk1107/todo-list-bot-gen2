@@ -21,15 +21,18 @@ _PAGE_SIZE = 25
 class BulkTaskSelect(ui.Select):
     def __init__(self, view: "BulkTaskView", rows: list) -> None:
         self.bulk_view = view
-        options = [
-            discord.SelectOption(
-                label=f"#{row['task_id']} · {row['task'][:75]}",
-                value=str(row["task_id"]),
-                description=f"{row['status']} · {str(row['deadline'])[:40]}",
-                default=row["task_id"] in view.selected_ids,
+        options = []
+        for row in rows:
+            dl = row.get("deadline") if hasattr(row, "get") else row["deadline"]
+            desc = f"{row['status']} · {str(dl)[:40]}" if dl else str(row["status"])
+            options.append(
+                discord.SelectOption(
+                    label=f"#{row['task_id']} · {row['task'][:75]}",
+                    value=str(row["task_id"]),
+                    description=desc[:100],
+                    default=row["task_id"] in view.selected_ids,
+                )
             )
-            for row in rows
-        ]
         super().__init__(
             placeholder=t("bulk_select_placeholder", view.lang),
             min_values=0,
@@ -138,6 +141,46 @@ class BulkTaskView(ui.View):
         for task_id in sorted(self.selected_ids):
             try:
                 if self.action == "done":
+                    from routine_workflows import service as routine_service
+
+                    pending_dod = await routine_service.get_pending_checklist_count(task_id)
+                    if pending_dod > 0:
+                        failed += 1
+                        continue
+
+                    guard_row = await db.afetchone(
+                        """SELECT project_id, COALESCE(assignment_mode, 'any') AS assignment_mode
+                           FROM tasks
+                           WHERE task_id=$1 AND owner_id=$2 AND is_deleted=FALSE""",
+                        (task_id, self.uid),
+                    )
+                    if guard_row is None:
+                        failed += 1
+                        continue
+
+                    if guard_row.get("assignment_mode") == "all_signoff":
+                        from assignments import service as assign_service
+                        summary = await assign_service.get_assignment_summary(task_id)
+                        other_pending = [u for u in summary.pending_user_ids if str(u) != self.uid]
+                        if other_pending or summary.role_ids:
+                            failed += 1
+                            continue
+
+                    if guard_row.get("project_id") is not None:
+                        blocker_row = await db.afetchone(
+                            """SELECT d.blocked_by_task_id
+                               FROM project_task_dependencies d
+                               JOIN tasks bt ON bt.task_id = d.blocked_by_task_id
+                               WHERE d.task_id=$1
+                                 AND bt.is_deleted=FALSE
+                                 AND bt.status != 'Completed'
+                               LIMIT 1""",
+                            (task_id,),
+                        )
+                        if blocker_row is not None:
+                            failed += 1
+                            continue
+
                     awarded = await gamification_service.complete_personal_task(task_id, self.uid)
                     if awarded is None:
                         failed += 1

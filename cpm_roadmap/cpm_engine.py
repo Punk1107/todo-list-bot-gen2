@@ -165,7 +165,7 @@ def calculate_cpm_graph(
     )
 
 
-async def calculate_project_cpm(project_id: int) -> CPMGraphResult:
+async def calculate_project_cpm(project_id: int, *, include_private: bool = False) -> CPMGraphResult:
     """
     Execute CPM network analysis on a project using pure SQL and graph algorithms.
     Returns CPMGraphResult with nodes, critical path, total duration, and risk warnings.
@@ -178,11 +178,12 @@ async def calculate_project_cpm(project_id: int) -> CPMGraphResult:
     proj_start = proj_row["created_at"] if proj_row and proj_row.get("created_at") else datetime.now(timezone.utc)
 
     # 2. Fetch all open / active tasks for this project
+    privacy_clause = "" if include_private else " AND COALESCE(is_private, FALSE) = FALSE"
     task_rows = await db.afetchall(
-        """
+        f"""
         SELECT task_id, task, status, estimated_hours, deadline, created_at
         FROM tasks
-        WHERE project_id = $1 AND is_deleted = FALSE
+        WHERE project_id = $1 AND is_deleted = FALSE AND status != 'Cancelled'{privacy_clause}
         ORDER BY task_id ASC
         """,
         (project_id,),
