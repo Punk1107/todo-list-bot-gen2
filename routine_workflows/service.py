@@ -358,6 +358,8 @@ async def _verify_task_checklist_access(
     if str(task_row.get("owner_id") or "") == uid:
         return
 
+    is_private = bool(task_row.get("is_private")) if hasattr(task_row, "get") else False
+
     proj_id = task_row.get("project_id")
     if proj_id is not None:
         if not guild_id:
@@ -370,8 +372,15 @@ async def _verify_task_checklist_access(
         if is_guild_admin or project.owner_id == uid:
             return
         role = await collab_service.get_member_role(int(proj_id), uid)
+        if is_private:
+            if role in ("owner", "lead"):
+                return
+            raise PermissionError("You do not have permission to access this task.")
         if role in ("owner", "member", "lead"):
             return
+        raise PermissionError("You do not have permission to access this task.")
+
+    if is_private:
         raise PermissionError("You do not have permission to access this task.")
 
     task_gid = task_row.get("guild_id")
@@ -929,7 +938,9 @@ async def save_checklist_template_from_task(
 ) -> ChecklistTemplate:
     """Copy a task's existing `task_checklists` items into a reusable template."""
     task_row = await db.afetchone(
-        "SELECT task_id, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+        """SELECT task_id, owner_id, project_id, guild_id,
+                  COALESCE(is_private, FALSE) AS is_private
+           FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
         (task_id,),
     )
     if not task_row:
@@ -1022,7 +1033,9 @@ async def apply_checklist_template(
 ) -> tuple[ChecklistTemplate, int]:
     """Apply all items from `template_name` to `task_id` cleanly (skipping duplicates)."""
     task_row = await db.afetchone(
-        "SELECT task_id, owner_id, project_id, guild_id FROM tasks WHERE task_id=$1 AND is_deleted=FALSE",
+        """SELECT task_id, owner_id, project_id, guild_id,
+                  COALESCE(is_private, FALSE) AS is_private
+           FROM tasks WHERE task_id=$1 AND is_deleted=FALSE""",
         (task_id,),
     )
     if not task_row:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import discord
 
@@ -154,7 +154,9 @@ async def sync_project_events(
         """
         SELECT task_id, task, priority, deadline
         FROM tasks
-        WHERE project_id = $1 AND priority >= 6 AND status != 'Completed'
+        WHERE project_id = $1 AND priority >= 6
+          AND status NOT IN ('Completed', 'Cancelled')
+          AND COALESCE(is_private, FALSE) = FALSE
           AND is_deleted = FALSE AND deadline IS NOT NULL
         """,
         (project_id,),

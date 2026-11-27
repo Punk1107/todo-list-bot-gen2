@@ -117,10 +117,12 @@ async def sync_task_to_forum(
         return None
 
     task_row = await db.fetchone(
-        "SELECT task_id, task, status, priority, description, deadline FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+        """SELECT task_id, task, status, priority, description, deadline,
+                  COALESCE(is_private, FALSE) AS is_private
+           FROM tasks WHERE task_id = $1 AND is_deleted = FALSE""",
         (task_id,),
     )
-    if not task_row:
+    if not task_row or task_row.get("is_private"):
         return None
 
     tag_map = await ensure_forum_kanban_tags(forum_channel)
@@ -144,7 +146,13 @@ async def sync_task_to_forum(
     thread: Optional[discord.Thread] = None
     if post_row:
         thread_id = int(post_row["thread_id"])
-        thread = bot.get_channel(thread_id) or await bot.fetch_channel(thread_id)  # type: ignore[assignment]
+        thread = bot.get_channel(thread_id)  # type: ignore[assignment]
+        if thread is None:
+            try:
+                thread = await bot.fetch_channel(thread_id)  # type: ignore[assignment]
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
+                log.debug("Forum thread %s unavailable for task %s (%s); will recreate", thread_id, task_id, exc)
+                thread = None
 
     if thread and isinstance(thread, discord.Thread):
         # Update existing post tags and name

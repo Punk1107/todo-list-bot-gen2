@@ -261,13 +261,15 @@ async def list_sprints(project_id: int, status: Optional[str] = None) -> list[Sp
     return [Sprint.from_row(r) for r in (rows or [])]
 
 
-async def get_backlog_tasks(project_id: int) -> list[dict[str, Any]]:
+async def get_backlog_tasks(project_id: int, *, include_private: bool = False) -> list[dict[str, Any]]:
     """Retrieve all open tasks not currently assigned to any sprint."""
+    privacy_clause = "" if include_private else " AND COALESCE(is_private, FALSE) = FALSE"
     rows = await db.afetchall(
-        """
+        f"""
         SELECT task_id, task, priority, deadline, status, story_points, epic_id
         FROM tasks
-        WHERE project_id = $1 AND sprint_id IS NULL AND is_deleted = FALSE AND status != 'Completed'
+        WHERE project_id = $1 AND sprint_id IS NULL AND is_deleted = FALSE
+          AND status NOT IN ('Completed', 'Cancelled'){privacy_clause}
         ORDER BY priority DESC, created_at ASC
         LIMIT 50
         """,
@@ -279,13 +281,14 @@ async def get_backlog_tasks(project_id: int) -> list[dict[str, Any]]:
 get_sprint_backlog = get_backlog_tasks
 
 
-async def get_sprint_tasks(sprint_id: int) -> list[dict[str, Any]]:
+async def get_sprint_tasks(sprint_id: int, *, include_private: bool = False) -> list[dict[str, Any]]:
     """Retrieve all non-deleted tasks currently assigned to a sprint."""
+    privacy_clause = "" if include_private else " AND COALESCE(is_private, FALSE) = FALSE"
     rows = await db.afetchall(
-        """
+        f"""
         SELECT task_id, task, status, priority, story_points, deadline
         FROM tasks
-        WHERE sprint_id = $1 AND is_deleted = FALSE
+        WHERE sprint_id = $1 AND is_deleted = FALSE{privacy_clause}
         ORDER BY priority DESC, task_id ASC
         """,
         (sprint_id,),

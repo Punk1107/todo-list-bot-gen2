@@ -206,10 +206,11 @@ async def get_project_velocity_history(project_id: int) -> dict[str, Any]:
            LEFT JOIN tasks t ON t.sprint_id = s.sprint_id AND t.is_deleted = FALSE
            WHERE s.project_id = $1
            GROUP BY s.sprint_id, s.name, s.status
-           ORDER BY s.sprint_id ASC
+           ORDER BY s.sprint_id DESC
            LIMIT 6""",
         int(project_id),
     )
+    sprints = sorted(sprints or [], key=lambda s: int(s.get("sprint_id", 0)))
 
     sprint_names = [s.get("name") or f"S{s['sprint_id']}" for s in sprints]
     planned_pts = [float(s.get("total_points") or 0.0) for s in sprints]

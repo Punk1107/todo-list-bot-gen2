@@ -225,7 +225,10 @@ async def _identify_bottlenecks(project_id: int, milestone_id: int) -> List[dict
                COUNT(d.task_id) AS blocked_dependents_count
         FROM tasks t
         LEFT JOIN project_task_dependencies d ON d.blocked_by_task_id = t.task_id
-        WHERE t.project_id = $1 AND t.status != 'Completed' AND t.is_deleted = FALSE
+        WHERE t.project_id = $1
+          AND t.status NOT IN ('Completed', 'Cancelled')
+          AND COALESCE(t.is_private, FALSE) = FALSE
+          AND t.is_deleted = FALSE
         GROUP BY t.task_id, t.task, t.status, t.deadline
         HAVING COUNT(d.task_id) > 0 OR t.deadline < $2
         ORDER BY COUNT(d.task_id) DESC, t.deadline ASC NULLS LAST
