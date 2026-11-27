@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import discord
 from discord import app_commands
@@ -112,7 +112,7 @@ class AutomationCog(commands.Cog, name="Automation"):
     async def auto_list(self, interaction: discord.Interaction) -> None:
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        guild_id = str(interaction.guild_id) if interaction.guild_id else f"dm:{user_id}"
 
         rules = await engine.list_rules(guild_id)
         embed = build_rules_embed(rules, interaction.guild.name if interaction.guild else "Direct Messages")
@@ -150,7 +150,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         if not _has_manage_guild(interaction):
             await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
             return
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        guild_id = str(interaction.guild_id) if interaction.guild_id else f"dm:{user_id}"
 
         try:
             cond_dict = json.loads(condition_json) if condition_json.strip() else {}
@@ -192,7 +192,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         if not _has_manage_guild(interaction):
             await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
             return
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        guild_id = str(interaction.guild_id) if interaction.guild_id else f"dm:{user_id}"
 
         success = await engine.delete_rule(rule_id, guild_id)
         if success:
@@ -213,7 +213,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         if not _has_manage_guild(interaction):
             await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
             return
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        guild_id = str(interaction.guild_id) if interaction.guild_id else f"dm:{user_id}"
 
         new_status = await engine.toggle_rule(rule_id, guild_id)
         if new_status is not None:
@@ -233,7 +233,7 @@ class AutomationCog(commands.Cog, name="Automation"):
         await ensure_user(user_id)
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
 
-        escalations = await engine.get_escalation_status(guild_id)
+        escalations = await engine.get_escalation_status(guild_id, owner_id=user_id)
         embed = build_escalation_embed(escalations, interaction.guild.name if interaction.guild else "Direct Messages")
         await interaction.response.send_message(embed=embed)
 
@@ -348,10 +348,14 @@ class AutomationCog(commands.Cog, name="Automation"):
     async def sla_status_cmd(self, interaction: discord.Interaction, project_id: int) -> None:
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        lang = await get_user_lang(user_id)
+        if not interaction.guild_id:
+            await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+            return
+        guild_id = str(interaction.guild_id)
 
         proj = await db.fetchone(
-            "SELECT name FROM projects WHERE project_id = $1 AND guild_id = $2",
+            "SELECT name, owner_id, lead_id FROM projects WHERE project_id = $1 AND guild_id = $2",
             project_id,
             guild_id,
         )
@@ -359,7 +363,15 @@ class AutomationCog(commands.Cog, name="Automation"):
             await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
             return
 
-        status_data = await engine.get_sla_status(project_id)
+        is_priv = await _can_manage_project_automation(interaction, proj, user_id, project_id)
+        if not is_priv:
+            from collaboration import service as collab_service
+            role = await collab_service.get_member_role(project_id, user_id)
+            if not role:
+                await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+                return
+
+        status_data = await engine.get_sla_status(project_id, include_private=is_priv)
         embed = build_sla_status_embed(proj.get("name", f"Project #{project_id}"), status_data)
         await interaction.response.send_message(embed=embed)
 
@@ -375,9 +387,32 @@ class AutomationCog(commands.Cog, name="Automation"):
     ) -> None:
         user_id = str(interaction.user.id)
         await ensure_user(user_id)
-        guild_id = str(interaction.guild_id) if interaction.guild_id else "DM"
+        lang = await get_user_lang(user_id)
+        if not interaction.guild_id:
+            await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+            return
+        guild_id = str(interaction.guild_id)
 
-        breaches = await engine.get_sla_breaches(guild_id, project_id)
+        include_private = False
+        if project_id is not None:
+            proj = await db.fetchone(
+                "SELECT name, owner_id, lead_id FROM projects WHERE project_id = $1 AND guild_id = $2",
+                project_id,
+                guild_id,
+            )
+            if not proj:
+                await interaction.response.send_message(f"❌ ไม่พบโปรเจกต์ #{project_id}", ephemeral=True)
+                return
+            is_priv = await _can_manage_project_automation(interaction, proj, user_id, project_id)
+            if not is_priv:
+                from collaboration import service as collab_service
+                role = await collab_service.get_member_role(project_id, user_id)
+                if not role:
+                    await interaction.response.send_message(t("proj_no_permission", lang), ephemeral=True)
+                    return
+            include_private = is_priv
+
+        breaches = await engine.get_sla_breaches(guild_id, project_id, include_private=include_private)
         embed = build_sla_breaches_embed(breaches, interaction.guild.name if interaction.guild else "Direct Messages")
         await interaction.response.send_message(embed=embed)
 

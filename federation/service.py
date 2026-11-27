@@ -156,6 +156,16 @@ async def accept_federation_invite(
     from utils.helpers import ensure_user
     await ensure_user(str(actor_id))
 
+    # Atomically consume single-use invite before creating the guild link
+    claim_res = await db.execute(
+        """UPDATE federation_invites
+           SET accepted_at=NOW(), accepted_by=$2
+           WHERE invite_code=$1 AND accepted_at IS NULL""",
+        (clean_code, str(actor_id)),
+    )
+    if isinstance(claim_res, str) and claim_res.endswith(" 0"):
+        raise FederationInviteNotFound("Federation invite code has already been used.")
+
     link_row = await db.fetchone(
         """INSERT INTO project_federation_guilds
                (project_id, guild_id, linked_by, sync_channel_id, role_scope, status, linked_at)
@@ -170,15 +180,8 @@ async def accept_federation_invite(
         (project_id, str(target_guild_id), str(actor_id), sync_channel_id, default_role),
     )
 
-    await db.execute(
-        """UPDATE federation_invites
-           SET accepted_at=NOW(), accepted_by=$2
-           WHERE invite_code=$1""",
-        (clean_code, str(actor_id)),
-    )
-
-    # Ensure accepting server admin is enrolled in project_members so per-guild RBAC works smoothly
-    member_role = "lead" if default_role == "lead" else "member"
+    # Enroll accepting server admin with the exact invited role scope (never escalate viewer -> member)
+    member_role = default_role if default_role in VALID_FEDERATION_ROLES else "member"
     await db.execute(
         """INSERT INTO project_members (project_id, user_id, role)
            VALUES ($1,$2,$3)

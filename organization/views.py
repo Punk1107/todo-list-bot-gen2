@@ -97,6 +97,7 @@ class EisenhowerMatrixView(ui.View):
         theme_color: int,
         project_id: Optional[int] = None,
         scope_name: Optional[str] = None,
+        is_guild_admin: bool = False,
         timeout: float = 180.0,
     ) -> None:
         super().__init__(timeout=timeout)
@@ -107,6 +108,7 @@ class EisenhowerMatrixView(ui.View):
         self.theme_color = theme_color
         self.project_id = project_id
         self.scope_name = scope_name
+        self.is_guild_admin = is_guild_admin
 
         self._build_components()
 
@@ -182,7 +184,10 @@ class EisenhowerMatrixView(ui.View):
             return
 
         self.matrix = await service.get_eisenhower_matrix(
-            self.user_id, self.guild_id, self.project_id
+            self.user_id,
+            self.guild_id,
+            self.project_id,
+            is_guild_admin=self.is_guild_admin,
         )
         self._build_components()
         embed = build_matrix_embed(self.matrix, self.lang, self.theme_color, self.scope_name)

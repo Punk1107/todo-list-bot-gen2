@@ -119,6 +119,7 @@ class AttachmentDeleteButton(ui.Button):
                 self.attachment.attachment_id,
                 actor_id,
                 is_guild_admin=is_admin,
+                guild_id=str(interaction.guild_id) if interaction.guild_id else None,
             )
         except AttachmentPermissionError:
             await interaction.followup.send(
@@ -190,6 +191,7 @@ class AttachmentDeleteSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction) -> None:
         val = self.values[0]
         if val == "0":
+            await interaction.response.defer()
             return
         att_id = int(val)
         actor_id = str(interaction.user.id)
@@ -203,7 +205,12 @@ class AttachmentDeleteSelect(ui.Select):
         from storage.service import AttachmentPermissionError, AttachmentNotFoundError
 
         try:
-            await delete_attachment(att_id, actor_id, is_guild_admin=is_admin)
+            await delete_attachment(
+                att_id,
+                actor_id,
+                is_guild_admin=is_admin,
+                guild_id=str(interaction.guild_id) if interaction.guild_id else None,
+            )
         except AttachmentPermissionError:
             await interaction.followup.send(
                 t("storage_delete_no_permission", self.lang), ephemeral=True
@@ -257,6 +264,9 @@ class TaskAttachmentsView(ui.View):
 
     @ui.button(label="✖ Close", style=discord.ButtonStyle.secondary, custom_id="att_close", row=1)
     async def close_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != str(self.uid):
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
         self.stop()
         try:
             await interaction.response.edit_message(

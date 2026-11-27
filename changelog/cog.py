@@ -32,11 +32,13 @@ async def _sprint_autocomplete(
     try:
         if proj_id is not None:
             rows = await db.afetchall(
-                """SELECT sprint_id, name, status
-                   FROM sprints
-                   WHERE project_id = $1 AND (name ILIKE $2 OR CAST(sprint_id AS TEXT) ILIKE $2)
-                   ORDER BY sprint_id DESC LIMIT 25""",
-                (int(proj_id), f"%{current}%"),
+                """SELECT s.sprint_id, s.name, s.status
+                   FROM sprints s
+                   JOIN projects p ON p.project_id = s.project_id
+                   WHERE s.project_id = $1 AND p.guild_id = $2
+                     AND (s.name ILIKE $3 OR CAST(s.sprint_id AS TEXT) ILIKE $3)
+                   ORDER BY s.sprint_id DESC LIMIT 25""",
+                (int(proj_id), str(interaction.guild.id), f"%{current}%"),
             )
         else:
             rows = await db.afetchall(

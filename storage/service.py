@@ -214,24 +214,35 @@ async def delete_attachment(
     attachment_id: int,
     actor_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> None:
     """
     Delete an attachment from Supabase Storage and the DB.
 
-    Permission: uploader OR guild admin.
+    Permission: uploader OR same-guild admin (never cross-guild or personal DM tasks).
 
     Raises:
         AttachmentNotFoundError, AttachmentPermissionError, RuntimeError
     """
     row = await db.fetchone(
-        "SELECT * FROM task_attachments WHERE attachment_id=$1",
+        """SELECT a.*, t.guild_id AS task_guild_id
+           FROM task_attachments a
+           LEFT JOIN tasks t ON t.task_id = a.task_id
+           WHERE a.attachment_id=$1""",
         (attachment_id,),
     )
     if not row:
         raise AttachmentNotFoundError(f"Attachment {attachment_id} not found.")
 
-    if row["uploader_id"] != actor_id and not is_guild_admin:
-        raise AttachmentPermissionError("Only the uploader or a guild admin can delete this file.")
+    if str(row["uploader_id"]) != str(actor_id):
+        task_gid = row.get("task_guild_id") if hasattr(row, "get") else None
+        same_guild_admin = bool(
+            is_guild_admin
+            and task_gid is not None
+            and (guild_id is None or str(task_gid) == str(guild_id))
+        )
+        if not same_guild_admin:
+            raise AttachmentPermissionError("Only the uploader or a same-guild admin can delete this file.")
 
     storage_path = row["storage_path"]
 

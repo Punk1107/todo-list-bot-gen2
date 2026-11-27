@@ -39,6 +39,8 @@ async def _verify_scope_access(
 ) -> Optional[int]:
     """Validate linked project_id / task_id permissions and infer project_id from task if omitted."""
     resolved_project_id = project_id
+    task_is_private = False
+    task_owner_id: Optional[str] = None
 
     if task_id is not None:
         t_row = await db.afetchone(
@@ -50,13 +52,21 @@ async def _verify_scope_access(
             raise DocumentValidationError("doc_task_not_found")
         t_guild = t_row.get("guild_id")
         t_proj = t_row.get("project_id")
-        if t_guild and str(t_guild) != guild_id:
+        task_owner_id = str(t_row["owner_id"])
+        task_is_private = bool(t_row.get("is_private"))
+
+        if t_guild is None:
+            # Personal DM task: strictly accessible only by its owner (never guild admins)
+            if task_owner_id != user_id:
+                raise DocumentAccessDenied("permission_denied")
+        elif str(t_guild) != guild_id:
             raise DocumentAccessDenied("permission_denied")
+
         if t_proj is not None:
             if resolved_project_id is not None and int(t_proj) != resolved_project_id:
                 raise DocumentValidationError("doc_task_project_mismatch")
             resolved_project_id = int(t_proj)
-        elif str(t_row["owner_id"]) != user_id and not is_guild_admin:
+        elif task_owner_id != user_id and (task_is_private or not is_guild_admin):
             raise DocumentAccessDenied("permission_denied")
 
     if resolved_project_id is not None:
@@ -71,6 +81,8 @@ async def _verify_scope_access(
                 raise DocumentAccessDenied("proj_no_permission")
             if require_write and role not in ("member", "lead"):
                 raise DocumentAccessDenied("proj_no_permission")
+            if task_is_private and role != "lead" and task_owner_id != user_id:
+                raise DocumentAccessDenied("permission_denied")
 
     return resolved_project_id
 
@@ -308,11 +320,12 @@ async def list_or_search_documents(
     is_guild_admin: bool = False,
 ) -> list[ProjectDocument]:
     """List wiki documents or search with PostgreSQL ``tsvector`` + ``ILIKE`` hybrid matching."""
-    if project_id is not None:
+    if project_id is not None or task_id is not None:
         await _verify_scope_access(
             guild_id=guild_id,
             user_id=user_id,
             project_id=project_id,
+            task_id=task_id,
             require_write=False,
             is_guild_admin=is_guild_admin,
         )
@@ -330,6 +343,23 @@ async def list_or_search_documents(
         where.append(
             f"(pd.project_id IS NULL OR p.owner_id = ${idx} OR EXISTS ("
             f"SELECT 1 FROM project_members pm WHERE pm.project_id = pd.project_id AND pm.user_id = ${idx}))"
+        )
+        params.append(user_id)
+        idx += 1
+
+    # Protect docs linked to personal/DM or confidential tasks from leaking via list/search
+    if is_guild_admin:
+        where.append(
+            f"(pd.task_id IS NULL OR (t.is_deleted = FALSE AND (t.guild_id IS NOT NULL OR t.owner_id = ${idx})))"
+        )
+        params.append(user_id)
+        idx += 1
+    else:
+        where.append(
+            f"(pd.task_id IS NULL OR (t.is_deleted = FALSE "
+            f"AND (pd.project_id IS NOT NULL OR t.owner_id = ${idx}) "
+            f"AND (COALESCE(t.is_private, FALSE) = FALSE OR t.owner_id = ${idx} OR p.owner_id = ${idx} "
+            f"OR EXISTS (SELECT 1 FROM project_members pm2 WHERE pm2.project_id = pd.project_id AND pm2.user_id = ${idx} AND pm2.role = 'lead'))))"
         )
         params.append(user_id)
         idx += 1
@@ -373,6 +403,7 @@ async def list_or_search_documents(
                {rank_expr} AS rank
           FROM project_documents pd
           LEFT JOIN projects p ON p.project_id = pd.project_id
+          LEFT JOIN tasks t ON t.task_id = pd.task_id
          WHERE {' AND '.join(where)}
          ORDER BY {order_by}
          LIMIT ${lim_idx}

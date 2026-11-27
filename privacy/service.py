@@ -146,6 +146,20 @@ async def execute_gdpr_deletion(user_id: str) -> GdprDeletionReport:
         (uid, DELETED_USER_DISPLAY),
     )
 
+    # Clear dangling lead/federation/quest/theme actor references
+    await db.aexecute("UPDATE projects SET lead_id=NULL WHERE lead_id=$1", (uid,))
+    for tbl, col in (
+        ("federation_invites", "created_by"),
+        ("federation_invites", "accepted_by"),
+        ("project_federation_guilds", "linked_by"),
+        ("guild_quests", "creator_id"),
+        ("guild_themes", "updated_by"),
+    ):
+        await db.aexecute(
+            f"UPDATE {tbl} SET {col}=$2 WHERE {col}=$1",
+            (uid, DELETED_USER_SENTINEL_ID),
+        )
+
     # 3. Clear shared memberships / assignments lacking CASCADE
     for tbl in ("project_members", "task_assignments", "task_assignees", "task_assignment_signoffs"):
         await db.aexecute(f"DELETE FROM {tbl} WHERE user_id=$1", (uid,))
@@ -156,6 +170,16 @@ async def execute_gdpr_deletion(user_id: str) -> GdprDeletionReport:
         (uid,),
     )
     report.personal_tasks_deleted = len(del_personal or [])
+
+    # Detach category FK references on surviving shared/archived tasks before deleting user categories
+    await db.aexecute(
+        "UPDATE tasks SET category_id=NULL WHERE category_id IN (SELECT category_id FROM categories WHERE owner_id=$1)",
+        (uid,),
+    )
+    await db.aexecute(
+        "UPDATE tasks_archive SET category_id=NULL WHERE category_id IN (SELECT category_id FROM categories WHERE owner_id=$1)",
+        (uid,),
+    )
 
     personal_delete_tables = [
         ("tasks_archive", "owner_id"),

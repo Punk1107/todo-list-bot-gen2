@@ -238,7 +238,8 @@ async def _fetch_task_for_field_write(
     is_guild_admin: bool = False,
 ) -> dict[str, Any]:
     row = await db.afetchone(
-        """SELECT task_id, task, owner_id, project_id, guild_id, custom_fields, is_deleted
+        """SELECT task_id, task, owner_id, project_id, guild_id, custom_fields,
+                  COALESCE(is_private, FALSE) AS is_private, is_deleted
            FROM tasks WHERE task_id = $1 AND is_deleted = FALSE""",
         (task_id,),
     )
@@ -250,13 +251,16 @@ async def _fetch_task_for_field_write(
     if not is_guild_admin and str(row["owner_id"]) != actor_id:
         from collaboration import service as collab_service
         proj_id = int(row["project_id"])
+        if row.get("is_private"):
+            proj = await collab_service.get_project(proj_id, guild_id)
+            role = await collab_service.get_member_role(proj_id, actor_id)
+            if proj.owner_id != actor_id and role != "lead":
+                raise CustomFieldAccessDenied("proj_no_permission")
         can_edit = await collab_service.check_project_permission(
             proj_id, actor_id, "can_edit_tasks", is_guild_admin=is_guild_admin
         )
         if not can_edit:
-            role = await collab_service.get_member_role(proj_id, actor_id)
-            if role not in ("lead", "member"):
-                raise CustomFieldAccessDenied("proj_no_permission")
+            raise CustomFieldAccessDenied("proj_no_permission")
     return dict(row)
 
 
@@ -339,10 +343,13 @@ async def filter_tasks_by_custom_field(
     from collaboration import service as collab_service
 
     project = await collab_service.get_project(project_id, guild_id)
+    role: Optional[str] = None
     if not is_guild_admin and project.owner_id != actor_id:
         role = await collab_service.get_member_role(project_id, actor_id)
         if not role:
             raise CustomFieldAccessDenied("proj_no_permission")
+
+    can_see_private = bool(is_guild_admin or project.owner_id == actor_id or role == "lead")
 
     defs = await list_field_definitions(project_id, guild_id)
     def_map = {d.field_key: d for d in defs}
@@ -357,26 +364,51 @@ async def filter_tasks_by_custom_field(
     ):
         coerced = validate_and_coerce_value(field_def, raw_value)
         containment = json.dumps({field_def.field_key: coerced})
-        rows = await db.afetchall(
-            """SELECT task_id, task, status, priority, deadline, custom_fields
-               FROM tasks
-               WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
-                 AND custom_fields @> $3::jsonb
-               ORDER BY priority DESC, task_id DESC
-               LIMIT 25""",
-            (project_id, guild_id, containment),
-        )
+        if can_see_private:
+            rows = await db.afetchall(
+                """SELECT task_id, task, status, priority, deadline, custom_fields
+                   FROM tasks
+                   WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
+                     AND custom_fields @> $3::jsonb
+                   ORDER BY priority DESC, task_id DESC
+                   LIMIT 25""",
+                (project_id, guild_id, containment),
+            )
+        else:
+            rows = await db.afetchall(
+                """SELECT task_id, task, status, priority, deadline, custom_fields
+                   FROM tasks
+                   WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
+                     AND (COALESCE(is_private, FALSE) = FALSE OR owner_id = $4)
+                     AND custom_fields @> $3::jsonb
+                   ORDER BY priority DESC, task_id DESC
+                   LIMIT 25""",
+                (project_id, guild_id, containment, actor_id),
+            )
     else:
-        rows = await db.afetchall(
-            """SELECT task_id, task, status, priority, deadline, custom_fields
-               FROM tasks
-               WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
-                 AND custom_fields ? $3
-                 AND (custom_fields ->> $3) ILIKE $4
-               ORDER BY priority DESC, task_id DESC
-               LIMIT 25""",
-            (project_id, guild_id, field_def.field_key, f"%{raw_value.strip()}%"),
-        )
+        if can_see_private:
+            rows = await db.afetchall(
+                """SELECT task_id, task, status, priority, deadline, custom_fields
+                   FROM tasks
+                   WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
+                     AND custom_fields ? $3
+                     AND (custom_fields ->> $3) ILIKE $4
+                   ORDER BY priority DESC, task_id DESC
+                   LIMIT 25""",
+                (project_id, guild_id, field_def.field_key, f"%{raw_value.strip()}%"),
+            )
+        else:
+            rows = await db.afetchall(
+                """SELECT task_id, task, status, priority, deadline, custom_fields
+                   FROM tasks
+                   WHERE project_id = $1 AND guild_id = $2 AND is_deleted = FALSE
+                     AND (COALESCE(is_private, FALSE) = FALSE OR owner_id = $5)
+                     AND custom_fields ? $3
+                     AND (custom_fields ->> $3) ILIKE $4
+                   ORDER BY priority DESC, task_id DESC
+                   LIMIT 25""",
+                (project_id, guild_id, field_def.field_key, f"%{raw_value.strip()}%", actor_id),
+            )
 
     return field_def, [dict(r) for r in (rows or [])]
 

@@ -260,6 +260,13 @@ class AssignmentsCog(commands.Cog, name="Assignments"):
             await interaction.followup.send(t("task_already_cancelled", lang), ephemeral=True)
             return
 
+        task_gid = task_row.get("guild_id")
+        if task_gid is not None and (
+            not interaction.guild_id or str(interaction.guild_id) != str(task_gid)
+        ):
+            await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+            return
+
         actor_roles = [r.id for r in getattr(interaction.user, "roles", [])]
         summary_pre = await service.get_assignment_summary(task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)

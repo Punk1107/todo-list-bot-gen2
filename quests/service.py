@@ -117,12 +117,19 @@ async def record_task_contribution(guild_id: str, user_id: str) -> Optional[dict
     quest_id = quest.quest_id
     uid = str(user_id)
 
-    # Increment quest completion
+    # Atomically increment quest completion and transition status on target hit
+    # so concurrent completions cannot double-trigger reward distribution.
     updated_row = await db.fetchone(
         """
         UPDATE guild_quests
-        SET completed_tasks = completed_tasks + 1
+        SET completed_tasks = completed_tasks + 1,
+            status = CASE
+                WHEN completed_tasks + 1 >= target_tasks THEN 'completed'
+                ELSE status
+            END
         WHERE quest_id = $1
+          AND status = 'active'
+          AND end_date > NOW()
         RETURNING *
         """,
         (quest_id,),
@@ -168,7 +175,7 @@ async def record_task_contribution(guild_id: str, user_id: str) -> Optional[dict
 async def _complete_quest_and_award_rewards(quest: GuildQuest) -> None:
     """Marks quest completed and distributes EXP and badges to qualifying participants."""
     await db.execute(
-        "UPDATE guild_quests SET status = 'completed' WHERE quest_id = $1",
+        "UPDATE guild_quests SET status = 'completed' WHERE quest_id = $1 AND status = 'active'",
         quest.quest_id,
     )
 
@@ -184,6 +191,18 @@ async def _complete_quest_and_award_rewards(quest: GuildQuest) -> None:
 
     for p in participants or []:
         uid = str(p["user_id"])
+        # Atomically claim reward before distributing EXP so retries/races cannot double-award
+        claim_status = await db.execute(
+            """
+            UPDATE guild_quest_participants
+            SET reward_claimed = TRUE
+            WHERE quest_id = $1 AND user_id = $2 AND reward_claimed = FALSE
+            """,
+            quest.quest_id, uid,
+        )
+        if isinstance(claim_status, str) and claim_status.endswith(" 0"):
+            continue
+
         # Award bonus EXP
         try:
             await rpg.award_exp(uid, quest.exp_reward, reason=f"Co-op Quest '{quest.title}' Completed")
@@ -201,16 +220,6 @@ async def _complete_quest_and_award_rewards(quest: GuildQuest) -> None:
             )
         except Exception as e:
             log.warning("Could not award quest badge to %s: %s", uid, e)
-
-        # Mark claimed
-        await db.execute(
-            """
-            UPDATE guild_quest_participants
-            SET reward_claimed = TRUE
-            WHERE quest_id = $1 AND user_id = $2
-            """,
-            quest.quest_id, uid,
-        )
 
     db.query_cache.invalidate_table("guild_quests")
     db.query_cache.invalidate_table("guild_quest_participants")

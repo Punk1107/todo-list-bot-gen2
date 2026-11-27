@@ -56,16 +56,21 @@ async def send_kudos(
     task_title: Optional[str] = None
     if task_id:
         t_row = await db.fetchone(
-            "SELECT task, owner_id, guild_id FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
+            "SELECT task, owner_id, guild_id, COALESCE(is_private, FALSE) AS is_private FROM tasks WHERE task_id = $1 AND is_deleted = FALSE",
             (int(task_id),),
         )
         if t_row:
             t_gid = t_row.get("guild_id") if hasattr(t_row, "get") else None
             t_owner = t_row.get("owner_id") if hasattr(t_row, "get") else None
+            t_private = bool(t_row.get("is_private")) if hasattr(t_row, "get") else False
+            if t_private and t_owner is not None and str(t_owner) != f_uid:
+                raise ValueError("Cannot attach a private task belonging to another user.")
+            if t_gid is None and t_owner is not None and str(t_owner) != f_uid:
+                raise ValueError("Cannot attach a personal DM task belonging to another user.")
             if (
                 (t_gid is None and t_owner is None)
                 or str(t_gid or "") == str(guild_id)
-                or str(t_owner or "") in (f_uid, t_uid)
+                or str(t_owner or "") == f_uid
             ):
                 task_title = t_row["task"]
             else:
@@ -142,20 +147,35 @@ async def get_user_recent_kudos(
     user_id: str,
     days: int = 7,
     limit: int = 10,
+    guild_id: Optional[str] = None,
 ) -> List[dict[str, Any]]:
-    """Retrieves recent kudos received by a user (used by Weekly Retrospective)."""
+    """Retrieves recent kudos received by a user (scoped by guild_id when provided)."""
     since = datetime.now(timezone.utc) - timedelta(days=max(1, days))
-    rows = await db.fetchall(
-        """
-        SELECT pk.*, t.task AS task_title
-        FROM peer_kudos pk
-        LEFT JOIN tasks t ON pk.task_id = t.task_id
-        WHERE pk.to_user_id = $1 AND pk.created_at >= $2
-        ORDER BY pk.created_at DESC
-        LIMIT $3
-        """,
-        (str(user_id), since, max(1, min(limit, 25))),
-    )
+    lim = max(1, min(limit, 25))
+    if guild_id:
+        rows = await db.fetchall(
+            """
+            SELECT pk.*, t.task AS task_title
+            FROM peer_kudos pk
+            LEFT JOIN tasks t ON pk.task_id = t.task_id
+            WHERE pk.to_user_id = $1 AND pk.created_at >= $2 AND pk.guild_id = $3
+            ORDER BY pk.created_at DESC
+            LIMIT $4
+            """,
+            (str(user_id), since, str(guild_id), lim),
+        )
+    else:
+        rows = await db.fetchall(
+            """
+            SELECT pk.*, t.task AS task_title
+            FROM peer_kudos pk
+            LEFT JOIN tasks t ON pk.task_id = t.task_id
+            WHERE pk.to_user_id = $1 AND pk.created_at >= $2
+            ORDER BY pk.created_at DESC
+            LIMIT $3
+            """,
+            (str(user_id), since, lim),
+        )
     return [
         {
             "kudos_id": r["kudos_id"],

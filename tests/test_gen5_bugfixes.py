@@ -1434,5 +1434,402 @@ class TestRound5SystemWideBugfixes:
             mock_claim.assert_not_awaited()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 6 System-Wide Audit Bugfix Tests (8 Categories)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRound6SystemWideBugfixes:
+    @pytest.mark.asyncio
+    async def test_automation_blocks_cross_guild_channel_and_dm_escalation_leak(self) -> None:
+        from automation import engine as auto_engine
+
+        # 1. Cross-guild channel hijack blocked in execute_actions
+        bot = MagicMock()
+        foreign_channel = AsyncMock()
+        foreign_channel.guild = MagicMock(id=222)
+        bot.get_channel.return_value = foreign_channel
+
+        home_guild = MagicMock(id=111)
+        res = await auto_engine.execute_actions(
+            bot,
+            {
+                "notify_channel": {"channel_id": "999", "message": "Hijack"},
+                "create_thread": {"channel_id": "999", "thread_name": "Evil"},
+            },
+            {"task_id": 1, "task": "Demo"},
+            guild=home_guild,
+        )
+        assert res == []
+        foreign_channel.send.assert_not_awaited()
+        foreign_channel.create_thread.assert_not_awaited()
+
+        # 2. DM get_escalation_status never dumps all guilds
+        assert await auto_engine.get_escalation_status(None) == []
+        with patch.object(auto_engine.db, "fetchall", new=AsyncMock(return_value=[])) as mock_fetch:
+            await auto_engine.get_escalation_status(None, owner_id="u_dm")
+            sql_dm, param_dm = mock_fetch.call_args.args
+            assert "t.guild_id IS NULL AND t.owner_id = $1" in sql_dm
+            assert param_dm == "u_dm"
+
+        # 3. Private task title redacted in public escalation alert
+        now_utc = datetime.now(timezone.utc)
+        priv_row = {
+            "task_id": 91,
+            "task": "Top Secret Acquisition",
+            "priority": 7,
+            "guild_id": "111",
+            "project_id": 1,
+            "created_at": now_utc - timedelta(hours=14),
+            "is_private": True,
+            "project_name": "Core",
+            "channel_id": "555",
+            "lead_id": "u_lead",
+            "escalation_level": 0,
+        }
+        pub_ch = AsyncMock()
+        bot.get_channel.return_value = pub_ch
+        with (
+            patch.object(auto_engine.db, "fetchall", new=AsyncMock(return_value=[priv_row])),
+            patch.object(auto_engine.db, "execute", new=AsyncMock()),
+        ):
+            out = await auto_engine.check_and_escalate_tasks(bot)
+            assert len(out) == 1
+            sent_embed = pub_ch.send.call_args.kwargs["embed"]
+            assert "Top Secret Acquisition" not in (sent_embed.description or "")
+            assert "Confidential" in (sent_embed.description or "")
+
+    @pytest.mark.asyncio
+    async def test_storage_enforces_project_membership_private_and_cross_guild_delete(self) -> None:
+        from storage.cog import StorageCog
+        from storage import service as storage_service
+        from storage.views import TaskAttachmentsView
+
+        cog = StorageCog(MagicMock())
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild = MagicMock(id=100)
+        inter.user = MagicMock(spec=discord.Member, id=500)
+        inter.user.guild_permissions = MagicMock(administrator=False)
+        inter.followup = MagicMock(send=AsyncMock())
+
+        priv_proj_task = {
+            "task_id": 77,
+            "task": "Confidential Spec",
+            "project_id": 9,
+            "guild_id": "100",
+            "owner_id": "999",
+            "is_private": True,
+            "is_deleted": False,
+        }
+        fake_proj = MagicMock(owner_id="999")
+
+        with (
+            patch.object(db, "fetchone", new=AsyncMock(return_value=priv_proj_task)),
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="viewer")),
+        ):
+            # Viewer cannot upload (require_write=True) or view private task of another owner
+            assert await cog._resolve_authorized_task(inter, 77, "500", "en", require_write=True) is None
+            assert await cog._resolve_authorized_task(inter, 77, "500", "en", require_write=False) is None
+
+        # Cross-guild admin cannot delete attachment belonging to another guild
+        att_row = {
+            "attachment_id": 3,
+            "task_id": 77,
+            "uploader_id": "999",
+            "storage_path": "tasks/77/a.pdf",
+            "task_guild_id": "200",
+        }
+        with patch.object(storage_service.db, "fetchone", new=AsyncMock(return_value=att_row)):
+            with pytest.raises(storage_service.AttachmentPermissionError):
+                await storage_service.delete_attachment(
+                    3, actor_id="admin_100", is_guild_admin=True, guild_id="100"
+                )
+
+        # Bystander cannot close another user's TaskAttachmentsView
+        view = TaskAttachmentsView(77, "Demo", [], uid="111", lang="en")
+        bystander = MagicMock(spec=discord.Interaction)
+        bystander.user = MagicMock(id=222)
+        bystander.response = MagicMock(send_message=AsyncMock(), edit_message=AsyncMock())
+        await view.close_btn.callback(bystander)
+        bystander.response.send_message.assert_awaited_once()
+        bystander.response.edit_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_quests_atomic_completion_prevents_double_reward_distribution(self) -> None:
+        from quests import service as quest_service
+        from quests.models import GuildQuest
+
+        now = datetime.now(timezone.utc)
+        active_row = {
+            "quest_id": 5,
+            "guild_id": "G1",
+            "creator_id": "U1",
+            "title": "Raid",
+            "description": None,
+            "target_tasks": 10,
+            "completed_tasks": 9,
+            "min_tasks_per_member": 3,
+            "exp_reward": 500,
+            "badge_reward": "Hero",
+            "start_date": now,
+            "end_date": now + timedelta(days=3),
+            "status": "active",
+            "created_at": now,
+        }
+
+        # Concurrent second caller gets None from guarded UPDATE ... WHERE status = 'active'
+        with (
+            patch("quests.service.db.fetchone", side_effect=[active_row, None]),
+            patch("gamification.rpg.award_exp", new_callable=AsyncMock) as mock_award,
+        ):
+            res = await quest_service.record_task_contribution("G1", "U2")
+            assert res is None
+            mock_award.assert_not_awaited()
+
+        # If participant claim returns UPDATE 0, award_exp must be skipped
+        quest_obj = GuildQuest.from_row(active_row)
+        with (
+            patch("quests.service.db.execute", side_effect=["UPDATE 1", "UPDATE 0"]),
+            patch("quests.service.db.fetchall", new=AsyncMock(return_value=[{"user_id": "U1", "tasks_contributed": 5}])),
+            patch("gamification.rpg.award_exp", new_callable=AsyncMock) as mock_award,
+        ):
+            await quest_service._complete_quest_and_award_rewards(quest_obj)
+            mock_award.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_kudos_blocks_private_dm_tasks_bots_and_cross_guild_history(self) -> None:
+        from kudos import service as kudos_service
+        from kudos.cog import KudosCog
+
+        # 1. Private task belonging to recipient cannot be exposed via send_kudos
+        with patch(
+            "kudos.service.db.fetchone",
+            side_effect=[
+                {"count": 0},
+                {"task": "Secret Salary Review", "owner_id": "U2", "guild_id": "G1", "is_private": True},
+            ],
+        ):
+            with pytest.raises(ValueError, match="private task"):
+                await kudos_service.send_kudos("G1", "U1", "U2", "Great job!", task_id=88)
+
+        # 2. DM personal task belonging to recipient cannot be exposed via send_kudos
+        with patch(
+            "kudos.service.db.fetchone",
+            side_effect=[
+                {"count": 0},
+                {"task": "Personal Therapy Note", "owner_id": "U2", "guild_id": None, "is_private": False},
+            ],
+        ):
+            with pytest.raises(ValueError, match="personal DM task"):
+                await kudos_service.send_kudos("G1", "U1", "U2", "Great job!", task_id=89)
+
+        # 3. get_user_recent_kudos filters by guild_id when passed
+        with patch("kudos.service.db.fetchall", new=AsyncMock(return_value=[])) as mock_fetch:
+            await kudos_service.get_user_recent_kudos("U2", days=30, limit=10, guild_id="G1")
+            sql_q, params_q = mock_fetch.call_args.args
+            assert "pk.guild_id = $3" in sql_q
+            assert params_q[2] == "G1"
+
+        # 4. /kudos send rejects bot recipients
+        cog = KudosCog(MagicMock())
+        inter = MagicMock(spec=discord.Interaction)
+        inter.guild_id = 100
+        inter.user = MagicMock(id=1)
+        inter.response = MagicMock(send_message=AsyncMock())
+        bot_target = MagicMock(id=2, bot=True)
+        with patch("kudos.cog.service.send_kudos", new=AsyncMock()) as mock_send:
+            await cog.kudos_send.callback(cog, inter, to=bot_target, reason="Good bot")
+            mock_send.assert_not_awaited()
+            inter.response.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_eisenhower_matrix_enforces_guild_scope_and_project_membership(self) -> None:
+        from organization import service as org_service
+
+        # DM cannot query a guild project matrix
+        dm_matrix = await org_service.get_eisenhower_matrix("u1", guild_id=None, project_id=5)
+        assert dm_matrix.total_tasks == 0
+
+        # Non-member in guild gets empty matrix without even querying tasks
+        with (
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=MagicMock(owner_id="other"))),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value=None)),
+            patch.object(org_service.db, "afetchall", new=AsyncMock()) as mock_fetch,
+        ):
+            res = await org_service.get_eisenhower_matrix("u1", guild_id="g1", project_id=5, is_guild_admin=False)
+            assert res.total_tasks == 0
+            mock_fetch.assert_not_awaited()
+
+        # Admin query includes guild/federation isolation in SQL
+        with patch.object(org_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_fetch:
+            await org_service.get_eisenhower_matrix("u_admin", guild_id="g1", project_id=5, is_guild_admin=True)
+            sql_q, params_q = mock_fetch.call_args.args
+            assert "p.guild_id = $2" in sql_q
+            assert params_q == (5, "g1")
+
+    @pytest.mark.asyncio
+    async def test_custom_fields_honors_permission_revocation_and_hides_private_tasks(self) -> None:
+        from custom_fields import service as cf_service
+        from custom_fields.models import CustomFieldType, ProjectCustomField
+
+        # 1. Explicit can_edit_tasks=False is honored (no fallback to member role)
+        task_row = {
+            "task_id": 50,
+            "task": "API Key Rotation",
+            "owner_id": "owner_1",
+            "project_id": 4,
+            "guild_id": "g1",
+            "custom_fields": {},
+            "is_private": False,
+            "is_deleted": False,
+        }
+        with (
+            patch.object(cf_service.db, "afetchone", new=AsyncMock(return_value=task_row)),
+            patch("collaboration.service.check_project_permission", new=AsyncMock(return_value=False)),
+        ):
+            with pytest.raises(cf_service.CustomFieldAccessDenied):
+                await cf_service._fetch_task_for_field_write(50, "g1", actor_id="member_2", is_guild_admin=False)
+
+        # 2. filter_tasks_by_custom_field excludes private tasks for regular members
+        fake_proj = MagicMock(project_id=4, guild_id="g1", owner_id="owner_1")
+        fdef = ProjectCustomField(1, 4, "g1", "env", "Environment", CustomFieldType.SELECT.value, ["Prod"])
+        with (
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch("collaboration.service.get_member_role", new=AsyncMock(return_value="member")),
+            patch("custom_fields.service.list_field_definitions", new=AsyncMock(return_value=[fdef])),
+            patch.object(cf_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_fetch,
+        ):
+            await cf_service.filter_tasks_by_custom_field(4, "g1", "env", "Prod", actor_id="member_2")
+            sql_q, params_q = mock_fetch.call_args.args
+            assert "COALESCE(is_private, FALSE) = FALSE OR owner_id = $4" in sql_q
+            assert params_q[3] == "member_2"
+
+    @pytest.mark.asyncio
+    async def test_kb_dm_isolation_changelog_private_filter_and_federation_viewer_role(self) -> None:
+        from changelog import service as cl_service
+        from federation import service as fed_service
+        from knowledge_base import service as kb_service
+
+        # 1. Knowledge Base blocks even guild admin from accessing another user's DM task
+        dm_task = {
+            "task_id": 60,
+            "owner_id": "victim_u",
+            "project_id": None,
+            "guild_id": None,
+            "is_private": False,
+            "is_deleted": False,
+        }
+        with patch.object(kb_service.db, "afetchone", new=AsyncMock(return_value=dm_task)):
+            with pytest.raises(kb_service.DocumentAccessDenied):
+                await kb_service._verify_scope_access(
+                    guild_id="g1", user_id="admin_u", task_id=60, is_guild_admin=True
+                )
+
+        # 2. Changelog excludes is_private = TRUE tasks
+        fake_proj = MagicMock(project_id=9, guild_id="g1", owner_id="u1", name="Core")
+        with (
+            patch("collaboration.service.get_project", new=AsyncMock(return_value=fake_proj)),
+            patch.object(cl_service.db, "afetchall", new=AsyncMock(return_value=[])) as mock_fetch,
+        ):
+            await cl_service.generate_changelog(project_id=9, guild_id="g1", actor_id="u1")
+            sql_cl = mock_fetch.call_args.args[0]
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_cl
+
+        # 3. Federation viewer invite enrolls as 'viewer' (never escalated to 'member') and blocks double claim
+        exp = datetime.now(timezone.utc) + timedelta(hours=12)
+        invite_row = {
+            "invite_code": "VIEW1234",
+            "project_id": 7,
+            "home_guild_id": "100",
+            "target_guild_id": "200",
+            "created_by": "u1",
+            "default_role": "viewer",
+            "expires_at": exp,
+            "accepted_at": None,
+        }
+        link_row = {
+            "project_id": 7,
+            "guild_id": "200",
+            "role_scope": "viewer",
+            "status": "active",
+            "sync_channel_id": None,
+            "linked_by": "u2",
+        }
+        with (
+            patch.object(fed_service.db, "fetchone", side_effect=[invite_row, link_row]),
+            patch.object(fed_service.db, "execute", new=AsyncMock(side_effect=["UPDATE 1", "INSERT 1"])) as mock_exec,
+            patch("utils.helpers.ensure_user", new=AsyncMock()),
+            patch("collaboration.service.log_activity", new=AsyncMock()),
+        ):
+            await fed_service.accept_federation_invite("VIEW1234", "200", "u2", is_guild_admin=True)
+            member_insert_params = mock_exec.call_args_list[1].args[1]
+            assert member_insert_params[2] == "viewer"
+
+        with (
+            patch.object(fed_service.db, "fetchone", new=AsyncMock(return_value=invite_row)),
+            patch.object(fed_service.db, "execute", new=AsyncMock(return_value="UPDATE 0")),
+            patch("utils.helpers.ensure_user", new=AsyncMock()),
+        ):
+            with pytest.raises(fed_service.FederationInviteNotFound):
+                await fed_service.accept_federation_invite("VIEW1234", "200", "u2", is_guild_admin=True)
+
+    @pytest.mark.asyncio
+    async def test_gdpr_category_detach_boolean_not_null_and_signoff_guild_check(self) -> None:
+        from assignments.cog import AssignmentsCog
+        from privacy import service as privacy_service
+        from search_recommendation.boolean_parser import TokenType, compile_boolean_query, tokenize
+
+        # 1. GDPR clears tasks.category_id before DELETE FROM categories and nulls projects.lead_id
+        executed_sqls: list[str] = []
+
+        async def _record_exec(sql: str, *args, **kwargs):
+            executed_sqls.append(sql)
+
+        with (
+            patch.object(privacy_service.db, "afetchall", side_effect=[[], [], []]),
+            patch.object(privacy_service.db, "afetchone", side_effect=[{"user_id": "u_del"}]),
+            patch.object(privacy_service.db, "aexecute", side_effect=_record_exec),
+            patch.object(privacy_service.db, "alog_action", new=AsyncMock()),
+        ):
+            await privacy_service.execute_gdpr_deletion("u_del")
+
+        detach_idx = next(i for i, s in enumerate(executed_sqls) if "UPDATE tasks SET category_id=NULL" in s)
+        del_cat_idx = next(i for i, s in enumerate(executed_sqls) if "DELETE FROM categories WHERE owner_id=$1" in s)
+        assert detach_idx < del_cat_idx
+        assert any("UPDATE projects SET lead_id=NULL" in s for s in executed_sqls)
+
+        # 2. Boolean parser handles NOT with COALESCE(..., FALSE) and quoted attribute values
+        sql_not, params_not = compile_boolean_query("NOT tag:urgent")
+        assert "NOT COALESCE(t.tags ILIKE $1, FALSE)" in sql_not
+        assert params_not == ["%urgent%"]
+
+        toks = tokenize('project:"Core Engine" AND status:pending')
+        assert toks[0].type == TokenType.ATTR
+        assert toks[0].value == 'project:"Core Engine"'
+        sql_proj, params_proj = compile_boolean_query('project:"Core Engine"')
+        assert params_proj == ["%Core Engine%"]
+
+        # 3. /assign signoff rejects cross-guild/DM invocation on guild-scoped task
+        cog = AssignmentsCog(MagicMock())
+        dm_inter = MagicMock(spec=discord.Interaction)
+        dm_inter.user = MagicMock(id=10, roles=[])
+        dm_inter.guild = None
+        dm_inter.guild_id = None
+        dm_inter.response = MagicMock(defer=AsyncMock())
+        dm_inter.followup = MagicMock(send=AsyncMock())
+
+        guild_task = {"task_id": 42, "owner_id": "10", "status": "Pending", "guild_id": "G_HOME"}
+        with (
+            patch("assignments.cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("assignments.cog.ensure_user", new=AsyncMock()),
+            patch("assignments.cog.service._fetch_task_row", new=AsyncMock(return_value=guild_task)),
+            patch("assignments.cog.service.handle_task_completion_attempt", new=AsyncMock()) as mock_attempt,
+        ):
+            await cog.assign_signoff_cmd.callback(cog, dm_inter, task_id=42)
+            mock_attempt.assert_not_awaited()
+            dm_inter.followup.send.assert_awaited_once()
+
+
+
 
 
