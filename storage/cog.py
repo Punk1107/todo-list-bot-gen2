@@ -41,11 +41,15 @@ class StorageCog(commands.Cog, name="Storage"):
         task_id: int,
         uid: str,
         lang: str,
+        *,
+        require_write: bool = False,
     ):
         """Fetch an active task, verify access, and send an error reply if inaccessible."""
         from core.database import db
         task_row = await db.fetchone(
-            "SELECT task_id, task, project_id, guild_id, owner_id, is_deleted FROM tasks WHERE task_id=$1",
+            """SELECT task_id, task, project_id, guild_id, owner_id,
+                      COALESCE(is_private, FALSE) AS is_private, is_deleted
+               FROM tasks WHERE task_id=$1""",
             (task_id,),
         )
         if not task_row or task_row.get("is_deleted"):
@@ -59,6 +63,29 @@ class StorageCog(commands.Cog, name="Storage"):
             if not interaction.guild or str(task_row.get("guild_id") or "") != str(interaction.guild.id):
                 await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
                 return None
+
+            is_admin = (
+                isinstance(interaction.user, discord.Member)
+                and interaction.user.guild_permissions.administrator
+            )
+            if not is_admin:
+                from collaboration import service as collab_service
+                try:
+                    proj = await collab_service.get_project(int(project_id), str(interaction.guild.id))
+                except collab_service.ProjectNotFound:
+                    await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                    return None
+                role = await collab_service.get_member_role(int(project_id), uid)
+                is_owner_or_lead = (proj.owner_id == uid) or (role == "lead")
+                if not is_owner_or_lead and role is None:
+                    await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                    return None
+                if require_write and not is_owner_or_lead and role != "member":
+                    await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                    return None
+                if task_row.get("is_private") and not is_owner_or_lead and str(task_row.get("owner_id") or "") != uid:
+                    await interaction.followup.send(t("permission_denied", lang), ephemeral=True)
+                    return None
             return task_row
 
         if str(task_row.get("owner_id") or "") != uid:
@@ -94,8 +121,10 @@ class StorageCog(commands.Cog, name="Storage"):
         await ensure_user(uid, lang)
         await interaction.response.defer()
 
-        # Verify task exists and user has access to it
-        task_row = await self._resolve_authorized_task(interaction, task_id, uid, lang)
+        # Verify task exists and user has write access to it
+        task_row = await self._resolve_authorized_task(
+            interaction, task_id, uid, lang, require_write=True
+        )
         if not task_row:
             return
 
@@ -180,8 +209,10 @@ class StorageCog(commands.Cog, name="Storage"):
         lang = await get_user_lang(uid)
         await interaction.response.defer()
 
-        # Verify task exists and user has access to it
-        task_row = await self._resolve_authorized_task(interaction, task_id, uid, lang)
+        # Verify task exists and user has read access to it
+        task_row = await self._resolve_authorized_task(
+            interaction, task_id, uid, lang, require_write=False
+        )
         if not task_row:
             return
 

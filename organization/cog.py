@@ -84,6 +84,7 @@ class OrganizationCog(commands.Cog):
             theme_color=theme_color,
             project_id=project_id,
             scope_name=scope_name,
+            is_guild_admin=is_admin,
         )
         await interaction.followup.send(embed=embed, view=view)
 

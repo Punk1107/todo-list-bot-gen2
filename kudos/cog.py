@@ -51,6 +51,13 @@ class KudosCog(commands.Cog, name="Kudos"):
             )
             return
 
+        if getattr(to, "bot", False):
+            await interaction.response.send_message(
+                "❌ ไม่สามารถส่งคำขอบคุณให้บอทได้ / Cannot send kudos to a bot.",
+                ephemeral=True,
+            )
+            return
+
         from_uid = str(interaction.user.id)
         to_uid = str(to.id)
         guild_id = str(interaction.guild_id)
@@ -129,7 +136,8 @@ class KudosCog(commands.Cog, name="Kudos"):
         uid = str(target.id)
         await ensure_user(uid)
 
-        recent = await service.get_user_recent_kudos(uid, days=30, limit=10)
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
+        recent = await service.get_user_recent_kudos(uid, days=30, limit=10, guild_id=guild_id)
         if not recent:
             await interaction.response.send_message(
                 f"📭 ยังไม่มีประวัติคำขอบคุณสำหรับ {target.mention} ในช่วง 30 วันที่ผ่านมา",

@@ -35,23 +35,57 @@ async def _project_task_autocomplete(
     if not interaction.guild:
         return []
     gid = str(interaction.guild.id)
+    uid = str(interaction.user.id)
+    is_admin = bool(
+        hasattr(interaction.user, "guild_permissions")
+        and interaction.user.guild_permissions.administrator
+    )
     try:
+        access_sql = ""
+        params: list[object] = [gid]
+        if not is_admin:
+            access_sql = """
+                AND (
+                    p.owner_id = $2
+                    OR EXISTS (
+                        SELECT 1 FROM project_members pm
+                        WHERE pm.project_id = t.project_id AND pm.user_id = $2
+                    )
+                )
+                AND (
+                    COALESCE(t.is_private, FALSE) = FALSE
+                    OR t.owner_id = $2
+                    OR p.owner_id = $2
+                    OR EXISTS (
+                        SELECT 1 FROM project_members pm2
+                        WHERE pm2.project_id = t.project_id AND pm2.user_id = $2 AND pm2.role = 'lead'
+                    )
+                )
+            """
+            params.append(uid)
+
         if current:
+            like_idx = len(params) + 1
+            params.append(f"%{current}%")
             rows = await db.afetchall(
-                """SELECT task_id, task, project_id
-                   FROM tasks
-                   WHERE guild_id = $1 AND project_id IS NOT NULL AND is_deleted = FALSE
-                     AND (task ILIKE $2 OR CAST(task_id AS TEXT) ILIKE $2)
-                   ORDER BY updated_at DESC LIMIT 25""",
-                (gid, f"%{current}%"),
+                f"""SELECT t.task_id, t.task, t.project_id
+                    FROM tasks t
+                    JOIN projects p ON p.project_id = t.project_id
+                    WHERE t.guild_id = $1 AND t.project_id IS NOT NULL AND t.is_deleted = FALSE
+                      {access_sql}
+                      AND (t.task ILIKE ${like_idx} OR CAST(t.task_id AS TEXT) ILIKE ${like_idx})
+                    ORDER BY t.updated_at DESC LIMIT 25""",
+                tuple(params),
             )
         else:
             rows = await db.afetchall(
-                """SELECT task_id, task, project_id
-                   FROM tasks
-                   WHERE guild_id = $1 AND project_id IS NOT NULL AND is_deleted = FALSE
-                   ORDER BY updated_at DESC LIMIT 25""",
-                (gid,),
+                f"""SELECT t.task_id, t.task, t.project_id
+                    FROM tasks t
+                    JOIN projects p ON p.project_id = t.project_id
+                    WHERE t.guild_id = $1 AND t.project_id IS NOT NULL AND t.is_deleted = FALSE
+                      {access_sql}
+                    ORDER BY t.updated_at DESC LIMIT 25""",
+                tuple(params),
             )
         return [
             app_commands.Choice(
@@ -196,6 +230,16 @@ class CustomFieldsCog(commands.Cog, name="CustomFields"):
             await interaction.followup.send(t("proj_not_found", lang, project_id=project_id), ephemeral=True)
             return
 
+        is_admin = bool(
+            hasattr(interaction.user, "guild_permissions")
+            and interaction.user.guild_permissions.administrator
+        )
+        if not is_admin and proj.owner_id != uid:
+            role = await collab_service.get_member_role(project_id, uid)
+            if not role:
+                await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
+                return
+
         defs = await field_service.list_field_definitions(project_id, gid)
         embed = build_fields_list_embed(proj.name, defs, lang)
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -238,15 +282,15 @@ class CustomFieldsCog(commands.Cog, name="CustomFields"):
                 await interaction.followup.send(t(str(exc), lang), ephemeral=True)
                 return
 
-        row = await db.afetchone(
-            "SELECT task_id, task, project_id, guild_id, custom_fields, is_deleted FROM tasks WHERE task_id = $1",
-            (task_id,),
-        )
-        if not row or row.get("is_deleted"):
-            await interaction.followup.send(t("task_not_found", lang, task_id=task_id), ephemeral=True)
-            return
-        if not row.get("project_id") or str(row.get("guild_id") or "") != gid:
-            await interaction.followup.send(t("field_project_task_required", lang), ephemeral=True)
+        try:
+            row = await field_service._fetch_task_for_field_write(
+                task_id=task_id,
+                guild_id=gid,
+                actor_id=uid,
+                is_guild_admin=is_admin,
+            )
+        except field_service.CustomFieldError as exc:
+            await interaction.followup.send(t(str(exc), lang), ephemeral=True)
             return
 
         proj_id = int(row["project_id"])

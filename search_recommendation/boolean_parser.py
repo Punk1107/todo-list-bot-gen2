@@ -78,9 +78,20 @@ def tokenize(text: str) -> list[Token]:
             tokens.append(Token(TokenType.WORD, val))
             continue
 
-        # Extract continuous word/token
+        # Extract continuous word/token (preserving quoted attribute values like project:"Core Engine")
         start = i
-        while i < n and not text[i].isspace() and text[i] not in ("(", ")"):
+        in_quote: Optional[str] = None
+        while i < n:
+            c = text[i]
+            if in_quote is not None:
+                if c == in_quote:
+                    in_quote = None
+                i += 1
+                continue
+            if c.isspace() or c in ("(", ")"):
+                break
+            if c in ('"', "'") and ":" in text[start:i]:
+                in_quote = c
             i += 1
         raw = text[start:i]
         upper = raw.upper()
@@ -133,7 +144,7 @@ class NotNode(ASTNode):
         self.child = child
 
     def to_sql(self, params: list[Any]) -> str:
-        return f"(NOT {self.child.to_sql(params)})"
+        return f"(NOT COALESCE({self.child.to_sql(params)}, FALSE))"
 
 
 class TermNode(ASTNode):

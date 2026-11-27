@@ -113,23 +113,43 @@ async def get_eisenhower_matrix(
         now = datetime.now(timezone.utc)
 
     if project_id is not None:
-        # Project-scoped matrix
-        rows = await db.afetchall(
-            """SELECT * FROM tasks
-               WHERE project_id = $1
-                 AND is_deleted = FALSE
-                 AND status NOT IN ('Completed', 'Cancelled')
-               ORDER BY priority DESC, deadline ASC NULLS LAST""",
-            (project_id,),
-        )
-        # Filter private tasks if caller is not owner, lead, or admin
+        if not guild_id:
+            return EisenhowerMatrixData()
+
+        is_lead = False
         if not is_guild_admin:
             from collaboration import service as collab_service
+            try:
+                proj = await collab_service.get_project(project_id, guild_id)
+            except collab_service.ProjectNotFound:
+                return EisenhowerMatrixData()
             role = await collab_service.get_member_role(project_id, user_id)
-            proj = await collab_service.get_project(project_id, guild_id or "") if guild_id else None
+            if role is None and (not proj or proj.owner_id != user_id):
+                return EisenhowerMatrixData()
             is_lead = (role == "lead") or (proj and proj.owner_id == user_id)
-            if not is_lead:
-                rows = [r for r in (rows or []) if not r.get("is_private") or str(r.get("owner_id")) == user_id]
+
+        # Project-scoped matrix (strictly isolated to home guild or active federated guild)
+        rows = await db.afetchall(
+            """SELECT t.* FROM tasks t
+               JOIN projects p ON p.project_id = t.project_id
+               WHERE t.project_id = $1
+                 AND (
+                     p.guild_id = $2
+                     OR EXISTS (
+                         SELECT 1 FROM project_federation_guilds f
+                         WHERE f.project_id = p.project_id
+                           AND f.guild_id = $2
+                           AND f.status = 'active'
+                     )
+                 )
+                 AND t.is_deleted = FALSE
+                 AND t.status NOT IN ('Completed', 'Cancelled')
+               ORDER BY t.priority DESC, t.deadline ASC NULLS LAST""",
+            (project_id, guild_id),
+        )
+        # Filter private tasks if caller is not owner, lead, or admin
+        if not is_guild_admin and not is_lead:
+            rows = [r for r in (rows or []) if not r.get("is_private") or str(r.get("owner_id")) == user_id]
     elif guild_id:
         # Guild-scoped matrix: personal tasks of user + project tasks user is assigned to or owns
         rows = await db.afetchall(

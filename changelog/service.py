@@ -154,6 +154,7 @@ async def generate_changelog(
                  AND sprint_id = $3
                  AND status = 'Completed'
                  AND is_deleted = FALSE
+                 AND COALESCE(is_private, FALSE) = FALSE
                ORDER BY done_at DESC, task_id DESC""",
             (project_id, guild_id, sprint_id),
         )
@@ -182,6 +183,7 @@ async def generate_changelog(
                WHERE project_id = $1 AND guild_id = $2
                  AND status = 'Completed'
                  AND is_deleted = FALSE
+                 AND COALESCE(is_private, FALSE) = FALSE
                  AND COALESCE(completed_at, updated_at) >= $3
                  AND COALESCE(completed_at, updated_at) <= $4
                ORDER BY done_at DESC, task_id DESC""",

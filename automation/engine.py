@@ -90,6 +90,24 @@ def eval_conditions(condition_json: dict[str, Any], context: dict[str, Any]) -> 
     return True
 
 
+def _channel_belongs_to_guild(channel: Any, guild: Optional[discord.Guild]) -> bool:
+    """Ensure automation actions cannot target a Discord channel belonging to another server."""
+    if channel is None:
+        return False
+    if guild is None:
+        return True
+    guild_id = getattr(guild, "id", None)
+    if not isinstance(guild_id, int):
+        return True
+    if isinstance(channel, discord.DMChannel):
+        return False
+    ch_guild = getattr(channel, "guild", None)
+    ch_guild_id = getattr(ch_guild, "id", None)
+    if isinstance(ch_guild_id, int) and ch_guild_id != guild_id:
+        return False
+    return True
+
+
 async def execute_actions(
     bot: Any,
     action_json: dict[str, Any],
@@ -118,33 +136,55 @@ async def execute_actions(
         msg_text = notify_act.get("message") or f"🔔 Automation triggered for Task #{task_id}: {context.get('task', '')}"
         try:
             channel = bot.get_channel(int(ch_id)) if bot else None
-            if channel:
+            if channel and _channel_belongs_to_guild(channel, guild):
                 await channel.send(msg_text)
                 results.append(f"Notified channel {ch_id}")
+            elif channel:
+                log.warning("Blocked cross-guild automation notify_channel to %s", ch_id)
         except Exception as e:
             log.warning("Automation notify_channel failed: %s", e)
 
     # 2. Add Tag
     add_tag_act = action_json.get("add_tag")
     if add_tag_act and task_id:
-        new_tag = add_tag_act.get("tag") if isinstance(add_tag_act, dict) else str(add_tag_act)
+        new_tag = (add_tag_act.get("tag") if isinstance(add_tag_act, dict) else str(add_tag_act)).strip()
         if new_tag:
             try:
                 row = await db.fetchone("SELECT tags FROM tasks WHERE task_id = $1", int(task_id))
-                curr_tags = row.get("tags") if row else ""
-                updated_tags = f"{curr_tags},{new_tag}".strip(",") if curr_tags else new_tag
-                await db.execute("UPDATE tasks SET tags = $1, updated_at = NOW() WHERE task_id = $2", updated_tags, int(task_id))
+                curr_tags = (row.get("tags") or "") if row else ""
+                existing = [t_item.strip() for t_item in curr_tags.split(",") if t_item.strip()]
+                if new_tag.lower() not in {t_item.lower() for t_item in existing}:
+                    existing.append(new_tag)
+                    updated_tags = ",".join(existing)
+                    await db.execute(
+                        "UPDATE tasks SET tags = $1, updated_at = NOW() WHERE task_id = $2",
+                        updated_tags,
+                        int(task_id),
+                    )
+                    db.query_cache.invalidate_table("tasks")
                 results.append(f"Added tag '{new_tag}' to task #{task_id}")
             except Exception as e:
                 log.warning("Automation add_tag failed: %s", e)
 
-    # 3. Move to Sprint
+    # 3. Move to Sprint (enforce sprint belongs to the same project as the task)
     move_sprint_act = action_json.get("move_to_sprint")
     if move_sprint_act and task_id:
         sprint_id = move_sprint_act.get("sprint_id") if isinstance(move_sprint_act, dict) else move_sprint_act
         try:
-            await db.execute("UPDATE tasks SET sprint_id = $1, updated_at = NOW() WHERE task_id = $2", int(sprint_id), int(task_id))
-            results.append(f"Moved task #{task_id} to sprint #{sprint_id}")
+            status_res = await db.execute(
+                """UPDATE tasks t
+                   SET sprint_id = $1, updated_at = NOW()
+                   FROM sprints s
+                   WHERE t.task_id = $2
+                     AND s.sprint_id = $1
+                     AND t.project_id IS NOT NULL
+                     AND s.project_id = t.project_id""",
+                int(sprint_id),
+                int(task_id),
+            )
+            if not (isinstance(status_res, str) and status_res.endswith(" 0")):
+                db.query_cache.invalidate_table("tasks")
+                results.append(f"Moved task #{task_id} to sprint #{sprint_id}")
         except Exception as e:
             log.warning("Automation move_to_sprint failed: %s", e)
 
@@ -170,9 +210,11 @@ async def execute_actions(
         thread_name = thread_act.get("thread_name") or f"Task-{task_id}-discussion"
         try:
             channel = bot.get_channel(int(ch_id)) if bot else None
-            if channel and hasattr(channel, "create_thread"):
+            if channel and hasattr(channel, "create_thread") and _channel_belongs_to_guild(channel, guild):
                 th = await channel.create_thread(name=thread_name, auto_archive_duration=1440)
                 results.append(f"Created thread '{th.name}' in channel {ch_id}")
+            elif channel:
+                log.warning("Blocked cross-guild automation create_thread in %s", ch_id)
         except Exception as e:
             log.warning("Automation create_thread failed: %s", e)
 
@@ -282,6 +324,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
     # Find candidate critical tasks in Pending status (pending > 12h)
     query = """
         SELECT t.task_id, t.task, t.priority, t.guild_id, t.project_id, t.created_at,
+               COALESCE(t.is_private, FALSE) AS is_private,
                p.name AS project_name, p.channel_id, p.lead_id, p.owner_id,
                e.escalation_level, e.level1_escalated_at, e.level2_escalated_at
         FROM tasks t
@@ -300,6 +343,7 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
             # Graceful fallback if lead_id column has not been added to projects yet
             fallback_query = """
                 SELECT t.task_id, t.task, t.priority, t.guild_id, t.project_id, t.created_at,
+                       COALESCE(t.is_private, FALSE) AS is_private,
                        p.name AS project_name, p.channel_id, p.owner_id AS lead_id, p.owner_id,
                        e.escalation_level, e.level1_escalated_at, e.level2_escalated_at
                 FROM tasks t
@@ -327,7 +371,8 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
         channel_id = r.get("channel_id")
         lead_id = r.get("lead_id") or r.get("owner_id")
         project_name = r.get("project_name") or "Project"
-        task_title = r.get("task") or "Untitled Task"
+        is_private = bool(r.get("is_private", False))
+        task_title = "🔒 [Confidential Task]" if is_private else (r.get("task") or "Untitled Task")
         priority = int(r.get("priority", 6))
 
         # Level 1 Escalation: > 12 hours and level == 0
@@ -395,8 +440,11 @@ async def check_and_escalate_tasks(bot: Any) -> list[dict[str, Any]]:
     return escalations
 
 
-async def get_escalation_status(guild_id: Optional[str] = None) -> list[dict[str, Any]]:
-    """Retrieves active escalated tasks with their details."""
+async def get_escalation_status(
+    guild_id: Optional[str] = None,
+    owner_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Retrieves active escalated tasks scoped strictly to a guild or a DM user's own tasks."""
     query = """
         SELECT e.task_id, e.escalation_level, e.level1_escalated_at, e.level2_escalated_at,
                t.task, t.priority, t.status, t.owner_id, t.created_at,
@@ -408,8 +456,13 @@ async def get_escalation_status(guild_id: Optional[str] = None) -> list[dict[str
     """
     params: list[Any] = []
     if guild_id:
-        query += " AND t.guild_id = $1"
+        query += " AND t.guild_id = $1 AND COALESCE(t.is_private, FALSE) = FALSE"
         params.append(str(guild_id))
+    elif owner_id:
+        query += " AND t.guild_id IS NULL AND t.owner_id = $1"
+        params.append(str(owner_id))
+    else:
+        return []
 
     query += " ORDER BY e.escalation_level DESC, t.priority DESC"
     return await db.fetchall(query, *params)
@@ -513,6 +566,7 @@ async def check_sla_deadlines(bot: Any) -> list[dict[str, Any]]:
     query = """
         SELECT s.task_id, s.project_id, s.target_deadline, s.early_warning_sent, s.breached,
                t.task, t.priority, t.status, t.created_at, t.guild_id,
+               COALESCE(t.is_private, FALSE) AS is_private,
                p.name AS project_name, p.channel_id
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
@@ -538,7 +592,8 @@ async def check_sla_deadlines(bot: Any) -> list[dict[str, Any]]:
         remaining_sec = (target_dl - now_utc).total_seconds()
 
         channel_id = r.get("channel_id")
-        task_title = r.get("task") or "Untitled"
+        is_private = bool(r.get("is_private", False))
+        task_title = "🔒 [Confidential Task]" if is_private else (r.get("task") or "Untitled")
         prio = int(r.get("priority", 0))
         proj_name = r.get("project_name") or "Project"
         early_sent = bool(r.get("early_warning_sent", False))
@@ -602,15 +657,16 @@ async def check_sla_deadlines(bot: Any) -> list[dict[str, Any]]:
     return alerts
 
 
-async def get_sla_status(project_id: int) -> dict[str, Any]:
+async def get_sla_status(project_id: int, include_private: bool = True) -> dict[str, Any]:
     """Retrieves SLA compliance overview and active tracked tasks for a project."""
     policy = await get_project_sla_policy(project_id)
-    query = """
+    private_clause = "" if include_private else " AND COALESCE(t.is_private, FALSE) = FALSE"
+    query = f"""
         SELECT s.task_id, s.target_deadline, s.early_warning_sent, s.breached, s.resolved_at,
                t.task, t.priority, t.status, t.created_at, t.owner_id
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
-        WHERE s.project_id = $1 AND t.is_deleted = FALSE
+        WHERE s.project_id = $1 AND t.is_deleted = FALSE{private_clause}
         ORDER BY s.breached DESC, s.target_deadline ASC
     """
     rows = await db.fetchall(query, int(project_id))
@@ -630,16 +686,21 @@ async def get_sla_status(project_id: int) -> dict[str, Any]:
     }
 
 
-async def get_sla_breaches(guild_id: str, project_id: Optional[int] = None) -> list[dict[str, Any]]:
+async def get_sla_breaches(
+    guild_id: str,
+    project_id: Optional[int] = None,
+    include_private: bool = False,
+) -> list[dict[str, Any]]:
     """Retrieves all breached SLA tasks for a guild or specific project."""
-    query = """
+    private_clause = "" if include_private else " AND COALESCE(t.is_private, FALSE) = FALSE"
+    query = f"""
         SELECT s.task_id, s.target_deadline, s.breached, s.resolved_at,
                t.task, t.priority, t.status, t.owner_id, t.created_at,
                p.project_id, p.name AS project_name
         FROM task_sla_tracking s
         JOIN tasks t ON s.task_id = t.task_id
         JOIN projects p ON s.project_id = p.project_id
-        WHERE s.breached = TRUE AND p.guild_id = $1 AND t.is_deleted = FALSE
+        WHERE s.breached = TRUE AND p.guild_id = $1 AND t.is_deleted = FALSE{private_clause}
     """
     params: list[Any] = [str(guild_id)]
     if project_id:
