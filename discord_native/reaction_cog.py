@@ -7,6 +7,7 @@ Reaction Triggers:
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import logging
 import re
 
@@ -86,13 +87,14 @@ class ReactionCog(commands.Cog, name="ReactionTriggers"):
         raw_desc = f"{t('context_source_message', lang)}: {jump_link}\n\n{task_text}"
         description = validator.sanitize(raw_desc, max_length=1000)
 
+        default_deadline = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         row = await db.fetchone(
             """
-            INSERT INTO tasks (owner_id, task, description, source_message_url, status, priority, is_private)
-            VALUES ($1, $2, $3, $4, 'Pending', 3, TRUE)
+            INSERT INTO tasks (owner_id, task, deadline, description, source_message_url, status, priority, is_private)
+            VALUES ($1, $2, $3, $4, $5, 'Pending', 3, TRUE)
             RETURNING task_id
             """,
-            (user_id, title, description, jump_link),
+            (user_id, title, default_deadline, description, jump_link),
         )
 
         if row:

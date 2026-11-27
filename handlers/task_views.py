@@ -621,6 +621,9 @@ class DeleteConfirmView(ui.View):
 
     @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
         self.stop()
         await interaction.response.edit_message(
             content=t("cancel", self.lang), embed=None, view=None,
@@ -678,6 +681,9 @@ class SnoozeConfirmView(ui.View):
 
     @ui.button(label="✖ Cancel", style=discord.ButtonStyle.secondary)
     async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
         self.stop()
         await interaction.response.edit_message(
             content=t("cancel", self.lang), embed=None, view=None,
@@ -860,6 +866,9 @@ class TaskConflictView(ui.View):
 
     @ui.button(style=discord.ButtonStyle.danger, row=1, custom_id="conflict_cancel")
     async def btn_cancel(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        if str(interaction.user.id) != self.uid:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
         self.stop()
         await interaction.response.edit_message(
             content=t("conflict_cancelled", self.lang),
@@ -1567,7 +1576,15 @@ class TaskActionView(ui.View):
         from history_reporting import service as history_service
         from history_reporting.views import TaskHistoryView
 
-        history = await history_service.get_task_audit_history(self.task_id, uid)
+        gid = str(interaction.guild.id) if interaction.guild else None
+        is_admin = bool(
+            interaction.guild
+            and getattr(interaction.user, "guild_permissions", None)
+            and interaction.user.guild_permissions.administrator
+        )
+        history = await history_service.get_task_audit_history(
+            self.task_id, uid, is_guild_admin=is_admin, guild_id=gid
+        )
         if not history:
             await interaction.followup.send(t("history_not_found_or_denied", lang), ephemeral=True)
             return
@@ -1577,6 +1594,7 @@ class TaskActionView(ui.View):
             user_id=uid,
             lang=lang,
             origin_message=interaction.message,
+            guild_id=gid,
         )
         await interaction.followup.send(
             embed=view.make_embed(),
@@ -1826,17 +1844,21 @@ class TaskListView(ui.View):
         }
         filter_label = t(filter_key_map.get(fs, f"tasks_filter_{fs}"), self.lang)
 
-        # Fetch total + overdue counts for summary line
+        # Fetch total + overdue counts for summary line (matches TasksCog.list_tasks scope)
         now_iso = datetime.now(pytz.utc).isoformat()
-        total_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE", (self.uid,)
+        stats_row = await db.afetchone(
+            """SELECT COUNT(*) AS total_count,
+                      COUNT(*) FILTER (WHERE status='Pending' AND deadline < $2) AS overdue_count
+               FROM tasks
+               WHERE (
+                   owner_id=$1
+                   OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id=tasks.task_id AND ta.user_id=$1)
+                   OR EXISTS (SELECT 1 FROM task_assignments ta2 WHERE ta2.task_id=tasks.task_id AND ta2.user_id=$1)
+               ) AND parent_task_id IS NULL AND is_deleted=FALSE""",
+            (self.uid, now_iso),
         )
-        overdue_row = await db.afetchone(
-            "SELECT COUNT(*) AS c FROM tasks WHERE owner_id=$1 AND parent_task_id IS NULL AND is_deleted=FALSE "
-            "AND status='Pending' AND deadline<$2", (self.uid, now_iso)
-        )
-        total_count   = total_row["c"]   if total_row   else 0
-        overdue_count = overdue_row["c"] if overdue_row else 0
+        total_count   = stats_row["total_count"]   if stats_row else 0
+        overdue_count = stats_row["overdue_count"] if stats_row else 0
         from utils.helpers import get_user_display_mode
         display_mode  = await get_user_display_mode(self.uid)
 
@@ -2000,21 +2022,30 @@ class _SnoozePresetSelect(ui.Select):
         now = datetime.now(_pytz.utc)
         base = max(cur_dt, now)   # if overdue, snooze from now
 
-        def _next_monday(dt):
-            days = (7 - dt.weekday()) % 7
+        try:
+            local_tz = _pytz.timezone(tz_name)
+        except Exception:
+            local_tz = _pytz.utc
+
+        def _next_monday_local(now_utc_dt, base_utc_dt):
+            now_local = now_utc_dt.astimezone(local_tz)
+            base_local = base_utc_dt.astimezone(local_tz)
+            days = (7 - now_local.weekday()) % 7
             if days == 0:
                 days = 7
-            return dt + timedelta(days=days)
+            target_date = (now_local + timedelta(days=days)).date()
+            naive_target = datetime(
+                target_date.year, target_date.month, target_date.day,
+                base_local.hour, base_local.minute,
+            )
+            return local_tz.localize(naive_target).astimezone(_pytz.utc)
 
         self._presets = {
             "1h":   base + timedelta(hours=1),
             "3h":   base + timedelta(hours=3),
             "1d":   base + timedelta(days=1),
             "3d":   base + timedelta(days=3),
-            "mon":  _next_monday(now).replace(
-                        hour=base.astimezone(_pytz.timezone(tz_name)).hour,
-                        minute=base.astimezone(_pytz.timezone(tz_name)).minute,
-                    ),
+            "mon":  _next_monday_local(now, base),
         }
 
         options = [

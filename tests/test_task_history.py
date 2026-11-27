@@ -87,10 +87,10 @@ async def test_get_task_audit_history_task_not_found():
 async def test_get_task_audit_history_permission_denied_for_stranger():
     task_row = {
         "task_id": 10,
-        "task": "Private task",
+        "task": "Guild task",
         "owner_id": "owner_123",
         "project_id": None,
-        "guild_id": None,
+        "guild_id": "guild_1",
         "status": "pending",
         "priority": 2,
         "deadline": None,
@@ -100,13 +100,21 @@ async def test_get_task_audit_history_permission_denied_for_stranger():
     }
     with patch.object(history_service.db, "afetchone", new=AsyncMock(return_value=task_row)):
         # Stranger (not owner, not admin)
-        res = await history_service.get_task_audit_history(task_id=10, user_id="stranger_999", is_guild_admin=False)
+        res = await history_service.get_task_audit_history(
+            task_id=10, user_id="stranger_999", is_guild_admin=False, guild_id="guild_1"
+        )
         assert res is None
 
-        # Admin can view
+        # Cross-guild admin cannot view
+        cross_res = await history_service.get_task_audit_history(
+            task_id=10, user_id="admin_other", is_guild_admin=True, guild_id="guild_other"
+        )
+        assert cross_res is None
+
+        # Same-guild admin can view
         with patch.object(history_service.db, "afetchall", new=AsyncMock(return_value=[])):
             admin_res = await history_service.get_task_audit_history(
-                task_id=10, user_id="admin_999", is_guild_admin=True
+                task_id=10, user_id="admin_999", is_guild_admin=True, guild_id="guild_1"
             )
             assert admin_res is not None
             assert admin_res.task_id == 10

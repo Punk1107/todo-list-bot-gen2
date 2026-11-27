@@ -34,7 +34,7 @@ async def _history_task_autocomplete(
                     """SELECT task_id, task, status
                        FROM tasks
                        WHERE is_deleted = FALSE
-                         AND (owner_id = $1 OR guild_id = $2)
+                         AND (owner_id = $1 OR (guild_id = $2 AND COALESCE(is_private, FALSE) = FALSE))
                          AND (task ILIKE $3 OR CAST(task_id AS TEXT) ILIKE $3)
                        ORDER BY updated_at DESC
                        LIMIT 25""",
@@ -56,7 +56,8 @@ async def _history_task_autocomplete(
                 rows = await db.afetchall(
                     """SELECT task_id, task, status
                        FROM tasks
-                       WHERE is_deleted = FALSE AND (owner_id = $1 OR guild_id = $2)
+                       WHERE is_deleted = FALSE
+                         AND (owner_id = $1 OR (guild_id = $2 AND COALESCE(is_private, FALSE) = FALSE))
                        ORDER BY updated_at DESC
                        LIMIT 25""",
                     (uid, gid),
@@ -110,8 +111,11 @@ class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
             if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
             else False
         )
+        gid = str(interaction.guild.id) if interaction.guild else None
 
-        history = await history_service.get_task_audit_history(task_id, uid, is_guild_admin=is_admin)
+        history = await history_service.get_task_audit_history(
+            task_id, uid, is_guild_admin=is_admin, guild_id=gid
+        )
         if not history:
             await interaction.followup.send(
                 t("history_not_found_or_denied", lang, task_id=task_id),
@@ -119,7 +123,7 @@ class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
             )
             return
 
-        view = TaskHistoryView(history=history, user_id=uid, lang=lang)
+        view = TaskHistoryView(history=history, user_id=uid, lang=lang, guild_id=gid)
         await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
 
     @history.command(
@@ -148,12 +152,14 @@ class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
             if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
             else False
         )
+        gid = str(interaction.guild.id) if interaction.guild else None
 
         diff_res = await history_service.get_revision_diff(
             task_id=task_id,
             user_id=uid,
             revision_id=revision_id,
             is_guild_admin=is_admin,
+            guild_id=gid,
         )
         if diff_res is None:
             await interaction.followup.send(
@@ -167,6 +173,7 @@ class HistoryReportingCog(commands.Cog, name="HistoryReporting"):
             user_id=uid,
             lang=lang,
             is_guild_admin=is_admin,
+            guild_id=gid,
         )
         await interaction.followup.send(embed=view.make_embed(), view=view, ephemeral=True)
 

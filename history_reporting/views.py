@@ -39,6 +39,7 @@ class TaskHistoryView(ui.View):
         lang: str = "th",
         page: int = 0,
         origin_message: Optional[discord.Message] = None,
+        guild_id: Optional[str] = None,
     ) -> None:
         super().__init__(timeout=180)
         self.history = history
@@ -46,6 +47,7 @@ class TaskHistoryView(ui.View):
         self.lang = lang
         self.page = page
         self.origin_message = origin_message
+        self.guild_id = guild_id
         self._update_button_states()
 
     @property
@@ -131,7 +133,15 @@ class TaskHistoryView(ui.View):
             return
         from history_reporting import service as history_service
 
-        updated = await history_service.get_task_audit_history(self.history.task_id, self.user_id)
+        is_admin = bool(
+            interaction.user.guild_permissions.administrator
+            if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
+            else False
+        )
+        gid = str(interaction.guild.id) if interaction.guild else self.guild_id
+        updated = await history_service.get_task_audit_history(
+            self.history.task_id, self.user_id, is_guild_admin=is_admin, guild_id=gid
+        )
         if updated:
             self.history = updated
             self.page = min(self.page, self.total_pages - 1)
@@ -153,10 +163,12 @@ class TaskHistoryView(ui.View):
             if (interaction.guild and hasattr(interaction.user, "guild_permissions"))
             else False
         )
+        gid = str(interaction.guild.id) if interaction.guild else self.guild_id
         diff_res = await history_service.get_revision_diff(
             task_id=self.history.task_id,
             user_id=self.user_id,
             is_guild_admin=is_admin,
+            guild_id=gid,
         )
         if diff_res is None:
             await interaction.followup.send(
@@ -169,6 +181,7 @@ class TaskHistoryView(ui.View):
             user_id=self.user_id,
             lang=self.lang,
             is_guild_admin=is_admin,
+            guild_id=gid,
         )
         await interaction.followup.send(
             embed=diff_view.make_embed(),
@@ -220,6 +233,7 @@ class _RevisionSelect(ui.Select):
             user_id=self.parent_view.user_id,
             revision_id=rev_id,
             is_guild_admin=self.parent_view.is_guild_admin,
+            guild_id=self.parent_view.guild_id,
         )
         if not new_diff:
             await interaction.response.send_message(
@@ -232,6 +246,7 @@ class _RevisionSelect(ui.Select):
             user_id=self.parent_view.user_id,
             lang=self.parent_view.lang,
             is_guild_admin=self.parent_view.is_guild_admin,
+            guild_id=self.parent_view.guild_id,
         )
         await interaction.response.edit_message(embed=updated_view.make_embed(), view=updated_view)
 
@@ -245,12 +260,14 @@ class TaskRevisionDiffView(ui.View):
         user_id: str,
         lang: str = "th",
         is_guild_admin: bool = False,
+        guild_id: Optional[str] = None,
     ) -> None:
         super().__init__(timeout=180)
         self.diff_result = diff_result
         self.user_id = user_id
         self.lang = lang
         self.is_guild_admin = is_guild_admin
+        self.guild_id = guild_id
 
         if diff_result.revisions:
             self.add_item(_RevisionSelect(self))
@@ -313,6 +330,7 @@ class TaskRevisionDiffView(ui.View):
             revision_id=rev.revision_id,
             actor_id=self.user_id,
             is_guild_admin=self.is_guild_admin,
+            guild_id=self.guild_id,
         )
         if not ok:
             await interaction.response.send_message(
@@ -325,6 +343,7 @@ class TaskRevisionDiffView(ui.View):
             task_id=self.diff_result.task_id,
             user_id=self.user_id,
             is_guild_admin=self.is_guild_admin,
+            guild_id=self.guild_id,
         )
         if refreshed:
             updated_view = TaskRevisionDiffView(
@@ -332,6 +351,7 @@ class TaskRevisionDiffView(ui.View):
                 user_id=self.user_id,
                 lang=self.lang,
                 is_guild_admin=self.is_guild_admin,
+                guild_id=self.guild_id,
             )
             await interaction.response.edit_message(
                 content=t("rev_rollback_success", self.lang, revision_id=rev.revision_id, task_id=self.diff_result.task_id),
@@ -373,6 +393,7 @@ class TaskRevisionDiffView(ui.View):
             user_id=self.user_id,
             revision_id=rev_id,
             is_guild_admin=self.is_guild_admin,
+            guild_id=self.guild_id,
         )
         if not refreshed:
             await interaction.response.send_message(
@@ -385,6 +406,7 @@ class TaskRevisionDiffView(ui.View):
             user_id=self.user_id,
             lang=self.lang,
             is_guild_admin=self.is_guild_admin,
+            guild_id=self.guild_id,
         )
         await interaction.response.edit_message(embed=updated_view.make_embed(), view=updated_view)
 

@@ -1211,4 +1211,228 @@ class TestRound4SystemWideBugfixes:
             assert params[:3] == (10, "g1", "u1")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Round 5 System-Wide Audit Bugfix Tests (7 Categories)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRound5SystemWideBugfixes:
+    @pytest.mark.asyncio
+    async def test_reaction_task_capture_sets_non_null_deadline(self) -> None:
+        from discord_native.reaction_cog import ReactionCog
+
+        bot = MagicMock()
+        bot.user = MagicMock(id=111)
+        user_mock = MagicMock()
+        user_mock.send = AsyncMock()
+        bot.get_user.return_value = user_mock
+
+        msg = MagicMock()
+        msg.clean_content = "Fix production webhook timeout"
+        msg.attachments = []
+        msg.jump_url = "https://discord.com/channels/1/2/3"
+
+        ch = MagicMock(spec=discord.TextChannel)
+        ch.fetch_message = AsyncMock(return_value=msg)
+        bot.get_channel.return_value = ch
+
+        payload = MagicMock()
+        payload.channel_id = 2
+        payload.message_id = 3
+
+        cog = ReactionCog(bot)
+        with (
+            patch("discord_native.reaction_cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch("discord_native.reaction_cog.ensure_user", new=AsyncMock()),
+            patch.object(db, "fetchone", new=AsyncMock(return_value={"task_id": 701})) as mock_fetch,
+            patch.object(db, "invalidate_stats"),
+            patch.object(db.query_cache, "invalidate_table"),
+        ):
+            await cog._handle_task_capture(payload, "999")
+            mock_fetch.assert_awaited_once()
+            sql_called, params = mock_fetch.call_args.args
+            assert "deadline" in sql_called
+            assert isinstance(params[2], str) and len(params[2]) >= 10
+
+    @pytest.mark.asyncio
+    async def test_history_blocks_cross_guild_admin_and_hides_private_in_autocomplete(self) -> None:
+        from history_reporting import service as history_service
+        from history_reporting.cog import _history_task_autocomplete
+
+        personal_row = {
+            "task_id": 88,
+            "task": "Personal DM Secret",
+            "owner_id": "victim_1",
+            "status": "Pending",
+            "priority": 3,
+            "deadline": None,
+            "description": "Secret description",
+            "is_deleted": False,
+            "created_at": datetime.now(timezone.utc),
+            "project_id": None,
+            "guild_id": None,
+            "category_name": "Personal",
+        }
+        other_guild_row = {
+            **personal_row,
+            "task_id": 89,
+            "guild_id": "guild_victim",
+            "project_id": 5,
+        }
+
+        with patch.object(history_service.db, "afetchone", new=AsyncMock(return_value=personal_row)):
+            assert await history_service.get_task_audit_history(
+                88, "attacker_admin", is_guild_admin=True, guild_id="guild_attacker"
+            ) is None
+            ok, key = await history_service.rollback_task_description(
+                88, 1, "attacker_admin", is_guild_admin=True, guild_id="guild_attacker"
+            )
+            assert ok is False and key == "history_not_found_or_denied"
+
+        with patch.object(history_service.db, "afetchone", new=AsyncMock(return_value=other_guild_row)):
+            assert await history_service.get_revision_diff(
+                89, "attacker_admin", is_guild_admin=True, guild_id="guild_attacker"
+            ) is None
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=555)
+        inter.guild = MagicMock(id=999)
+        with patch.object(db, "afetchall", new=AsyncMock(return_value=[])) as mock_ac:
+            await _history_task_autocomplete(inter, "")
+            sql_called = mock_ac.call_args.args[0]
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_called
+
+    @pytest.mark.asyncio
+    async def test_monitoring_setup_rejects_foreign_guild_channel(self) -> None:
+        from handlers.monitoring_cog import MonitoringSetupModal
+
+        modal = MonitoringSetupModal()
+        modal.log_channel._value = "999888777"
+        modal.health_interval._value = ""
+        modal.alert_cooldown._value = ""
+        modal.monitoring_enabled._value = ""
+
+        foreign_ch = MagicMock(spec=discord.TextChannel)
+        foreign_ch.id = 999888777
+        foreign_ch.guild = MagicMock(id=222222)  # different guild
+
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=101)
+        inter.guild_id = 111111
+        inter.guild = MagicMock(id=111111)
+        inter.guild.get_channel.return_value = None
+        inter.client = MagicMock()
+        inter.client.fetch_channel = AsyncMock(return_value=foreign_ch)
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+
+        with (
+            patch("handlers.monitoring_cog.get_user_lang", new=AsyncMock(return_value="en")),
+            patch.object(db, "set_guild_setting", new=AsyncMock()) as mock_set,
+        ):
+            await modal.on_submit(inter)
+            mock_set.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dedup_excludes_other_users_private_tasks_and_cancelled_tasks(self) -> None:
+        from heuristics.dedup import find_potential_duplicate
+
+        with patch("heuristics.dedup.db.fetchall", new=AsyncMock(return_value=[])) as mock_fetch:
+            await find_potential_duplicate("Fix billing", owner_id="u1", guild_id="g1")
+            sql_called = mock_fetch.call_args.args[0]
+            assert "COALESCE(is_private, FALSE) = FALSE" in sql_called
+            assert "Cancelled" in sql_called
+
+    @pytest.mark.asyncio
+    async def test_checklist_prevents_exp_farming_and_enforces_user_check(self) -> None:
+        from routine_workflows import service as rw_service
+        from routine_workflows.models import ChecklistItem
+        from routine_workflows.views import TaskChecklistView
+
+        # 1. Toggling an already-awarded checklist item back to done must NOT award EXP again
+        toggle_curr = {"task_id": 50, "is_done": False, "already_awarded": True}
+        toggle_row = {
+            "checklist_id": 9,
+            "task_id": 50,
+            "title": "Code review",
+            "is_done": True,
+            "position": 0,
+            "created_at": datetime.now(timezone.utc),
+            "completed_at": datetime.now(timezone.utc),
+        }
+        with (
+            patch.object(rw_service.db, "afetchone", new=AsyncMock(side_effect=[toggle_curr, toggle_row])),
+            patch.object(rw_service, "get_pending_checklist_count", new=AsyncMock(return_value=0)),
+            patch.object(rw_service.db, "alog_action", new=AsyncMock()),
+            patch("gamification.rpg.award_exp", new=AsyncMock()) as mock_exp,
+        ):
+            res = await rw_service.toggle_checklist_item(9, "u1")
+            assert res is not None
+            mock_exp.assert_not_awaited()
+
+        # 2. Stranger cannot toggle checklist items in TaskChecklistView
+        items = [ChecklistItem(checklist_id=9, task_id=50, title="Code review", is_done=False, position=0)]
+        view = TaskChecklistView(task_id=50, task_name="Task", user_id="owner_1", lang="en", items=items)
+        select = next(c for c in view.children if isinstance(c, discord.ui.Select))
+        select._values = ["9"]
+        inter = MagicMock(spec=discord.Interaction)
+        inter.user = MagicMock(id=999999)
+        inter.response = MagicMock()
+        inter.response.send_message = AsyncMock()
+        with patch("routine_workflows.service.toggle_checklist_item", new=AsyncMock()) as mock_toggle:
+            await select.callback(inter)
+            mock_toggle.assert_not_awaited()
+            inter.response.send_message.assert_awaited_once()
+
+    def test_snooze_next_monday_preserves_user_local_time(self) -> None:
+        import pytz
+        from handlers.task_views import _SnoozePresetSelect
+
+        # 18:30 Asia/Bangkok = 11:30 UTC
+        bkk = pytz.timezone("Asia/Bangkok")
+        dl_utc = bkk.localize(datetime(2099, 11, 27, 18, 30)).astimezone(pytz.utc)
+        sel = _SnoozePresetSelect(1, "u1", "th", dl_utc.isoformat(), "Asia/Bangkok")
+        mon_utc = sel._presets["mon"]
+        mon_local = mon_utc.astimezone(bkk)
+        assert mon_local.weekday() == 0
+        assert (mon_local.hour, mon_local.minute) == (18, 30)
+
+    @pytest.mark.asyncio
+    async def test_vacation_expired_does_not_shield_forever_and_skips_active_vacation_reminder(self) -> None:
+        from datetime import date
+        from gamification.vacation import evaluate_streak_update
+        from gamification.cog import GamificationCog
+
+        # Expired vacation from Jan 1-3 must NOT shield a completion on July 1
+        streak, freeze_used, vac_used, tokens = evaluate_streak_update(
+            current_streak=20,
+            last_day=date(2026, 1, 1),
+            completion_day=date(2026, 7, 1),
+            vacation_until=date(2026, 1, 3),
+            freeze_tokens=0,
+        )
+        assert streak == 1
+        assert vac_used is False
+
+        # Active vacation should still be skipped by streak_reminder_loop
+        now_20 = datetime(2026, 11, 27, 20, 0, tzinfo=timezone.utc)
+        row = {
+            "user_id": "12345",
+            "timezone": "UTC",
+            "streak_days": 10,
+            "streak_last_completion": date(2026, 11, 26),
+            "vacation_until": date(2026, 12, 5),
+        }
+        bot = MagicMock()
+        dummy_cog = MagicMock(bot=bot)
+        with (
+            patch("gamification.cog.db.afetchall", new=AsyncMock(return_value=[row])),
+            patch("gamification.cog.datetime") as mock_dt,
+            patch("gamification.cog.service.claim_streak_reminder", new=AsyncMock(return_value=True)) as mock_claim,
+        ):
+            mock_dt.now.return_value = now_20
+            await GamificationCog.streak_reminder_loop.coro(dummy_cog)
+            mock_claim.assert_not_awaited()
+
+
+
 
