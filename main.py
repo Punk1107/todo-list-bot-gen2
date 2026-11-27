@@ -337,8 +337,11 @@ async def on_app_command_error(
 ) -> None:
     from utils.helpers import get_user_lang
     from locales.i18n import t
-    # get_user_lang is now async
-    lang = await get_user_lang(interaction.user.id)
+    # get_user_lang is async; guard against DB errors so the error handler never fails
+    try:
+        lang = await get_user_lang(interaction.user.id)
+    except Exception:
+        lang = config.bot.default_lang
 
     actual_error = getattr(error, "original", error)
 

@@ -121,29 +121,31 @@ class FocusCog(commands.Cog, name="Focus"):
                         uid,
                     )
                     if row is None:
-                        await interaction.response.send_message(
-                            t("focus_no_active", lang), ephemeral=True
-                        )
-                        return
-
-                    task_name = row["task"]
-                    if row["phase"] == "work":
-                        elapsed_seconds = _completed_work_seconds(
-                            row["phase_started_at"], row["phase_ends_at"], now
-                        )
-                        if elapsed_seconds:
-                            await conn.execute(
-                                """UPDATE tasks
-                                   SET actual_hours=COALESCE(actual_hours, 0)+$1
-                                   WHERE task_id=$2""",
-                                elapsed_seconds / 3600, row["task_id"],
+                        task_name = None
+                    else:
+                        task_name = row["task"]
+                        if row["phase"] == "work":
+                            elapsed_seconds = _completed_work_seconds(
+                                row["phase_started_at"], row["phase_ends_at"], now
                             )
-                    await conn.execute(
-                        """UPDATE focus_sessions
-                           SET status='stopped', notification_pending=FALSE, updated_at=NOW()
-                           WHERE session_id=$1""",
-                        row["session_id"],
-                    )
+                            if elapsed_seconds:
+                                await conn.execute(
+                                    """UPDATE tasks
+                                       SET actual_hours=COALESCE(actual_hours, 0)+$1
+                                       WHERE task_id=$2""",
+                                    elapsed_seconds / 3600, row["task_id"],
+                                )
+                        await conn.execute(
+                            """UPDATE focus_sessions
+                               SET status='stopped', notification_pending=FALSE, updated_at=NOW()
+                               WHERE session_id=$1""",
+                            row["session_id"],
+                        )
+            if task_name is None:
+                await interaction.response.send_message(
+                    t("focus_no_active", lang), ephemeral=True
+                )
+                return
             if elapsed_seconds:
                 db.invalidate_stats(uid)
             db.query_cache.invalidate_table("focus_sessions")
@@ -245,11 +247,6 @@ class FocusCog(commands.Cog, name="Focus"):
                                     elapsed_seconds / 3600, row["task_id"],
                                 )
                                 changed_task = (row["user_id"], row["task_id"])
-                                try:
-                                    from gamification.rpg import award_exp, EXP_POMODORO
-                                    await award_exp(row["user_id"], EXP_POMODORO, reason="Pomodoro focus session completed")
-                                except Exception as exc:
-                                    log.warning("Could not award pomodoro EXP: %s", exc)
                         await conn.execute(
                             """UPDATE focus_sessions
                                SET phase=$1, phase_started_at=$2, phase_ends_at=$3,
@@ -261,6 +258,11 @@ class FocusCog(commands.Cog, name="Focus"):
                         notice = (row["user_id"], notice_key, row["task"], duration)
 
             if changed_task:
+                try:
+                    from gamification.rpg import award_exp, EXP_POMODORO
+                    await award_exp(changed_task[0], EXP_POMODORO, reason="Pomodoro focus session completed")
+                except Exception as exc:
+                    log.warning("Could not award pomodoro EXP: %s", exc)
                 db.invalidate_stats(changed_task[0])
             if notice or changed_task:
                 db.query_cache.invalidate_table("focus_sessions")

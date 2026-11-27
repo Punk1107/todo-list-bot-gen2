@@ -1226,7 +1226,7 @@ class TaskActionView(ui.View):
         summary_pre = await assign_service.get_assignment_summary(self.task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
         signoff_res = await assign_service.handle_task_completion_attempt(
-            self.task_id, actor_id, role_member_ids=role_members
+            self.task_id, actor_id, role_member_ids=role_members, summary=summary_pre
         )
         if not signoff_res.completed:
             waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
@@ -2202,7 +2202,7 @@ class _QuickActionButtons(ui.View):
         summary_pre = await assign_service.get_assignment_summary(self.task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
         signoff_res = await assign_service.handle_task_completion_attempt(
-            self.task_id, actor_id, role_member_ids=role_members
+            self.task_id, actor_id, role_member_ids=role_members, summary=summary_pre
         )
         if not signoff_res.completed:
             waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
@@ -2228,10 +2228,11 @@ class _QuickActionButtons(ui.View):
     @ui.button(label="📌 Pin", style=discord.ButtonStyle.secondary)
     async def quick_pin(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer(ephemeral=True)
-        if str(interaction.user.id) != self.uid:
+        actor_id = str(interaction.user.id)
+        if actor_id != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        pin_row = await db.afetchone("SELECT is_pinned, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
+        pin_row = await db.afetchone("SELECT owner_id, is_pinned, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not pin_row:
             await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
             return
@@ -2240,8 +2241,14 @@ class _QuickActionButtons(ui.View):
                 t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
             )
             return
+        if pin_row.get("owner_id") is not None and str(pin_row["owner_id"]) != actor_id:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
         new_val = 0 if pin_row["is_pinned"] else 1
-        await db.aexecute("UPDATE tasks SET is_pinned=$1 WHERE task_id=$2 AND is_deleted=FALSE", (new_val, self.task_id))
+        await db.aexecute(
+            "UPDATE tasks SET is_pinned=$1 WHERE task_id=$2 AND owner_id=$3 AND is_deleted=FALSE",
+            (new_val, self.task_id, actor_id),
+        )
         await db.alog_action(self.uid, "task_pinned" if new_val else "task_unpinned", str(self.task_id))
         db.invalidate_stats(self.uid)
         msg_key = "task_pinned" if new_val else "task_unpinned"
@@ -2250,10 +2257,11 @@ class _QuickActionButtons(ui.View):
     @ui.button(label="⏰ Snooze +1d", style=discord.ButtonStyle.secondary)
     async def quick_snooze(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.defer(ephemeral=True)
-        if str(interaction.user.id) != self.uid:
+        actor_id = str(interaction.user.id)
+        if actor_id != self.uid:
             await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
             return
-        r = await db.afetchone("SELECT deadline, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
+        r = await db.afetchone("SELECT owner_id, deadline, is_deleted FROM tasks WHERE task_id=$1", (self.task_id,))
         if not r:
             await interaction.followup.send(t("task_not_found", self.lang, task_id=self.task_id), ephemeral=True)
             return
@@ -2262,10 +2270,13 @@ class _QuickActionButtons(ui.View):
                 t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
             )
             return
+        if r.get("owner_id") is not None and str(r["owner_id"]) != actor_id:
+            await interaction.followup.send(t("permission_denied", self.lang), ephemeral=True)
+            return
         new_dl = calculate_defensive_snooze(r["deadline"])
         await db.aexecute(
-            "UPDATE tasks SET deadline=$1, dm_reminded=0, last_reminder=NULL, updated_at=NOW() WHERE task_id=$2",
-            (new_dl, self.task_id),
+            "UPDATE tasks SET deadline=$1, dm_reminded=0, last_reminder=NULL, updated_at=NOW() WHERE task_id=$2 AND owner_id=$3 AND is_deleted=FALSE",
+            (new_dl, self.task_id, actor_id),
         )
         await db.alog_action(self.uid, "task_snoozed", str(self.task_id))
         db.invalidate_stats(self.uid)
@@ -2290,8 +2301,9 @@ class _QuickActionButtons(ui.View):
                 t("task_already_in_trash", self.lang, task_id=self.task_id), ephemeral=True
             )
             return
+        owner_uid = str(r.get("owner_id") or self.uid)
         embed = build_task_embed(r, self.lang, self.tz_name)
-        view  = TaskActionView(self.task_id, self.uid, self.lang,
+        view  = TaskActionView(self.task_id, owner_uid, self.lang,
                                is_pinned=bool(r.get("is_pinned", 0)),
                                current_priority=r.get("priority", 0))
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)

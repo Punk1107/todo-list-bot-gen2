@@ -142,23 +142,6 @@ async def _record_completion(
             streak, local_day, remaining_tokens, user_id,
         )
 
-    # Award Productivity RPG EXP based on task priority
-    priority = int(task.get("priority") or 1)
-    task_exp = get_task_exp(priority)
-    try:
-        await award_exp(user_id, task_exp, reason=f"Task #{task['task_id']} completed")
-    except Exception as exc:
-        log.warning("Could not award RPG exp for user %s: %s", user_id, exc)
-
-    # Server Co-op Quest contribution (if guild task)
-    guild_id = task.get("guild_id")
-    if guild_id:
-        try:
-            from quests import service as quest_service
-            await quest_service.record_task_contribution(str(guild_id), user_id)
-        except Exception as exc:
-            log.warning("Could not record quest contribution for guild %s: %s", guild_id, exc)
-
     badges: list[str] = []
     local_time = completed_at.astimezone(user_tz).time()
     if local_time < time(9, 0):
@@ -193,6 +176,30 @@ async def _record_completion(
         if await _award(conn, user_id, badge):
             awarded.append(badge)
     return awarded
+
+
+async def _apply_post_completion_rewards(task: Any, user_id: str) -> None:
+    """Award RPG EXP and record guild quest contribution after the completion transaction commits.
+
+    Running these outside ``conn.transaction()`` prevents pool-level queries in ``award_exp``
+    and ``quest_service.record_task_contribution`` from self-deadlocking against the
+    ``FOR UPDATE`` lock on ``users`` held during ``_record_completion``.
+    """
+    raw_prio = task.get("priority") if hasattr(task, "get") else (task["priority"] if "priority" in task else 1)
+    priority = int(raw_prio or 1)
+    task_exp = get_task_exp(priority)
+    try:
+        await award_exp(user_id, task_exp, reason=f"Task #{task['task_id']} completed")
+    except Exception as exc:
+        log.warning("Could not award RPG exp for user %s: %s", user_id, exc)
+
+    guild_id = task.get("guild_id") if hasattr(task, "get") else (task["guild_id"] if "guild_id" in task else None)
+    if guild_id:
+        try:
+            from quests import service as quest_service
+            await quest_service.record_task_contribution(str(guild_id), user_id)
+        except Exception as exc:
+            log.warning("Could not record quest contribution for guild %s: %s", guild_id, exc)
 
 
 async def complete_personal_task(
@@ -243,6 +250,7 @@ async def complete_personal_task(
                 task_id,
             )
             awarded = await _record_completion(conn, task, user_id, completed_at)
+    await _apply_post_completion_rewards(task, user_id)
     db.invalidate_stats(user_id)
     if owner_to_invalidate:
         db.invalidate_stats(owner_to_invalidate)
@@ -280,6 +288,7 @@ async def complete_shared_task(
                 task_id,
             )
             awarded = await _record_completion(conn, task, user_id, completed_at)
+    await _apply_post_completion_rewards(task, user_id)
     db.invalidate_stats(user_id)
     db.query_cache.invalidate_tables([
         "tasks", "users", "task_completion_events", "user_achievements", "focus_sessions",
@@ -291,6 +300,7 @@ async def complete_shared_project_tasks(
     project_id: int, guild_id: str, actor_id: str
 ) -> int:
     """Record bulk completions from the authorized project-completion action."""
+    assignments = []
     async with db.acquire() as conn:
         async with conn.transaction():
             tasks = await conn.fetch(
@@ -314,9 +324,11 @@ async def complete_shared_project_tasks(
                     if completed_at.tzinfo is None:
                         completed_at = completed_at.replace(tzinfo=timezone.utc)
                     await _record_completion(conn, task, actor_id, completed_at)
-                    db.invalidate_stats(task["owner_id"])
-                for assignment in assignments:
-                    db.invalidate_stats(assignment["user_id"])
+    for task in tasks or []:
+        await _apply_post_completion_rewards(task, actor_id)
+        db.invalidate_stats(task["owner_id"])
+    for assignment in assignments or []:
+        db.invalidate_stats(assignment["user_id"])
     db.invalidate_stats(actor_id)
     db.query_cache.invalidate_tables([
         "tasks", "task_assignments", "users",

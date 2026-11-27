@@ -109,9 +109,13 @@ async def award_exp(
     user_id: str,
     exp_amount: int,
     reason: str = "",
+    *,
+    conn: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
     Awards EXP to a user, handles leveling up, and persists changes atomically.
+    When ``conn`` is supplied, executes on that existing connection/transaction
+    instead of acquiring a new pool connection (preventing row-lock self-deadlocks).
     Returns a dictionary summarizing the award and any level/title changes.
     """
     clean_exp = max(0, int(exp_amount))
@@ -119,17 +123,26 @@ async def award_exp(
         return {"exp_awarded": 0, "did_level_up": False}
 
     uid = str(user_id)
-    # Ensure user exists
-    await db.execute(
-        "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
-        uid,
-    )
-
-    # Fetch current stats
-    row = await db.fetchone(
-        "SELECT total_exp, rpg_level, rpg_title FROM users WHERE user_id = $1",
-        (uid,),
-    )
+    if conn is not None:
+        await conn.execute(
+            "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+            uid,
+        )
+        row = await conn.fetchrow(
+            "SELECT total_exp, rpg_level, rpg_title FROM users WHERE user_id = $1",
+            uid,
+        )
+    else:
+        # Ensure user exists
+        await db.execute(
+            "INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING",
+            uid,
+        )
+        # Fetch current stats
+        row = await db.fetchone(
+            "SELECT total_exp, rpg_level, rpg_title FROM users WHERE user_id = $1",
+            (uid,),
+        )
     old_total_exp = int(row["total_exp"]) if row and row.get("total_exp") is not None else 0
     old_level = int(row["rpg_level"]) if row and row.get("rpg_level") is not None else 1
 
@@ -139,14 +152,15 @@ async def award_exp(
     did_level_up = new_level > old_level
 
     # Update database
-    await db.execute(
-        """
+    update_sql = """
         UPDATE users
         SET total_exp = $1, rpg_level = $2, rpg_title = $3
         WHERE user_id = $4
-        """,
-        new_total_exp, new_level, new_title, uid,
-    )
+        """
+    if conn is not None:
+        await conn.execute(update_sql, new_total_exp, new_level, new_title, uid)
+    else:
+        await db.execute(update_sql, new_total_exp, new_level, new_title, uid)
     db.query_cache.invalidate_table("users")
     db.invalidate_stats(uid)
 

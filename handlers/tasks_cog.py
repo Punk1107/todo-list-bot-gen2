@@ -528,7 +528,7 @@ class TasksCog(commands.Cog, name="Tasks"):
         summary_pre = await assign_service.get_assignment_summary(task_id)
         role_members = _resolve_role_member_ids(interaction.guild, summary_pre.role_ids)
         signoff_res = await assign_service.handle_task_completion_attempt(
-            task_id, uid, role_member_ids=role_members, force=force
+            task_id, uid, role_member_ids=role_members, force=force, summary=summary_pre
         )
         if not signoff_res.completed:
             waiting = ", ".join(f"<@{u}>" for u in signoff_res.pending_users) or "—"
@@ -551,12 +551,13 @@ class TasksCog(commands.Cog, name="Tasks"):
         )
         embed.set_footer(text=t("footer_text", lang))
         await interaction.followup.send(embed=embed)
-        dm_embed = discord.Embed(
-            title=done_msg,
-            color=0x57F287,
-        )
-        dm_embed.set_footer(text=t("footer_text", lang))
-        await _send_dm(interaction.user, embed=dm_embed)
+        if interaction.guild is not None:
+            dm_embed = discord.Embed(
+                title=done_msg,
+                color=0x57F287,
+            )
+            dm_embed.set_footer(text=t("footer_text", lang))
+            await _send_dm(interaction.user, embed=dm_embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # /delete
