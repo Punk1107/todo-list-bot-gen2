@@ -43,6 +43,7 @@ async def _fetch_accessible_task_row(
     task_id: int,
     user_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> Optional[Any]:
     """Fetch a task row and verify the caller has view permission."""
     row = await db.afetchone(
@@ -60,13 +61,18 @@ async def _fetch_accessible_task_row(
     task_owner = str(row["owner_id"])
     t_proj_id = row.get("project_id") if hasattr(row, "get") else None
     t_guild_id = row.get("guild_id") if hasattr(row, "get") else None
+    same_guild_admin = bool(
+        is_guild_admin and guild_id and t_guild_id and str(t_guild_id) == str(guild_id)
+    )
 
     if t_proj_id and t_guild_id:
-        if not is_guild_admin and task_owner != user_id:
+        if guild_id and str(t_guild_id) != str(guild_id):
+            return None
+        if not same_guild_admin and task_owner != user_id:
             try:
                 from collaboration import service as collab_service
                 can_view = await collab_service.check_project_permission(
-                    int(t_proj_id), user_id, "can_view_tasks", is_guild_admin=is_guild_admin
+                    int(t_proj_id), user_id, "can_view_tasks", is_guild_admin=same_guild_admin
                 )
                 if not can_view:
                     proj = await collab_service.get_project(int(t_proj_id), str(t_guild_id))
@@ -78,7 +84,7 @@ async def _fetch_accessible_task_row(
                 log.warning("Project permission check failed for task %d: %s", task_id, exc)
                 return None
     else:
-        if task_owner != user_id and not is_guild_admin:
+        if task_owner != user_id and not same_guild_admin:
             return None
 
     return row
@@ -88,17 +94,23 @@ async def _can_edit_task(
     row: Any,
     user_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> bool:
     """Return True if user_id is permitted to edit/rollback this task."""
-    if is_guild_admin or str(row["owner_id"]) == user_id:
-        return True
     t_proj_id = row.get("project_id") if hasattr(row, "get") else None
     t_guild_id = row.get("guild_id") if hasattr(row, "get") else None
+    same_guild_admin = bool(
+        is_guild_admin and guild_id and t_guild_id and str(t_guild_id) == str(guild_id)
+    )
+    if same_guild_admin or str(row["owner_id"]) == user_id:
+        return True
     if t_proj_id and t_guild_id:
+        if guild_id and str(t_guild_id) != str(guild_id):
+            return False
         try:
             from collaboration import service as collab_service
             if await collab_service.check_project_permission(
-                int(t_proj_id), user_id, "can_edit_tasks", is_guild_admin=is_guild_admin
+                int(t_proj_id), user_id, "can_edit_tasks", is_guild_admin=same_guild_admin
             ):
                 return True
             proj = await collab_service.get_project(int(t_proj_id), str(t_guild_id))
@@ -115,12 +127,15 @@ async def get_task_audit_history(
     task_id: int,
     user_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> Optional[TaskAuditHistory]:
     """
     Retrieve full audit history for a task.
-    Enforces privacy: only owner, authorized project member, or guild admin can view.
+    Enforces privacy: only owner, authorized project member, or same-guild admin can view.
     """
-    row = await _fetch_accessible_task_row(task_id, user_id, is_guild_admin=is_guild_admin)
+    row = await _fetch_accessible_task_row(
+        task_id, user_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    )
     if not row:
         return None
     task_owner = str(row["owner_id"])
@@ -1220,9 +1235,12 @@ async def get_task_revisions(
     user_id: str,
     is_guild_admin: bool = False,
     limit: int = 25,
+    guild_id: Optional[str] = None,
 ) -> Optional[Tuple[Any, List[TaskRevision]]]:
     """Fetch revision history for an accessible task (up to ``limit`` newest snapshots)."""
-    task_row = await _fetch_accessible_task_row(task_id, user_id, is_guild_admin=is_guild_admin)
+    task_row = await _fetch_accessible_task_row(
+        task_id, user_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    )
     if not task_row:
         return None
 
@@ -1244,15 +1262,20 @@ async def get_revision_diff(
     user_id: str,
     revision_id: Optional[int] = None,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> Optional[TaskDiffResult]:
     """Load task revisions and build a unified diff for ``revision_id`` (defaults to latest)."""
-    fetched = await get_task_revisions(task_id, user_id, is_guild_admin=is_guild_admin)
+    fetched = await get_task_revisions(
+        task_id, user_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    )
     if fetched is None:
         return None
     task_row, revisions = fetched
 
     current_desc = (task_row.get("description") if hasattr(task_row, "get") else task_row["description"]) or ""
-    can_rollback = await _can_edit_task(task_row, user_id, is_guild_admin=is_guild_admin)
+    can_rollback = await _can_edit_task(
+        task_row, user_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    )
 
     selected: Optional[TaskRevision] = None
     if revisions:
@@ -1300,6 +1323,7 @@ async def rollback_task_description(
     revision_id: int,
     actor_id: str,
     is_guild_admin: bool = False,
+    guild_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Restore ``tasks.description`` to ``revision.previous_description`` safely.
 
@@ -1307,12 +1331,16 @@ async def rollback_task_description(
     making every rollback non-destructive and reversible.
     Returns ``(success, message_key_or_text)``.
     """
-    task_row = await _fetch_accessible_task_row(task_id, actor_id, is_guild_admin=is_guild_admin)
+    task_row = await _fetch_accessible_task_row(
+        task_id, actor_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    )
     if not task_row:
         return False, "history_not_found_or_denied"
     if task_row.get("is_deleted") if hasattr(task_row, "get") else False:
         return False, "task_already_in_trash"
-    if not await _can_edit_task(task_row, actor_id, is_guild_admin=is_guild_admin):
+    if not await _can_edit_task(
+        task_row, actor_id, is_guild_admin=is_guild_admin, guild_id=guild_id
+    ):
         return False, "permission_denied"
 
     rev_row = await db.afetchone(

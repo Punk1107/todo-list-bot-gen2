@@ -72,6 +72,9 @@ class _ChecklistToggleSelect(ui.Select):
         checklist_id = int(self.values[0])
         view = self.view
         if isinstance(view, TaskChecklistView):
+            if str(interaction.user.id) != view.user_id:
+                await interaction.response.send_message(t("permission_denied", view.lang), ephemeral=True)
+                return
             await service.toggle_checklist_item(checklist_id, view.user_id)
             await view.refresh_content(interaction)
 
@@ -129,6 +132,9 @@ class TaskChecklistView(ui.View):
         )
 
     async def _on_refresh_click(self, interaction: discord.Interaction) -> None:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(t("permission_denied", self.lang), ephemeral=True)
+            return
         await interaction.response.defer(ephemeral=True)
         await self.refresh_content(interaction)
 

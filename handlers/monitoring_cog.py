@@ -87,15 +87,17 @@ class MonitoringSetupModal(ui.Modal, title="🔧 Monitoring Setup"):
         if ch_val:
             try:
                 ch_id = int(ch_val)
-                # Try to fetch the channel to verify it exists and is messageable
+                # Try to fetch the channel within the current guild only (prevent cross-guild hijack)
                 channel = guild.get_channel(ch_id)
                 if channel is None:
                     try:
-                        channel = await interaction.client.fetch_channel(ch_id)
+                        fetched = await interaction.client.fetch_channel(ch_id)
+                        if getattr(fetched, "guild", None) is not None and fetched.guild.id == guild.id:
+                            channel = fetched
                     except Exception:
                         channel = None
 
-                if channel is None:
+                if channel is None or getattr(channel, "guild", None) is None or channel.guild.id != guild.id:
                     errors.append(t("monitoring_channel_not_found", lang, ch_id=ch_id))
                 elif not isinstance(channel, discord.abc.Messageable):
                     errors.append(t("monitoring_channel_unsendable", lang, name=channel.name))

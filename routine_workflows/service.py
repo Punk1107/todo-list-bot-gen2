@@ -727,13 +727,22 @@ async def add_checklist_item(task_id: int, title: str) -> Optional[ChecklistItem
 async def toggle_checklist_item(checklist_id: int, user_id: str) -> Optional[tuple[ChecklistItem, int]]:
     """Toggle a checklist item between done and undone. Returns (item, pending_count)."""
     curr = await db.afetchone(
-        "SELECT task_id, is_done FROM task_checklists WHERE checklist_id=$1",
-        (checklist_id,),
+        """SELECT tc.task_id, tc.is_done,
+                  EXISTS (
+                      SELECT 1 FROM audit_log al
+                      WHERE al.action = 'checklist_toggled'
+                        AND al.target_id = CAST(tc.task_id AS TEXT)
+                        AND al.detail = $2
+                  ) AS already_awarded
+           FROM task_checklists tc
+           WHERE tc.checklist_id = $1""",
+        (checklist_id, f"checklist_id={checklist_id},is_done=True"),
     )
     if not curr:
         return None
 
     new_done = not bool(curr["is_done"])
+    already_awarded = bool(curr.get("already_awarded", False)) if hasattr(curr, "get") else False
     task_id = curr["task_id"]
 
     row = await db.afetchone(
@@ -750,7 +759,7 @@ async def toggle_checklist_item(checklist_id: int, user_id: str) -> Optional[tup
         str(task_id),
         f"checklist_id={checklist_id},is_done={new_done}",
     )
-    if new_done:
+    if new_done and not already_awarded:
         try:
             from gamification.rpg import award_exp, EXP_CHECKLIST
             await award_exp(user_id, EXP_CHECKLIST, reason="Checklist item completed")

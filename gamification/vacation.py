@@ -45,8 +45,12 @@ def evaluate_streak_update(
         return current_streak + 1, False, False, freeze_tokens
 
     # Case 3: Vacation Mode active / bridging
-    # If the user set vacation and the gap falls within or bridges the vacation period
-    if vacation_until is not None and (vacation_until >= last_day or completion_day <= vacation_until):
+    # Shield the streak only when vacation covered last_day through completion_day (or the day right before)
+    if (
+        vacation_until is not None
+        and vacation_until >= last_day
+        and completion_day <= vacation_until + timedelta(days=1)
+    ):
         return current_streak + 1, False, True, freeze_tokens
 
     # Case 4: Missed exactly 1 day (e.g. completed on Friday, next completion on Sunday)

@@ -112,12 +112,15 @@ async def find_potential_duplicate(
     if not task_name or not task_name.strip():
         return None
 
-    # Query up to 100 recent non-completed tasks for the user or guild
+    # Query up to 100 recent open tasks for the user or public guild tasks
     query = """
         SELECT task_id, task, status, priority, created_at
         FROM tasks
-        WHERE (owner_id = $1 OR (guild_id IS NOT NULL AND guild_id = $2))
-          AND status != 'Completed'
+        WHERE (
+              owner_id = $1
+              OR (guild_id IS NOT NULL AND guild_id = $2 AND COALESCE(is_private, FALSE) = FALSE)
+          )
+          AND status NOT IN ('Completed', 'Cancelled')
           AND is_deleted = FALSE
         ORDER BY task_id DESC
         LIMIT 100

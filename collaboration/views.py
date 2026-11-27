@@ -951,8 +951,12 @@ class ProjectDashboardView(ui.View):
     async def btn_board(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer()
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(
+                self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin
+            )
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
@@ -1044,14 +1048,16 @@ class ProjectDashboardView(ui.View):
     async def btn_advance(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer(ephemeral=True)
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(
+                self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin
+            )
         except service.ProjectNotFound:
             await interaction.followup.send(t("proj_not_found", lang, project_id=self.project_id), ephemeral=True)
             return
 
-        actor_id = str(interaction.user.id)
-        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         role = await service.get_member_role(self.project_id, actor_id)
         if not (role is not None or is_admin):
             await interaction.followup.send(t("proj_no_permission", lang), ephemeral=True)
@@ -1562,8 +1568,12 @@ class ProjectBoardView(ui.View):
     async def btn_thread(self, interaction: discord.Interaction, button: ui.Button) -> None:
         lang = self.lang
         await interaction.response.defer(ephemeral=True)
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
         try:
-            board = await service.get_project_board(self.project_id, self.guild_id)
+            board = await service.get_project_board(
+                self.project_id, self.guild_id, actor_id=actor_id, is_guild_admin=is_admin
+            )
         except service.ProjectNotFound:
             await interaction.followup.send(
                 t("proj_not_found", lang, project_id=self.project_id), ephemeral=True
@@ -1721,7 +1731,9 @@ class CompleteTaskSelect(ui.Select):
         # Refresh Kanban board view in original message if available
         if self.parent_board_view and hasattr(self.parent_board_view, "_message") and self.parent_board_view._message:
             try:
-                board = await service.get_project_board(self.project_id, self.guild_id)
+                board = await service.get_project_board(
+                    self.project_id, self.guild_id, actor_id=uid, is_guild_admin=is_admin
+                )
                 self.parent_board_view._board = board
                 new_embed = build_board_embed(board, self.lang, self.parent_board_view.current_col)
                 await self.parent_board_view._message.edit(embed=new_embed, view=self.parent_board_view)
@@ -1964,8 +1976,19 @@ class ProjectPermissionsView(ui.View):
         back_btn.callback = self._on_back
         self.add_item(back_btn)
 
+    async def _can_manage_permissions(self, interaction: discord.Interaction) -> bool:
+        actor_id = str(interaction.user.id)
+        is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
+        if is_admin or self.project.owner_id == actor_id:
+            return True
+        role = await service.get_member_role(self.project.project_id, actor_id)
+        return role == "lead"
+
     def _make_toggle_callback(self, perm_key: str):
         async def callback(interaction: discord.Interaction):
+            if not await self._can_manage_permissions(interaction):
+                await interaction.response.send_message(t("proj_no_permission", self.lang), ephemeral=True)
+                return
             await interaction.response.defer()
             actor_id = str(interaction.user.id)
             is_admin = isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator
@@ -1986,6 +2009,9 @@ class ProjectPermissionsView(ui.View):
         return callback
 
     async def _on_role_change(self, interaction: discord.Interaction):
+        if not await self._can_manage_permissions(interaction):
+            await interaction.response.send_message(t("proj_no_permission", self.lang), ephemeral=True)
+            return
         await interaction.response.defer()
         self.role = interaction.data["values"][0]
         self.permissions = await service.get_project_role_permissions(self.project.project_id, self.role)

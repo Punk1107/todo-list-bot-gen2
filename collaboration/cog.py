@@ -203,7 +203,9 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
 
         guild_id = str(interaction.guild.id)
         try:
-            board = await service.get_project_board(project_id, guild_id)
+            board = await service.get_project_board(
+                project_id, guild_id, actor_id=uid, is_guild_admin=_is_admin(interaction)
+            )
         except service.ProjectNotFound:
             await interaction.followup.send(
                 t("proj_not_found", lang, project_id=project_id), ephemeral=True
@@ -586,7 +588,9 @@ class CollaborationCog(commands.Cog, name="Collaboration"):
         await interaction.response.defer()
         guild_id = str(interaction.guild.id)
         try:
-            board = await service.get_project_board(project_id, guild_id)
+            board = await service.get_project_board(
+                project_id, guild_id, actor_id=uid, is_guild_admin=_is_admin(interaction)
+            )
             members = await service.get_project_members(project_id, guild_id)
         except service.ProjectNotFound:
             await interaction.followup.send(

@@ -325,7 +325,7 @@ class GamificationCog(commands.Cog, name="Gamification"):
     async def streak_reminder_loop(self) -> None:
         try:
             rows = await db.afetchall(
-                """SELECT user_id, timezone, streak_days, streak_last_completion
+                """SELECT user_id, timezone, streak_days, streak_last_completion, vacation_until
                    FROM users
                    WHERE notify_enabled=1 AND streak_days > 0
                      AND streak_last_completion IS NOT NULL"""
@@ -344,6 +344,9 @@ class GamificationCog(commands.Cog, name="Gamification"):
                 if local_now.hour != 20:
                     continue
                 local_day = local_now.date()
+                vac_until = row.get("vacation_until") if hasattr(row, "get") else None
+                if vac_until is not None and vac_until >= local_day:
+                    continue
                 if row["streak_last_completion"] != local_day - timedelta(days=1):
                     continue
                 if not await service.claim_streak_reminder(row["user_id"], local_day):
