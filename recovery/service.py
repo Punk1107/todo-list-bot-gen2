@@ -69,9 +69,13 @@ async def soft_delete_task(
         (task_id,),
     )
 
-    # Stop any active focus session on this task or its subtasks
+    # Stop any active focus session and cancel running stopwatch timers on this task or its subtasks
     await db.aexecute(
-        """UPDATE focus_sessions
+        """WITH stopped_timers AS (
+               DELETE FROM active_time_timers
+               WHERE task_id=$1 OR task_id IN (SELECT task_id FROM tasks WHERE parent_task_id=$1)
+           )
+           UPDATE focus_sessions
            SET status='stopped', notification_pending=FALSE, updated_at=NOW()
            WHERE (task_id=$1 OR task_id IN (SELECT task_id FROM tasks WHERE parent_task_id=$1))
              AND status='active'""",
@@ -82,7 +86,7 @@ async def soft_delete_task(
     db.invalidate_stats(task_owner)
     if task_owner != user_id:
         db.invalidate_stats(user_id)
-    db.query_cache.invalidate_tables(["tasks", "focus_sessions"])
+    db.query_cache.invalidate_tables(["tasks", "focus_sessions", "active_time_timers"])
 
     # Audit logging
     await db.alog_action(user_id, "task_soft_deleted", str(task_id))

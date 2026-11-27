@@ -82,14 +82,27 @@ async def archive_completed_tasks(
     for r in (cm_rows or []):
         meta_map[int(r["task_id"])]["comment_count"] = int(r["cnt"] or 0)
 
-    # Copy columns dynamically using shared task columns + archived_at / archived_metadata
+    # Copy columns dynamically using shared non-generated task columns + archived_at / archived_metadata
     cols_rows = await db.afetchall(
-        """SELECT column_name
-           FROM information_schema.columns
-           WHERE table_name = 'tasks'
-           ORDER BY ordinal_position"""
+        """SELECT t_col.column_name
+           FROM information_schema.columns t_col
+           JOIN information_schema.columns a_col
+             ON a_col.table_schema = t_col.table_schema
+            AND a_col.table_name = 'tasks_archive'
+            AND a_col.column_name = t_col.column_name
+           WHERE t_col.table_schema = 'public'
+             AND t_col.table_name = 'tasks'
+             AND COALESCE(t_col.is_generated, 'NEVER') = 'NEVER'
+             AND COALESCE(a_col.is_generated, 'NEVER') = 'NEVER'
+             AND t_col.column_name NOT IN ('search_vector', 'archived_at', 'archived_metadata')
+           ORDER BY t_col.ordinal_position"""
     )
-    col_names = [str(r["column_name"]) for r in (cols_rows or []) if r.get("column_name")]
+    col_names = [
+        str(r["column_name"])
+        for r in (cols_rows or [])
+        if r.get("column_name")
+        and str(r["column_name"]) not in ("search_vector", "archived_at", "archived_metadata")
+    ]
     if col_names:
         col_list = ", ".join(col_names)
         await db.aexecute(

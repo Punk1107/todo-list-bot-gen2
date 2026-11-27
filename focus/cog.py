@@ -482,6 +482,10 @@ class FocusCog(commands.Cog, name="Focus"):
             ends_at = r.get("phase_ends_at")
             if not ends_at:
                 continue
+            if isinstance(ends_at, str):
+                ends_at = datetime.fromisoformat(ends_at)
+            if ends_at.tzinfo is None:
+                ends_at = ends_at.replace(tzinfo=timezone.utc)
 
             # Check if current phase has ended
             if ends_at <= now:

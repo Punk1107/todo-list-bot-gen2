@@ -931,11 +931,11 @@ class SettingsCog(commands.Cog, name="Settings"):
             """SELECT
                 COUNT(DISTINCT users.user_id)                                         AS total_users,
                 SUM(CASE WHEN tasks.status='Completed' THEN 1 ELSE 0 END)             AS done_tasks,
-                SUM(CASE WHEN tasks.status='Pending'   THEN 1 ELSE 0 END)             AS pending,
-                SUM(CASE WHEN tasks.status='Pending' AND tasks.deadline < $1
+                SUM(CASE WHEN tasks.status IN ('Pending', 'In_Progress') THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN tasks.status IN ('Pending', 'In_Progress') AND tasks.deadline < $1
                          THEN 1 ELSE 0 END)                                           AS overdue
                FROM users
-               LEFT JOIN tasks ON tasks.owner_id = users.user_id""",
+               LEFT JOIN tasks ON tasks.owner_id = users.user_id AND tasks.is_deleted = FALSE""",
             (datetime.now(timezone.utc).isoformat(),),
         )
         total_users = int(stats_row["total_users"] or 0)

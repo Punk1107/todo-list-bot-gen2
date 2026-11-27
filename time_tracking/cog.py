@@ -270,8 +270,11 @@ class TimeTrackingCog(commands.Cog, name="TimeTracking"):
         lang = await get_user_lang(caller_uid)
         await ensure_user(uid, lang)
 
+        gid = str(interaction.guild_id) if interaction.guild_id else None
         period_key = period.value if period else "week"
-        timesheet = await service.get_user_timesheet(uid, period=period_key)
+        timesheet = await service.get_user_timesheet(
+            uid, period=period_key, guild_id=gid, viewer_id=caller_uid
+        )
         embed = build_timesheet_embed(target_user.display_name, timesheet, lang=lang)
         view = TimesheetExportView(timesheet, target_user.display_name, lang=lang)
         await interaction.response.send_message(embed=embed, view=view)

@@ -328,8 +328,17 @@ async def execute_saved_filter(
         where_clauses.append(f"t.project_id = ${idx}")
         params.append(crit.project_id)
         idx += 1
+        if guild_id:
+            where_clauses.append(f"t.guild_id = ${idx}")
+            params.append(guild_id)
+            idx += 1
+        where_clauses.append(f"(COALESCE(t.is_private, FALSE) = FALSE OR t.owner_id = ${idx})")
+        params.append(user_id)
+        idx += 1
     elif guild_id:
-        where_clauses.append(f"(t.owner_id = ${idx} OR t.guild_id = ${idx+1})")
+        where_clauses.append(
+            f"(t.owner_id = ${idx} OR (t.guild_id = ${idx+1} AND COALESCE(t.is_private, FALSE) = FALSE))"
+        )
         params.extend([user_id, guild_id])
         idx += 2
     else:

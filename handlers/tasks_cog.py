@@ -788,8 +788,38 @@ class TasksCog(commands.Cog, name="Tasks"):
         uid = str(interaction.user.id)
         lang = await get_user_lang(uid)
         target_uid = str(member.id) if member else None
-        scope_title = f"Project #{project_id}" if project_id else (f"Member: {member.display_name}" if member else "All Guild Tasks")
-        data = await tt_service.calculate_estimation_accuracy(project_id=project_id, user_id=target_uid)
+        gid = str(interaction.guild_id) if interaction.guild_id else None
+
+        if project_id is not None:
+            if not gid:
+                await interaction.response.send_message(t("proj_guild_only", lang), ephemeral=True)
+                return
+            from collaboration import service as collab_service
+            try:
+                await collab_service.get_project(project_id, gid)
+            except collab_service.ProjectNotFound:
+                await interaction.response.send_message(
+                    t("proj_not_found", lang, project_id=project_id), ephemeral=True
+                )
+                return
+
+        if not gid and not target_uid:
+            target_uid = uid
+
+        scope_title = (
+            f"Project #{project_id}"
+            if project_id
+            else (
+                f"Member: {member.display_name}"
+                if member
+                else (interaction.guild.name if interaction.guild else "Personal Tasks")
+            )
+        )
+        data = await tt_service.calculate_estimation_accuracy(
+            project_id=project_id,
+            user_id=target_uid,
+            guild_id=gid,
+        )
         embed = build_estimation_analytics_embed(data, scope_title=scope_title, lang=lang)
         await interaction.response.send_message(embed=embed)
 
